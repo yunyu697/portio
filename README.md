@@ -43,6 +43,11 @@ docs/      设计基线与决策记录
 
 Conventional Commits（`feat` / `fix` / `chore` / `docs` / `test` / `ci` / `refactor`）。分支用 `<type>/<短描述>`，例如 `feat/session-tree`。`main` 只收 PR。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
+## 版本号
+
+格式 `vMAJOR.MINOR.PATCH`，预发布 `-alphaN` / `-RCN`；MINOR 与 PATCH 封顶 10，满 10 向高位进位。
+规则与对照表见 [docs/versioning.md](docs/versioning.md)，用 `python scripts/version.py next ...` 推算，别心算。
+
 ## 许可
 
 MIT，见 [LICENSE](LICENSE)。

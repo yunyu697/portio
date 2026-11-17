@@ -10,6 +10,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  version:
+    name: version rule
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 三处版本号一致且符合进位规则
+        run: python scripts/check_versions.py
+      - name: 进位规则单测
+        run: python -m unittest discover -s scripts -p "test_*.py"
+
   check:
     name: fmt / clippy / test
     runs-on: ubuntu-latest
@@ -25,7 +38,7 @@ jobs:
 
   build:
     name: build (${{ matrix.os }})
-    needs: check
+    needs: [check, version]
     strategy:
       fail-fast: false
       matrix:
