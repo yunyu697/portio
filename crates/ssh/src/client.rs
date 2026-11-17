@@ -46,7 +46,7 @@ pub enum ShellEvent {
     Error(String),
 }
 
-struct Handler {
+pub(crate) struct Handler {
     /// 之前记录过的指纹。None 表示首次连接，走 TOFU。
     expected: Option<String>,
     /// 握手过程中看到的指纹，无论成功失败都记下来，好让上层落盘或报"密钥变了"。
@@ -67,7 +67,8 @@ impl client::Handler for Handler {
 }
 
 pub struct SshSession {
-    handle: Handle<Handler>,
+    /// SFTP 走同一条连接、另开一条 channel——所以句柄要给同 crate 的 `sftp` 模块用。
+    pub(crate) handle: Handle<Handler>,
 }
 
 fn fp_now(seen: &Arc<Mutex<Option<String>>>) -> String {

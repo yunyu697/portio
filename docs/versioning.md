@@ -64,3 +64,16 @@ git tag -a v1.0.6 -m "v1.0.6"
 `Alpha`(A=65) 一定排在 `RC`(R=82) 前面，SemVer 的字面排序天然正确，不需要再为 crates.io / npm 做任何适配。
 
 命令里输小写 `alpha` 也能认，脚本会自动规整成 `Alpha` 再输出，但**打 tag、写 CHANGELOG 时必须是 `AlphaN`**。
+
+## 交付节奏与 Alpha 进位
+
+每完成一步交付就进一位 Alpha，便于把'做完了几步'直接读出来：
+
+| 步骤 | 版本 |
+| --- | --- |
+| S1 窗口外壳 | v1.0.0-Alpha1 |
+| S2 SSH 内核与终端 | v1.0.0-Alpha2 |
+| S3 SFTP 双栏与传输队列 | v1.0.0-Alpha3 |
+| S4 打磨与可发布 | v1.0.0-Alpha4 |
+
+Alpha 满 10 时按同一进位规则进到下一个 patch，再从 Alpha1 重新开始。写入版本用 scripts/set_version.py，校验用 scripts/check_versions.py。

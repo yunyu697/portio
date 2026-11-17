@@ -58,7 +58,14 @@ pub fn run() {
             sessions::ssh_connect,
             sessions::ssh_input,
             sessions::ssh_resize,
-            sessions::ssh_disconnect
+            sessions::ssh_disconnect,
+            sessions::sftp_home,
+            sessions::sftp_list,
+            sessions::local_list,
+            sessions::sftp_download,
+            sessions::sftp_upload,
+            sessions::sftp_mkdir,
+            sessions::sftp_remove
         ])
         .setup(|app| {
             if let Some(win) = app.get_webview_window("main") {

@@ -4,6 +4,8 @@ const root = document.documentElement;
 // 前端一有异常就把信息写进标题，出问题时不至于对着空白面板瞎猜
 window.addEventListener("error", (e) => {
   document.title = "ERR: " + (e.message || e.error);
+  const st = document.querySelector('.statusbar .state');
+  if (st) st.textContent = 'ERR ' + (e.message || e.error);
 });
 
 // ---------- Tauri 桥 ----------
@@ -73,7 +75,7 @@ document.getElementById("btn-density").addEventListener("click", () => {
 // ---------- 可拖拽尺寸：三处，都持久化 ----------
 const PREF = {
   sidebar: { key: "portio.sidebar", min: 180, max: 420 },
-  split: { key: "portio.split", min: 0.25, max: 0.75 },
+  split: { key: "portio.split", min: 0.32, max: 0.66 },
   drawer: { key: "portio.drawer", min: 34, max: 360 },
 };
 
@@ -195,7 +197,7 @@ function 初次提示() {}
 applyTheme(localStorage.getItem("portio.theme") ?? "dark");
 applyDensity(localStorage.getItem("portio.density") ?? "standard");
 applySidebar(readNum(PREF.sidebar.key, 264));
-applySplit(readNum(PREF.split.key, 0.5));
+applySplit(Math.min(PREF.split.max, Math.max(PREF.split.min, readNum(PREF.split.key, 0.5))));
 applyDrawer(readNum(PREF.drawer.key, 172));
 window.addEventListener("resize", positionGutters);
 
@@ -231,6 +233,15 @@ function terminalTheme() {
       };
 }
 
+function fitQuietly() {
+  if (!fitAddon) return;
+  try {
+    fitAddon.fit();
+  } catch (e) {
+    // 容器还没布局完时 fit 会抛，这里吞掉即可，ResizeObserver 稍后会再来一次
+  }
+}
+
 function ensureTerminal() {
   if (term) return term;
   term = new Terminal({
@@ -245,7 +256,7 @@ function ensureTerminal() {
   fitAddon = new FitAddon.FitAddon();
   term.loadAddon(fitAddon);
   term.open(termHost);
-  fitAddon.fit();
+  fitQuietly();
   term.write("Portio · 未连接。点左上「新建连接」开始。\r\n");
 
   term.onData((data) => {
@@ -254,7 +265,8 @@ function ensureTerminal() {
   term.onResize(({ cols, rows }) => {
     if (sessionId !== null) call("ssh_resize", { id: sessionId, cols, rows });
   });
-  new ResizeObserver(() => fitAddon.fit()).observe(termHost);
+  new ResizeObserver(() => fitQuietly()).observe(termHost);
+  window.addEventListener("resize", () => fitQuietly());
   return term;
 }
 
@@ -332,6 +344,8 @@ document.getElementById("btn-connect").addEventListener("click", async () => {
     document.querySelector(".tab .name").textContent = `${user}@${host}`;
     term.focus();
     term.write(`\r\n\x1b[2m—— 已连接 ${user}@${host}:${port} ——\x1b[0m\r\n`);
+    const home = await call("sftp_home", { id });
+    if (home) loadRemote(home);
   } catch (err) {
     const raw = String(err);
     if (raw.includes("HOSTKEY_CHANGED")) {
@@ -386,3 +400,190 @@ window.addEventListener("beforeunload", () => {
 
 // 启动就把终端画出来，占位文案说明下一步做什么，避免一块空白面板
 ensureTerminal();
+
+// ---------- 文件双栏 ----------
+const remoteListEl = document.getElementById("remote-list");
+const localListEl = document.getElementById("local-list");
+const remotePathEl = document.getElementById("remote-path");
+const localPathEl = document.getElementById("local-path");
+let remotePath = null;
+let localPath = null;
+const transferRows = new Map();
+
+const escapeHtml = (s) =>
+  String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+function fmtSize(n) {
+  if (!n) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  let v = n;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i += 1;
+  }
+  return `${v < 10 && i > 0 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
+}
+
+function fmtTime(sec) {
+  if (!sec) return "—";
+  const d = new Date(sec * 1000);
+  const pad = (x) => String(x).padStart(2, "0");
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function posixJoin(dir, name) {
+  if (!dir) return name;
+  return dir.endsWith("/") ? dir + name : `${dir}/${name}`;
+}
+
+function winJoin(dir, name) {
+  if (!dir) return name;
+  return dir.endsWith("\\") || dir.endsWith("/") ? dir + name : `${dir}\\${name}`;
+}
+
+function renderList(el, items, side) {
+  el.innerHTML = "";
+    if (!items.length) {
+    el.innerHTML = '<span class="hint">空目录</span>';
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  for (const it of items) {
+    const row = document.createElement("div");
+    row.className = `fp-row${it.is_dir ? " dir" : ""}`;
+    row.innerHTML =
+      `<span class="ico">${it.is_dir ? "▸" : "·"}</span>` +
+      `<span class="nm">${escapeHtml(it.name)}</span>` +
+      `<span class="sz">${it.is_dir ? "—" : fmtSize(it.size)}</span>` +
+      `<span class="tm">${fmtTime(it.modified)}</span>`;
+    row.title = it.path;
+    row.addEventListener("click", () => {
+      el.querySelectorAll(".fp-row.sel").forEach((r) => r.classList.remove("sel"));
+      row.classList.add("sel");
+    });
+    row.addEventListener("dblclick", () => {
+      if (it.is_dir) {
+        if (side === "remote") loadRemote(it.path);
+        else loadLocal(it.path);
+        return;
+      }
+      if (side === "remote") downloadFile(it);
+      else uploadFile(it);
+    });
+    frag.appendChild(row);
+  }
+  el.appendChild(frag);
+}
+
+async function loadRemote(path) {
+  if (sessionId === null) {
+    remoteListEl.innerHTML = '<span class="hint">先连一台主机，远端目录才会出现。</span>';
+    return;
+  }
+  const res = await bridge.invoke("sftp_list", { id: sessionId, path });
+  if (!res) { remoteListEl.innerHTML = '<span class="hint">列目录失败，详情见状态栏。</span>'; return; }
+  remotePath = path;
+  remotePathEl.value = path;
+  document.getElementById("files-path").textContent = path;
+  document.getElementById("files-mode").textContent = "SFTP";
+  renderList(remoteListEl, res, "remote");
+}
+
+async function loadLocal(path) {
+  const res = await bridge.invoke("local_list", { path: path ?? null });
+  if (!res) return;
+  const [dir, items] = res;
+  localPath = dir;
+  localPathEl.value = dir;
+  localStorage.setItem("portio.localPath", dir);
+  renderList(localListEl, items, "local");
+}
+
+// 传输行：先占位，进度事件里按 key 找回来更新
+function transferRow(name, dir) {
+  const key = `${dir}:${name}`;
+  if (transferRows.has(key)) return { key, el: transferRows.get(key) };
+  document.querySelector(".drawer-body").querySelector(".hint")?.remove();
+  const el = document.createElement("div");
+  el.className = "tr";
+  el.innerHTML =
+    `<span class="ico">${dir === "up" ? "↑" : "↓"}</span>` +
+    `<span class="nm">${escapeHtml(name)}<span class="arrow">·</span></span>` +
+    `<span class="meta">排队</span>`;
+  const bar = document.createElement("div");
+  bar.className = "bar";
+  bar.innerHTML = "<i></i>";
+  el.appendChild(bar);
+  document.querySelector(".drawer-body").appendChild(el);
+  transferRows.set(key, el);
+  return { key, el };
+}
+
+function updateTransfer(p) {
+  const row = transferRows.get(`${p.dir}:${p.name}`);
+  if (!row) return;
+  const pct = p.total ? Math.min(100, Math.round((p.done / p.total) * 100)) : 0;
+  row.querySelector(".bar i").style.width = `${pct}%`;
+  row.querySelector(".meta").textContent = p.total ? `${pct}% · ${fmtSize(p.total)}` : fmtSize(p.done);
+}
+
+async function downloadFile(item) {
+  const target = winJoin(localPath, item.name);
+  transferRow(item.name, "down");
+  const bytes = await bridge.invoke("sftp_download", { id: sessionId, remote: item.path, local: target });
+  finishTransfer(item.name, "down", bytes);
+  if (bytes !== null) loadLocal(localPath);
+}
+
+async function uploadFile(item) {
+  const target = posixJoin(remotePath, item.name);
+  transferRow(item.name, "up");
+  const bytes = await bridge.invoke("sftp_upload", { id: sessionId, local: item.path, remote: target });
+  finishTransfer(item.name, "up", bytes);
+  if (bytes !== null) loadRemote(remotePath);
+}
+
+function finishTransfer(name, dir, bytes) {
+  const row = transferRows.get(`${dir}:${name}`);
+  if (!row) return;
+  const ok = bytes !== null;
+  row.querySelector(".bar i").style.width = ok ? "100%" : "0";
+  row.querySelector(".bar i").style.background = ok ? "var(--accent)" : "var(--danger)";
+  row.querySelector(".meta").textContent = ok ? `完成 · ${fmtSize(bytes)}` : "失败";
+  document.querySelector(".drawer .num").textContent = String(transferRows.size);
+  if (window.__TAURI__?.event) {
+    // 让队列自动浮出来看一眼，用户不用自己去翻抽屉
+    document.querySelector(".drawer").classList.remove("collapsed");
+  }
+}
+
+document.getElementById("remote-up").addEventListener("click", () => {
+  if (remotePath) loadRemote(remotePath.replace(/\/+$/, "").replace(/\/[^/]*$/, "") || "/");
+});
+document.getElementById("remote-refresh").addEventListener("click", () => remotePath && loadRemote(remotePath));
+document.getElementById("local-up").addEventListener("click", () => {
+  if (!localPath) return;
+  const parent = localPath.replace(/[\\/]+$/, "").replace(/[\\/][^\\/]*$/, "");
+  loadLocal(parent || localPath);
+});
+document.getElementById("local-refresh").addEventListener("click", () => loadLocal(localPath));
+remotePathEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") loadRemote(remotePathEl.value.trim() || "/");
+});
+localPathEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") loadLocal(localPathEl.value.trim());
+});
+document.getElementById("remote-mkdir").addEventListener("click", async () => {
+  const name = window.prompt("新目录名");
+  if (!name) return;
+  await call("sftp_mkdir", { id: sessionId, path: posixJoin(remotePath, name) });
+  loadRemote(remotePath);
+});
+
+if (window.__TAURI__?.event) {
+  window.__TAURI__.event.listen("transfer", (e) => updateTransfer(e.payload));
+}
+
+// 本地目录不用等连接，界面一出来就能看
+loadLocal(localStorage.getItem("portio.localPath") || null);
