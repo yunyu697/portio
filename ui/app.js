@@ -290,6 +290,31 @@ function addSessionRow(label) {
   document.getElementById("session-count").textContent = "1";
 }
 
+// ---------- 快捷键一览 ----------
+const keysModal = document.getElementById("keys-modal");
+function toggleKeys(open) {
+  const want = open ?? !keysModal.classList.contains("open");
+  keysModal.classList.toggle("open", want);
+}
+document.getElementById("btn-keys").addEventListener("click", () => toggleKeys());
+document.getElementById("btn-keys-close").addEventListener("click", () => toggleKeys(false));
+keysModal.addEventListener("click", (e) => {
+  if (e.target === keysModal) toggleKeys(false);
+});
+// 带了 #keys 直接展开，方便截图核对与文档深链
+if (location.hash === "#keys") toggleKeys(true);
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && keysModal.classList.contains("open")) {
+    e.preventDefault();
+    toggleKeys(false);
+    return;
+  }
+  if (e.ctrlKey && !e.altKey && (e.key === "/" || e.key === "?")) {
+    e.preventDefault();
+    toggleKeys();
+  }
+});
+
 // ---------- 连接对话框 ----------
 const modal = document.getElementById("connect-modal");
 const authSelect = document.getElementById("f-auth");

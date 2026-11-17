@@ -156,6 +156,14 @@
   .btn.primary:hover{filter:brightness(1.06)}
   .btn:disabled{opacity:.55;cursor:default}
   .new-session{width:calc(100% - 24px);margin:10px 12px 0;height:30px}
+  .modal .keys{width:520px}
+  .keys .body{display:block;padding:4px 0 8px}
+  .keys .grp{padding:10px 16px 2px;color:var(--text-3);font-size:var(--fs-11)}
+  .keys .row{display:grid;grid-template-columns:168px minmax(0,1fr);gap:12px;align-items:center;padding:7px 16px}
+  .keys .row .k{display:flex;gap:4px;flex-wrap:wrap}
+  .keys kbd{font-family:var(--mono);font-size:var(--fs-11);color:var(--text-2);background:var(--surface-2);
+    border:1px solid var(--line);border-radius:var(--r-6);padding:1px 6px;line-height:1.6}
+  .keys .row .d{color:var(--text-2)}
   .toast{position:fixed;right:16px;bottom:calc(var(--statusbar) + 16px);display:flex;flex-direction:column;
          gap:8px;z-index:99;pointer-events:none}
   .toast div{background:var(--surface-3);border:1px solid var(--line);border-left:2px solid var(--accent);
@@ -172,7 +180,7 @@
   <header class="titlebar" data-tauri-drag-region>
     <div class="brand" data-tauri-drag-region>
       <img src="mark.svg" alt="Portio" data-tauri-drag-region>
-      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.0-Alpha3</span>
+      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.0-Alpha4</span>
     </div>
     <div class="tabs">
       <div class="tab active" title="当前会话">
@@ -181,6 +189,7 @@
     </div>
     <button class="tbtn" id="btn-theme" title="切换主题（S4 全量主题在设置里）">主题</button>
     <button class="tbtn" id="btn-density" title="切换密度：标准 / 紧凑">密度</button>
+    <button class="tbtn" id="btn-keys" title="快捷键一览（Ctrl + /）" aria-label="快捷键一览">?</button>
     <div class="win-ctl">
       <button class="tbtn" id="btn-min" aria-label="最小化">&#8212;</button>
       <button class="tbtn" id="btn-max" aria-label="最大化">&#9723;</button>
@@ -278,6 +287,32 @@
       <footer>
         <button class="btn" id="btn-cancel">取消</button>
         <button class="btn primary" id="btn-connect">连接</button>
+      </footer>
+    </div>
+  </div>
+
+  <div class="modal" id="keys-modal">
+    <div class="sheet keys">
+      <header>快捷键 <span class="sub">Ctrl + / 打开 · Esc 关闭</span></header>
+      <div class="body">
+        <div class="grp">会话</div>
+        <div class="row"><span class="k"><kbd>Ctrl</kbd><kbd>T</kbd></span><span class="d">新建连接</span></div>
+        <div class="row"><span class="k"><kbd>Ctrl</kbd><kbd>W</kbd></span><span class="d">关闭当前标签（多标签在后续版本接入）</span></div>
+        <div class="row"><span class="k"><kbd>双击</kbd></span><span class="d">会话列表里的条目直接连接</span></div>
+        <div class="grp">终端</div>
+        <div class="row"><span class="k"><kbd>Ctrl</kbd><kbd>C</kbd></span><span class="d">中断当前命令（等同终端里的 ^C）</span></div>
+        <div class="row"><span class="k"><kbd>Ctrl</kbd><kbd>V</kbd></span><span class="d">粘贴剪贴板内容</span></div>
+        <div class="row"><span class="k"><kbd>选中</kbd></span><span class="d">选中即复制，不再需要右键菜单</span></div>
+        <div class="row"><span class="k"><kbd>F5</kbd></span><span class="d">刷新终端显示与尺寸</span></div>
+        <div class="row"><span class="k"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>H</kbd></span><span class="d">切换窗口全屏</span></div>
+        <div class="grp">文件</div>
+        <div class="row"><span class="k"><kbd>双击</kbd></span><span class="d">目录进入；文件则直接下载或上传</span></div>
+        <div class="row"><span class="k"><kbd>↑</kbd></span><span class="d">回到上级目录</span></div>
+        <div class="row"><span class="k"><kbd>⟳</kbd></span><span class="d">刷新当前目录列表</span></div>
+        <div class="row"><span class="k"><kbd>拖拽</kbd></span><span class="d">文件拖进本地栏即上传到当前远端目录</span></div>
+      </div>
+      <footer>
+        <button class="btn primary" id="btn-keys-close">知道了</button>
       </footer>
     </div>
   </div>

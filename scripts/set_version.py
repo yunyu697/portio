@@ -21,12 +21,16 @@ TARGETS = (
     (ROOT / "Cargo.toml", re.compile(r'(?m)^version = "[^"]*"$')),
     (ROOT / "package.json", re.compile(r'(?m)^(\s*)"version": "[^"]*",$')),
     (ROOT / "crates" / "app" / "tauri.conf.json", re.compile(r'(?m)^(\s*)"version": "[^"]*",$')),
+    # 标题栏的版本标签是静态文本，容易写漏，一并在这里改
+    (ROOT / "ui" / "index.html", re.compile(r'<span class="ver">[^<]*</span>')),
 )
 
 
 def patch(text: str, pattern: re.Pattern[str], version: str) -> str:
     if not pattern.search(text):
         raise SystemExit(f"没找到版本字段：{pattern.pattern}")
+    if 'class="ver"' in pattern.pattern:
+        return pattern.sub(f'<span class="ver">{version}</span>', text)
     if pattern.groups:
         return pattern.sub(lambda m: f'{m.group(1)}"version": "{version}",', text)
     return pattern.sub(f'version = "{version}"', text)
