@@ -1,0 +1,25 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# Node / 前端工具链
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Tauri 生成物
+src-tauri/gen/
+**/gen/schemas/
+
+# 编辑器与系统
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# 本地配置与日志
+.env
+.env.local
+*.log

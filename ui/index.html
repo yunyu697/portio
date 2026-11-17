@@ -1,0 +1,57 @@
+<!-- Portio · S1 骨架。这段结构会被 1.2 逐步替换成真实现，先保证令牌与栅格对得上基线。 -->
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark" data-density="standard">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portio</title>
+<link rel="stylesheet" href="tokens.css">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;height:100vh;background:var(--bg);color:var(--text);
+       font-family:var(--ui);font-size:var(--fs-13);display:grid;
+       grid-template-rows:var(--titlebar) 1fr var(--statusbar);overflow:hidden}
+  .titlebar{display:flex;align-items:center;gap:8px;padding:0 8px;
+            background:var(--surface);border-bottom:1px solid var(--line);-webkit-app-region:drag}
+  .titlebar .brand{display:flex;align-items:center;gap:8px;font-weight:600}
+  .titlebar .brand img{width:22px;height:22px}
+  .titlebar .spacer{flex:1}
+  .titlebar button{-webkit-app-region:no-app-region;background:none;border:0;color:var(--text-2);cursor:pointer}
+  .main{display:grid;grid-template-columns:var(--sidebar) 1fr;overflow:hidden}
+  .sidebar{background:var(--surface);border-right:1px solid var(--line);overflow:auto}
+  .sidebar h2{margin:0;padding:8px 12px;font-size:var(--fs-11);letter-spacing:.08em;
+              color:var(--text-3);text-transform:uppercase;border-bottom:1px solid var(--line)}
+  .stage{display:grid;grid-template-rows:1fr var(--drawer);overflow:hidden}
+  .split{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--line)}
+  .pane{border-right:1px solid var(--line);padding:8px 12px;color:var(--text-2);font-family:var(--mono)}
+  .pane.term{background:var(--term-bg)}
+  .drawer{background:var(--surface-2);border-top:1px solid var(--line);padding:8px 12px;
+          color:var(--text-3);font-family:var(--mono);font-size:var(--fs-11)}
+  .statusbar{display:flex;align-items:center;gap:16px;padding:0 12px;background:var(--surface);
+             border-top:1px solid var(--line);font-size:var(--fs-11);color:var(--text-3)}
+</style>
+</head>
+<body>
+  <header class="titlebar">
+    <div class="brand"><img src="mark.svg" alt="Portio"><b>Portio</b><span style="color:var(--text-3);font-weight:400">0.0.1 骨架</span></div>
+    <div class="spacer"></div>
+    <button id="btn-min" aria-label="最小化">&#8212;</button>
+    <button id="btn-max" aria-label="最大化">&#9723;</button>
+    <button id="btn-close" aria-label="关闭">&#10005;</button>
+  </header>
+
+  <div class="main">
+    <aside class="sidebar"><h2>会话</h2></aside>
+    <section class="stage">
+      <div class="split">
+        <div class="pane term">终端（骨架，S2 接 russh）</div>
+        <div class="pane">SFTP（骨架，S8 起）</div>
+      </div>
+      <div class="drawer">传输队列 0</div>
+    </section>
+  </div>
+
+  <footer class="statusbar"><span>未连接</span><span>UTF-8</span><span>120x40</span></footer>
+<script type="module" src="app.js"></script>
+</body>
+</html>

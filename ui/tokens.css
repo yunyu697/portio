@@ -1,0 +1,23 @@
+/* 设计令牌：唯一配色与尺度来源，改这里，不要改组件 */
+:root{
+  --bg:#0d1014; --surface:#131820; --surface-2:#1a2029; --surface-3:#222a35;
+  --line:#262e3a; --line-soft:rgba(255,255,255,.055);
+  --text:#dfe5ec; --text-2:#8b96a5; --text-3:#5e6875;
+  --accent:#2fb39a; --info:#6fa8dc; --warn:#c99a4e; --danger:#d2655f;
+  --term-bg:#090c10;
+  --r-1:4px; --r-2:8px; --r-3:12px;
+  --fs-11:11px; --fs-12:12px; --fs-13:13px; --fs-14:14px; --fs-16:16px; --fs-20:20px;
+  --row:28px; --titlebar:38px; --statusbar:26px; --sidebar:264px; --drawer:172px;
+  --mono:"JetBrains Mono","Cascadia Mono",ui-monospace,Consolas,monospace;
+  --ui:"HarmonyOS Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --ease:cubic-bezier(.2,.7,.2,1); --dur:160ms;
+}
+
+html[data-theme="light"]{
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#f7f9fa; --surface-3:#eef2f5;
+  --line:#dde3e9; --line-soft:rgba(13,16,20,.06);
+  --text:#1a222c; --text-2:#5a6673; --text-3:#8b96a5;
+  --accent:#12897a; --term-bg:#ffffff;
+}
+
+html[data-density="compact"]{ --row:24px; }

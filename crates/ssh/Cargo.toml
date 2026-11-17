@@ -1,0 +1,11 @@
+[package]
+name = "portio-ssh"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Portio 的协议层：SSH / SFTP 抽象。实现从 S2 开始。"
+
+[dependencies]
+portio-core = { workspace = true }
+thiserror = { workspace = true }

@@ -1,0 +1,11 @@
+[package]
+name = "portio-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Portio 的领域模型：会话、分组、传输任务。不依赖 Tauri，可单独测试。"
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
