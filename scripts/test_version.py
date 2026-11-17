@@ -28,25 +28,25 @@ class CarryRuleTest(unittest.TestCase):
             self.assertNotIn("11", nxt.split(".")[-1])
 
     def test_alpha_ladder_starts_at_one(self):
-        self.assertEqual(next_version("1.2.3", "stage", "alpha"), "1.2.3-alpha1")
+        self.assertEqual(next_version("1.2.3", "stage", "Alpha"), "1.2.3-Alpha1")
 
     def test_alpha_ladder_carries_after_ten(self):
-        self.assertEqual(next_version("1.2.3-alpha10", "stage", "alpha"), "1.2.4-alpha1")
+        self.assertEqual(next_version("1.2.3-Alpha10", "stage", "Alpha"), "1.2.4-Alpha1")
 
     def test_stage_promotes_to_rc(self):
-        self.assertEqual(next_version("1.2.3-alpha3", "stage", "RC"), "1.2.3-RC1")
+        self.assertEqual(next_version("1.2.3-Alpha3", "stage", "RC"), "1.2.3-RC1")
 
     def test_rc_promotes_to_final(self):
         self.assertEqual(next_version("1.2.3-RC1", "final"), "1.2.3")
 
     def test_reject_eleven_in_minor_or_patch(self):
-        for bad in ("1.0.11", "1.11.0", "1.0.0-alpha11", "1.0.0-RC11"):
+        for bad in ("1.0.11", "1.11.0", "1.0.0-Alpha11", "1.0.0-RC11"):
             with self.assertRaises(VersionError):
                 parse(bad)
 
     def test_reject_going_backwards_in_stage(self):
         with self.assertRaises(VersionError):
-            next_version("1.2.3-RC1", "stage", "alpha")
+            next_version("1.2.3-RC1", "stage", "Alpha")
 
     def test_reject_final_on_final(self):
         with self.assertRaises(VersionError):

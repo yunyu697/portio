@@ -2,18 +2,18 @@
 """Portio 版本号工具：校验格式、按进位规则推算下一版。
 
 规则来源：docs/versioning.md
-    vMAJOR.MINOR.PATCH[-alphaN|-RCN]
+    vMAJOR.MINOR.PATCH[-AlphaN|-RCN]
     MINOR 与 PATCH 取值 0–10，超过 10 向高位进位。
+    预发布阶段统一写作 Alpha / RC（首字母大写），这样按字符串排序也保持 Alpha < RC。
 
 用法：
     python scripts/version.py check 1.0.10
-    python scripts/version.py next 1.0.10 patch      -> 1.1.0
-    python scripts/version.py next 1.0.10 minor      -> 1.1.0
-    python scripts/version.py next 1.10.10 patch     -> 2.0.0
-    python scripts/version.py next 1.2.3 stage alpha -> 1.2.3-alpha1
-    python scripts/version.py next 1.2.3-alpha10 stage -> 1.2.4-alpha1
-    python scripts/version.py next 1.2.3-alpha3 stage RC -> 1.2.3-RC1
-    python scripts/version.py next 1.2.3-RC1 final   -> 1.2.3
+    python scripts/version.py next 1.0.10 patch          -> 1.1.0
+    python scripts/version.py next 1.10.10 patch         -> 2.0.0
+    python scripts/version.py next 1.2.3 stage Alpha     -> 1.2.3-Alpha1
+    python scripts/version.py next 1.2.3-Alpha10 stage Alpha -> 1.2.4-Alpha1
+    python scripts/version.py next 1.2.3-Alpha3 stage RC -> 1.2.3-RC1
+    python scripts/version.py next 1.2.3-RC1 final       -> 1.2.3
 """
 
 from __future__ import annotations
@@ -22,9 +22,12 @@ import re
 import sys
 
 MAX_PART = 10
-STAGES = ("alpha", "RC")
+STAGES = ("Alpha", "RC")
 
-PATTERN = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:-(alpha|RC)(\d+))?$")
+# 输入时容忍小写，输出一律规整成 Alpha / RC
+_STAGE_ALIAS = {"alpha": "Alpha", "rc": "RC"}
+
+PATTERN = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:-([A-Za-z]+)(\d+))?$")
 
 
 class VersionError(ValueError):
@@ -34,9 +37,13 @@ class VersionError(ValueError):
 def parse(text: str) -> tuple[int, int, int, str | None, int]:
     m = PATTERN.match(text.strip())
     if not m:
-        raise VersionError(f"格式不对：{text!r}，应为 v1.0.0 / v1.0.0-alpha1 / v1.0.0-RC1")
+        raise VersionError(
+            f"格式不对：{text!r}，应为 v1.0.0 / v1.0.0-Alpha1 / v1.0.0-RC1"
+        )
     major, minor, patch = (int(m.group(i)) for i in (1, 2, 3))
-    stage = m.group(4)
+    stage = _STAGE_ALIAS.get(m.group(4).lower()) if m.group(4) else None
+    if m.group(4) and stage is None:
+        raise VersionError(f"未知阶段 {m.group(4)!r}，只能是 Alpha 或 RC")
     counter = int(m.group(5)) if m.group(5) else 0
     for name, value in (("MINOR", minor), ("PATCH", patch)):
         if not 0 <= value <= MAX_PART:
@@ -85,19 +92,20 @@ def next_version(text: str, kind: str, stage: str | None = None) -> str:
         return render(major + 1, 0, 0, None, 0)
 
     if kind == "stage":
-        if stage not in STAGES:
-            raise VersionError(f"阶段只能是 {STAGES}，收到 {stage!r}")
+        target = _STAGE_ALIAS.get((stage or "").lower())
+        if target is None:
+            raise VersionError(f"阶段只能是 Alpha 或 RC，收到 {stage!r}")
         if cur_stage is None:
-            return render(major, minor, patch, stage, 1)
-        if cur_stage == stage:
+            return render(major, minor, patch, target, 1)
+        if cur_stage == target:
             counter += 1
             if counter > MAX_PART:  # 预发布做满 10 次就进位到下一 patch，重新从 1 起
                 major, minor, patch = bump_patch(major, minor, patch)
-                return render(major, minor, patch, stage, 1)
-            return render(major, minor, patch, stage, counter)
-        if STAGES.index(stage) < STAGES.index(cur_stage):
-            raise VersionError(f"不能从 {cur_stage} 退回 {stage}")
-        return render(major, minor, patch, stage, 1)
+                return render(major, minor, patch, target, 1)
+            return render(major, minor, patch, target, counter)
+        if STAGES.index(target) < STAGES.index(cur_stage):
+            raise VersionError(f"不能从 {cur_stage} 退回 {target}")
+        return render(major, minor, patch, target, 1)
 
     if kind == "final":
         if cur_stage is None:
@@ -117,12 +125,11 @@ def main(argv: list[str]) -> int:
             if len(argv) != 3:
                 print("用法：check <version>")
                 return 2
-            v = parse(argv[2])
-            print(f"OK {render(*v)}")
+            print(f"OK v{render(*parse(argv[2]))}")
             return 0
         if cmd == "next":
             if len(argv) < 4:
-                print("用法：next <version> <patch|minor|major|stage|final> [alpha|RC]")
+                print("用法：next <version> <patch|minor|major|stage|final> [Alpha|RC]")
                 return 2
             stage = argv[4] if len(argv) > 4 else None
             print(next_version(argv[2], argv[3], stage))
