@@ -156,7 +156,10 @@ mod tests {
         let mut kh = KnownHosts::load(&p);
         kh.verify("h", 22, "SHA256:OLD").unwrap();
         kh.trust("h", 22, "SHA256:NEW");
-        assert_eq!(kh.verify("h", 22, "SHA256:NEW").unwrap(), HostKeyVerdict::Match);
+        assert_eq!(
+            kh.verify("h", 22, "SHA256:NEW").unwrap(),
+            HostKeyVerdict::Match
+        );
         let _ = fs::remove_file(&p);
     }
 
@@ -169,7 +172,10 @@ mod tests {
             kh.verify("h", 22, "SHA256:X").unwrap();
         }
         let mut kh2 = KnownHosts::load(&p);
-        assert_eq!(kh2.verify("h", 22, "SHA256:X").unwrap(), HostKeyVerdict::Match);
+        assert_eq!(
+            kh2.verify("h", 22, "SHA256:X").unwrap(),
+            HostKeyVerdict::Match
+        );
         let _ = fs::remove_file(&p);
     }
 }

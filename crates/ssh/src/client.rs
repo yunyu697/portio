@@ -95,14 +95,11 @@ impl SshSession {
         });
 
         let addr = (opts.host.host.clone(), opts.host.port);
-        let connected = tokio::time::timeout(
-            timeout,
-            client::connect(config, addr, handler),
-        )
-        .await
-        .map_err(|_| {
-            SshError::ConnectTimeout(format!("{}:{}", opts.host.host, opts.host.port))
-        })?;
+        let connected = tokio::time::timeout(timeout, client::connect(config, addr, handler))
+            .await
+            .map_err(|_| {
+                SshError::ConnectTimeout(format!("{}:{}", opts.host.host, opts.host.port))
+            })?;
 
         let mut session = match connected {
             Ok(h) => h,
@@ -170,15 +167,7 @@ impl SshSession {
             .map_err(|e| SshError::Protocol(e.to_string()))?;
 
         channel
-            .request_pty(
-                true,
-                "xterm-256color",
-                pty.cols,
-                pty.rows,
-                0,
-                0,
-                &[],
-            )
+            .request_pty(true, "xterm-256color", pty.cols, pty.rows, 0, 0, &[])
             .await
             .map_err(|e| SshError::Protocol(e.to_string()))?;
         channel
@@ -245,7 +234,12 @@ impl SshSession {
 }
 
 /// 给上层用的便捷构造。
-pub fn options(host: impl Into<String>, port: Option<u16>, user: impl Into<String>, auth: AuthMethod) -> ConnectOptions {
+pub fn options(
+    host: impl Into<String>,
+    port: Option<u16>,
+    user: impl Into<String>,
+    auth: AuthMethod,
+) -> ConnectOptions {
     let mut h = HostId::new(host);
     if let Some(p) = port {
         h.port = p;

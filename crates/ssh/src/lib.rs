@@ -22,8 +22,12 @@ pub struct ConnectOptions {
 #[derive(Debug, Clone)]
 pub enum AuthMethod {
     /// 读取本地私钥文件。口令式解锁与 ssh-agent 在 S2 之后补。
-    PrivateKeyFile { path: String },
-    Password { password: String },
+    PrivateKeyFile {
+        path: String,
+    },
+    Password {
+        password: String,
+    },
 }
 
 impl AuthMethod {

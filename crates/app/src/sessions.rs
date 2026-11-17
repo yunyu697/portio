@@ -68,10 +68,9 @@ pub async fn ssh_connect(
     let mut kh = KnownHosts::load(kh_path);
     let expected = kh.fingerprint_of(&opts.host.host, opts.host.port);
 
-    let (session, fingerprint) =
-        SshSession::connect(&opts, expected, Duration::from_secs(12))
-            .await
-            .map_err(|e| e.to_string())?;
+    let (session, fingerprint) = SshSession::connect(&opts, expected, Duration::from_secs(12))
+        .await
+        .map_err(|e| e.to_string())?;
 
     match kh
         .verify(&opts.host.host, opts.host.port, &fingerprint)
@@ -102,22 +101,21 @@ pub async fn ssh_connect(
         .await
         .map_err(|e| e.to_string())?;
 
-    reg.entries
-        .lock()
-        .map_err(|_| "内部锁出错")?
-        .insert(
-            id,
-            Entry {
-                session: Some(session),
-                tx: cmd_tx,
-            },
-        );
+    reg.entries.lock().map_err(|_| "内部锁出错")?.insert(
+        id,
+        Entry {
+            session: Some(session),
+            tx: cmd_tx,
+        },
+    );
 
     let app_for_task = app.clone();
     tokio::spawn(async move {
         while let Some(ev) = ev_rx.recv().await {
             let (kind, text) = match ev {
-                ShellEvent::Output(bytes) => ("output", String::from_utf8_lossy(&bytes).to_string()),
+                ShellEvent::Output(bytes) => {
+                    ("output", String::from_utf8_lossy(&bytes).to_string())
+                }
                 ShellEvent::Exit(code) => ("exit", code.to_string()),
                 ShellEvent::Closed => ("closed", String::new()),
                 ShellEvent::Error(err) => ("error", err),
