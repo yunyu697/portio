@@ -1,5 +1,7 @@
 use tauri::{Manager, Window};
 
+mod sessions;
+
 fn map_err(err: tauri::Error) -> String {
     err.to_string()
 }
@@ -47,11 +49,17 @@ fn window_state(window: Window) -> Result<String, String> {
     Ok(st.to_string())
 }
 
-/// 目前只做一件事：起窗口，把外壳相关的命令登记上。
-/// 业务规则不写在这里——那是 `core` 的活。
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![window_control, window_state])
+        .manage(sessions::Registry::default())
+        .invoke_handler(tauri::generate_handler![
+            window_control,
+            window_state,
+            sessions::ssh_connect,
+            sessions::ssh_input,
+            sessions::ssh_resize,
+            sessions::ssh_disconnect
+        ])
         .setup(|app| {
             if let Some(win) = app.get_webview_window("main") {
                 // 调试时想开 devtools 就设 PORTIO_DEVTOOLS=1，默认不自动弹，免得挡住窗口截图与演示

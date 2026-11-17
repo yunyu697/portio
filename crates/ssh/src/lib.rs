@@ -1,11 +1,17 @@
-//! 协议层。
+//! 协议层：SSH / SFTP。
 //!
-//! 现在只有抽象与错误类型——S2 的 1.3 才接 `russh`。
-//! 先把接口钉住，是为了让 `app` 层可以照着它写 UI，不被实现细节绑住。
+//! 分层：`client` 只负责 russh 的连接与通道，`known_hosts` 负责首次信任校验，
+//! 存储路径与 UI 都在 `app` 层，这一层可以被独立测试或给 CLI 复用。
+
+pub mod client;
+pub mod known_hosts;
 
 use portio_core::HostId;
 
-/// 连接参数。认证方式在 S2 才落地，这里先留位。
+pub use client::{options, PtySize, ShellCommand, ShellEvent, SshSession};
+pub use known_hosts::{HostKeyVerdict, KnownHosts};
+
+/// 连接参数。
 #[derive(Debug, Clone)]
 pub struct ConnectOptions {
     pub host: HostId,
@@ -15,8 +21,19 @@ pub struct ConnectOptions {
 
 #[derive(Debug, Clone)]
 pub enum AuthMethod {
-    /// 读取本地私钥文件。口令式与 agent 式在 S2 补齐。
+    /// 读取本地私钥文件。口令式解锁与 ssh-agent 在 S2 之后补。
     PrivateKeyFile { path: String },
+    Password { password: String },
+}
+
+impl AuthMethod {
+    /// 日志里只写类型，绝不把口令打出来。
+    pub fn label(&self) -> &'static str {
+        match self {
+            AuthMethod::PrivateKeyFile { .. } => "private-key",
+            AuthMethod::Password { .. } => "password",
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -29,9 +46,11 @@ pub enum SshError {
     AuthFailed(String),
     #[error("通道已断开")]
     ChannelClosed,
+    #[error("协议错误：{0}")]
+    Protocol(String),
 }
 
-/// 一个已建立的连接能做的事。实现留到 S2。
+/// 一个已建立的连接能做的事。S2 起由 `SshSession` 实现具体能力。
 pub trait Connection {
     fn open_shell(&mut self) -> Result<(), SshError>;
     fn resize(&mut self, cols: u32, rows: u32) -> Result<(), SshError>;

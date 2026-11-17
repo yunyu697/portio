@@ -4,8 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Portio 的协议层：SSH / SFTP 抽象。实现从 S2 开始。"
+description = "Portio 的协议层：SSH / SFTP 抽象与实现。"
 
 [dependencies]
 portio-core = { workspace = true }
+# 用 ring 作为密码学后端：aws-lc-rs 在 Windows 上需要 NASM，会卡住本地构建与 CI。
+russh = { version = "0.60.3", default-features = false, features = ["ring", "rsa", "flate2"] }
 thiserror = { workspace = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util"] }

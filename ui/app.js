@@ -1,6 +1,11 @@
 // Portio · S1 外壳。所有交互都是真实现；还没做的功能一律给明确提示，不留点了没反应的按钮。
 const root = document.documentElement;
 
+// 前端一有异常就把信息写进标题，出问题时不至于对着空白面板瞎猜
+window.addEventListener("error", (e) => {
+  document.title = "ERR: " + (e.message || e.error);
+});
+
 // ---------- Tauri 桥 ----------
 // withGlobalTauri 打开后 window.__TAURI__.core.invoke 可用；纯浏览器预览时降级为 null。
 const bridge = window.__TAURI__?.core ?? null;
@@ -172,10 +177,6 @@ window.addEventListener("keydown", (e) => {
     windowAction("fullscreen");
     toast("全屏切换（Ctrl+Alt+H）");
   }
-  if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === "t") {
-    e.preventDefault();
-    toast("新建会话在 S2 接入，届时 Ctrl+T 会直接开标签");
-  }
   if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === "w") {
     e.preventDefault();
     toast("关闭标签在 S2 接入；现在只有一个标签");
@@ -206,3 +207,182 @@ function tick() {
 }
 tick();
 setInterval(tick, 30_000);
+
+// ---------- 终端 ----------
+const termHost = document.getElementById("term");
+let term = null;
+let fitAddon = null;
+let sessionId = null;
+
+function terminalTheme() {
+  const dark = root.dataset.theme === "dark";
+  return dark
+    ? {
+        background: "#090c10", foreground: "#dfe5ec", cursor: "#2fb39a",
+        selectionBackground: "#28403b", black: "#1a2029", red: "#d2655f",
+        green: "#2fb39a", yellow: "#c99a4e", blue: "#6fa8dc", magenta: "#a98bd0",
+        cyan: "#4fb6c7", white: "#dfe5ec",
+      }
+    : {
+        background: "#ffffff", foreground: "#1d242c", cursor: "#12897a",
+        selectionBackground: "#cfe8e3", black: "#242c36", red: "#b8453f",
+        green: "#12897a", yellow: "#96702c", blue: "#2f6ea5", magenta: "#7a5cb0",
+        cyan: "#2c8fa0", white: "#ffffff",
+      };
+}
+
+function ensureTerminal() {
+  if (term) return term;
+  term = new Terminal({
+    fontFamily: "var(--mono), Consolas, monospace",
+    fontSize: 13,
+    lineHeight: 1.25,
+    cursorBlink: true,
+    scrollback: 8000,
+    theme: terminalTheme(),
+    allowProposedApi: true,
+  });
+  fitAddon = new FitAddon.FitAddon();
+  term.loadAddon(fitAddon);
+  term.open(termHost);
+  fitAddon.fit();
+  term.write("Portio · 未连接。点左上「新建连接」开始。\r\n");
+
+  term.onData((data) => {
+    if (sessionId !== null) call("ssh_input", { id: sessionId, data });
+  });
+  term.onResize(({ cols, rows }) => {
+    if (sessionId !== null) call("ssh_resize", { id: sessionId, cols, rows });
+  });
+  new ResizeObserver(() => fitAddon.fit()).observe(termHost);
+  return term;
+}
+
+// ---------- 会话状态 ----------
+function setStatus(text, tone) {
+  const el = document.querySelector(".statusbar .state");
+  el.innerHTML = `<i></i>${text}`;
+  el.style.color = tone === "ok" ? "var(--accent)" : tone === "bad" ? "var(--danger)" : "";
+  el.querySelector("i").style.background =
+    tone === "ok" ? "var(--accent)" : tone === "bad" ? "var(--danger)" : "var(--text-3)";
+}
+
+function addSessionRow(label) {
+  document.querySelector(".sidebar .empty")?.remove();
+  const row = document.createElement("div");
+  row.className = "tab active";
+  row.style.cssText =
+    "margin:8px 12px 0;border-radius:var(--r-4);height:30px;border-bottom:1px solid var(--line)";
+  row.innerHTML = `<span class="dot" style="background:var(--accent)"></span><span class="name">${label}</span>`;
+  document.querySelector(".sidebar").appendChild(row);
+  document.getElementById("session-count").textContent = "1";
+}
+
+// ---------- 连接对话框 ----------
+const modal = document.getElementById("connect-modal");
+const authSelect = document.getElementById("f-auth");
+document.getElementById("btn-new").addEventListener("click", () => openConnect());
+document.getElementById("btn-cancel").addEventListener("click", () => modal.classList.remove("open"));
+authSelect.addEventListener("change", () => {
+  const isKey = authSelect.value === "key";
+  document.getElementById("field-key").hidden = !isKey;
+  document.getElementById("field-password").hidden = isKey;
+});
+function openConnect() {
+  document.getElementById("f-user").value = localStorage.getItem("portio.user") ?? "";
+  modal.classList.add("open");
+  document.getElementById("f-host").focus();
+}
+
+document.getElementById("btn-connect").addEventListener("click", async () => {
+  const host = document.getElementById("f-host").value.trim();
+  const port = Number(document.getElementById("f-port").value || 22);
+  const user = document.getElementById("f-user").value.trim();
+  if (!host || !user) return toast("主机和用户名都要填");
+  localStorage.setItem("portio.user", user);
+
+  const auth = authSelect.value;
+  const password = auth === "password" ? document.getElementById("f-password").value : null;
+  const keyfile = auth === "key" ? document.getElementById("f-key").value.trim() : null;
+  if (auth === "password" && !password) return toast("密码没填");
+  if (auth === "key" && !keyfile) return toast("私钥路径没填");
+
+  const btn = document.getElementById("btn-connect");
+  btn.disabled = true;
+  btn.textContent = "连接中…";
+  ensureTerminal();
+  setStatus(`连接 ${user}@${host}:${port}…`);
+
+  try {
+    const channel = new window.__TAURI__.core.Channel();
+    channel.onmessage = (note) => {
+      document.getElementById("handshake-note").textContent = note
+        ? `指纹 ${String(note).split("|")[0]}`
+        : "";
+    };
+    const id = await bridge.invoke("ssh_connect", {
+      host, port, user, password, keyfile,
+      cols: term.cols, rows: term.rows,
+      onHandshake: channel,
+    });
+    sessionId = id;
+    modal.classList.remove("open");
+    setStatus(`已连接 ${user}@${host}:${port}`, "ok");
+    addSessionRow(`${user}@${host}`);
+    document.querySelector(".tab .name").textContent = `${user}@${host}`;
+    term.focus();
+    term.write(`\r\n\x1b[2m—— 已连接 ${user}@${host}:${port} ——\x1b[0m\r\n`);
+  } catch (err) {
+    const raw = String(err);
+    if (raw.includes("HOSTKEY_CHANGED")) {
+      const [, previous, current] = raw.split("|");
+      setStatus("主机密钥变了，已停手", "bad");
+      toast("主机密钥与上次记录不一致，连接已中止");
+      term.write(
+        `\r\n\x1b[31m主机密钥变了！\x1b[0m\r\n` +
+          `  记录：${previous}\r\n  本次：${current}\r\n` +
+          `如果你确认服务器重装过，删掉 known_hosts 里这台机器的条目再连。\r\n`
+      );
+    } else {
+      setStatus("连接失败", "bad");
+      term.write(`\r\n\x1b[31m连接失败：${raw}\x1b[0m\r\n`);
+      toast("连接失败，详情见终端");
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "连接";
+  }
+});
+
+// ---------- 后端事件 ----------
+if (window.__TAURI__?.event) {
+  window.__TAURI__.event.listen("shell", (e) => {
+    const { id, kind, text } = e.payload ?? {};
+    if (id !== sessionId) return;
+    ensureTerminal();
+    if (kind === "output") term.write(text);
+    if (kind === "exit") term.write(`\r\n\x1b[2m[进程退出 ${text}]\x1b[0m\r\n`);
+    if (kind === "error") term.write(`\r\n\x1b[31m${text}\x1b[0m\r\n`);
+    if (kind === "closed") {
+      setStatus("连接已断开", "bad");
+      term.write("\r\n\x1b[2m[连接已断开]\x1b[0m\r\n");
+      sessionId = null;
+    }
+  });
+}
+
+// Ctrl+T 现在真的开对话框了（S1 时它只会提示）
+window.addEventListener("keydown", (e) => {
+  if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === "t") {
+    e.preventDefault();
+    openConnect();
+  }
+});
+
+// 关窗前把连接断干净，别把服务端会话挂在那儿
+window.addEventListener("beforeunload", () => {
+  if (sessionId !== null) call("ssh_disconnect", { id: sessionId });
+});
+
+// 启动就把终端画出来，占位文案说明下一步做什么，避免一块空白面板
+ensureTerminal();

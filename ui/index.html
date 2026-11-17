@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Portio</title>
 <link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="vendor/xterm.css">
 <style>
   *{box-sizing:border-box}
   html,body{height:100%}
@@ -89,7 +90,36 @@
   html[data-density="compact"] .pane-head{height:24px}
   html[data-density="compact"] .pane-body{padding:8px 10px}
 
-  /* ---------- 提示条 ---------- */
+  /* ---------- 终端宿主 ---------- */
+  .term-host{flex:1;min-height:0;padding:6px 0 0 8px;background:var(--term-bg);overflow:hidden}
+  .term-host .xterm{height:100%}
+
+  /* ---------- 连接对话框 ---------- */
+  .modal{position:fixed;inset:0;display:none;place-items:center;background:rgba(4,6,8,.62);z-index:80}
+  .modal.open{display:grid}
+  .sheet{width:420px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-12);
+         box-shadow:0 24px 64px rgba(0,0,0,.5);overflow:hidden}
+  .sheet header{display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);
+                font-weight:600}
+  .sheet header .sub{margin-left:auto;font-weight:400;color:var(--text-3);font-size:var(--fs-11);
+                     font-family:var(--mono)}
+  .sheet .body{display:grid;gap:10px;padding:16px}
+  .field{display:grid;gap:4px}
+  .field label{font-size:var(--fs-11);color:var(--text-3)}
+  .field input,.field select{background:var(--surface-2);border:1px solid var(--line);color:var(--text);
+          border-radius:var(--r-4);padding:7px 9px;font-family:var(--mono);font-size:var(--fs-12);
+          outline:none;height:32px}
+  .field input:focus,.field select:focus{border-color:var(--accent)}
+  .row{display:grid;grid-template-columns:1fr 96px;gap:10px}
+  .sheet footer{display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;
+                border-top:1px solid var(--line);background:var(--surface-2)}
+  .btn{background:var(--surface-3);border:1px solid var(--line);color:var(--text-2);padding:7px 14px;
+       border-radius:var(--r-4);cursor:pointer;font-size:var(--fs-12)}
+  .btn:hover{color:var(--text)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#04100e;font-weight:600}
+  .btn.primary:hover{filter:brightness(1.06)}
+  .btn:disabled{opacity:.55;cursor:default}
+  .new-session{width:calc(100% - 24px);margin:10px 12px 0;height:30px}
   .toast{position:fixed;right:16px;bottom:calc(var(--statusbar) + 16px);display:flex;flex-direction:column;
          gap:8px;z-index:99;pointer-events:none}
   .toast div{background:var(--surface-3);border:1px solid var(--line);border-left:2px solid var(--accent);
@@ -124,11 +154,12 @@
 
   <div class="main" id="main">
     <aside class="sidebar">
-      <h2>会话 <span class="count">0</span></h2>
+      <h2>会话 <span class="count" id="session-count">0</span></h2>
+      <button class="btn primary new-session" id="btn-new">新建连接</button>
       <div class="empty">
         还没有会话。<br>
-        按 <kbd>Ctrl</kbd>+<kbd>T</kbd> 新建，或把主机拖到这里。<br>
-        <span style="color:var(--text-3)">会话管理与连接在 S2 接入。</span>
+        按 <kbd>Ctrl</kbd>+<kbd>T</kbd> 新建，或点上面的按钮。<br>
+        <span style="color:var(--text-3)">密钥首次连接会自动记录指纹。</span>
       </div>
     </aside>
     <div class="gutter-v" id="gutter-v" title="拖动调整会话栏宽度"></div>
@@ -138,7 +169,7 @@
         <article class="pane term">
           <div class="pane-head"><span>终端</span><span class="path">—</span>
             <span class="right"><span>80×24</span></span></div>
-          <div class="pane-body"><span class="hint">终端内核在 S2 接入 russh + xterm.js，这里会变成真终端。</span></div>
+          <div class="term-host" id="term"></div>
         </article>
         <div class="gutter-v" id="gutter-split" title="拖动调整终端与文件面板比例"></div>
         <article class="pane files">
@@ -165,6 +196,38 @@
   </footer>
 
   <div class="toast" id="toast"></div>
-<script type="module" src="app.js"></script>
+
+  <div class="modal" id="connect-modal">
+    <div class="sheet">
+      <header>新建连接 <span class="sub" id="handshake-note"></span></header>
+      <div class="body">
+        <div class="row">
+          <div class="field"><label for="f-host">主机</label>
+            <input id="f-host" placeholder="10.20.8.11 或 example.com" autocomplete="off"></div>
+          <div class="field"><label for="f-port">端口</label>
+            <input id="f-port" value="22" inputmode="numeric"></div>
+        </div>
+        <div class="field"><label for="f-user">用户名</label>
+          <input id="f-user" placeholder="root" autocomplete="off"></div>
+        <div class="field"><label for="f-auth">认证方式</label>
+          <select id="f-auth">
+            <option value="password">密码</option>
+            <option value="key">私钥文件</option>
+          </select></div>
+        <div class="field" id="field-password"><label for="f-password">密码</label>
+          <input id="f-password" type="password" autocomplete="off" placeholder="不会落盘"></div>
+        <div class="field" id="field-key" hidden><label for="f-key">私钥路径</label>
+          <input id="f-key" placeholder="C:\Users\you\.ssh\id_ed25519"></div>
+      </div>
+      <footer>
+        <button class="btn" id="btn-cancel">取消</button>
+        <button class="btn primary" id="btn-connect">连接</button>
+      </footer>
+    </div>
+  </div>
+
+<script src="vendor/xterm.js"></script>
+<script src="vendor/addon-fit.js"></script>
+<script src="app.js" defer></script>
 </body>
 </html>
