@@ -4,8 +4,20 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SessionId(pub String);
 
+impl std::fmt::Display for SessionId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct GroupId(pub String);
+
+impl std::fmt::Display for GroupId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
 
 /// 主机地址。IP 与域名都走这一个类型，端口默认 22。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -16,7 +28,10 @@ pub struct HostId {
 
 impl HostId {
     pub fn new(host: impl Into<String>) -> Self {
-        Self { host: host.into(), port: 22 }
+        Self {
+            host: host.into(),
+            port: 22,
+        }
     }
 
     /// `user@host:port`，端口是 22 时省略。

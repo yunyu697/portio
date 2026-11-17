@@ -8,7 +8,10 @@ fn target_omits_default_port() {
 
 #[test]
 fn target_keeps_custom_port() {
-    let host = HostId { host: "10.20.8.11".into(), port: 2222 };
+    let host = HostId {
+        host: "10.20.8.11".into(),
+        port: 2222,
+    };
     assert_eq!(host.to_target("root"), "root@10.20.8.11:2222");
 }
 
