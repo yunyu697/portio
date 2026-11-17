@@ -164,6 +164,19 @@
   .keys kbd{font-family:var(--mono);font-size:var(--fs-11);color:var(--text-2);background:var(--surface-2);
     border:1px solid var(--line);border-radius:var(--r-6);padding:1px 6px;line-height:1.6}
   .keys .row .d{color:var(--text-2)}
+  .modal .set{width:460px}
+  .set .body{display:grid;gap:16px;padding:16px}
+  .set .field{display:grid;gap:8px}
+  .set .field > label{display:flex;align-items:center;justify-content:space-between;
+    color:var(--text-2);font-size:var(--fs-12)}
+  .set .field > label b{color:var(--text);font-family:var(--mono);font-weight:400}
+  .seg{display:flex;border:1px solid var(--line);border-radius:var(--r-6);overflow:hidden;justify-self:start}
+  .seg button{appearance:none;background:transparent;border:0;color:var(--text-2);font:inherit;
+    padding:6px 14px;cursor:pointer}
+  .seg button + button{border-left:1px solid var(--line)}
+  .seg button:hover{color:var(--text)}
+  .seg button.on{background:var(--surface-3);color:var(--text)}
+  .set input[type=range]{width:100%;accent-color:var(--accent);background:transparent}
   .toast{position:fixed;right:16px;bottom:calc(var(--statusbar) + 16px);display:flex;flex-direction:column;
          gap:8px;z-index:99;pointer-events:none}
   .toast div{background:var(--surface-3);border:1px solid var(--line);border-left:2px solid var(--accent);
@@ -180,7 +193,7 @@
   <header class="titlebar" data-tauri-drag-region>
     <div class="brand" data-tauri-drag-region>
       <img src="mark.svg" alt="Portio" data-tauri-drag-region>
-      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.0-Alpha4</span>
+      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.0-Alpha5</span>
     </div>
     <div class="tabs">
       <div class="tab active" title="当前会话">
@@ -189,6 +202,7 @@
     </div>
     <button class="tbtn" id="btn-theme" title="切换主题（S4 全量主题在设置里）">主题</button>
     <button class="tbtn" id="btn-density" title="切换密度：标准 / 紧凑">密度</button>
+    <button class="tbtn" id="btn-settings" title="设置（主题 / 密度 / 终端字号）">设置</button>
     <button class="tbtn" id="btn-keys" title="快捷键一览（Ctrl + /）" aria-label="快捷键一览">?</button>
     <div class="win-ctl">
       <button class="tbtn" id="btn-min" aria-label="最小化">&#8212;</button>
@@ -287,6 +301,44 @@
       <footer>
         <button class="btn" id="btn-cancel">取消</button>
         <button class="btn primary" id="btn-connect">连接</button>
+      </footer>
+    </div>
+  </div>
+
+  <div class="modal" id="settings-modal">
+    <div class="sheet set">
+      <header>设置 <span class="sub">改动即时生效，关掉也记得</span></header>
+      <div class="body">
+        <div class="field">
+          <label>主题 <b id="theme-note">深色</b></label>
+          <div class="seg" id="seg-theme">
+            <button data-v="dark">深色</button>
+            <button data-v="light">浅色</button>
+            <button data-v="system">跟随系统</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>界面密度</label>
+          <div class="seg" id="seg-density">
+            <button data-v="standard">标准</button>
+            <button data-v="compact">紧凑</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>终端字号 <b id="font-val">13</b></label>
+          <input type="range" id="set-font" min="11" max="18" step="1" value="13">
+        </div>
+        <div class="field">
+          <label>终端滚动缓冲</label>
+          <div class="seg" id="seg-scroll">
+            <button data-v="2000">2000 行</button>
+            <button data-v="8000">8000 行</button>
+            <button data-v="20000">20000 行</button>
+          </div>
+        </div>
+      </div>
+      <footer>
+        <button class="btn primary" id="btn-set-close">完成</button>
       </footer>
     </div>
   </div>

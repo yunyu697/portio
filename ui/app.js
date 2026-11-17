@@ -1,5 +1,8 @@
 // Portio · S1 外壳。所有交互都是真实现；还没做的功能一律给明确提示，不留点了没反应的按钮。
 const root = document.documentElement;
+// 终端实例要尽早声明：主题/字号的设置函数在上面就可能被调用，晚声明会踩 TDZ
+let term = null;
+let fitAddon = null;
 
 // 前端一有异常就把信息写进标题，出问题时不至于对着空白面板瞎猜
 window.addEventListener("error", (e) => {
@@ -55,22 +58,105 @@ document.querySelector(".titlebar").addEventListener("dblclick", (e) => {
 window.addEventListener("DOMContentLoaded", async () => syncMaxButton(await call("window_state")));
 
 // ---------- 主题与密度 ----------
-function applyTheme(theme) {
-  root.dataset.theme = theme;
-  localStorage.setItem("portio.theme", theme);
+function resolveTheme(pref) {
+  if (pref === "system") {
+    return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  }
+  return pref === "light" ? "light" : "dark";
+}
+function applyTheme(pref) {
+  localStorage.setItem("portio.theme", pref);
+  root.dataset.theme = resolveTheme(pref);
+  if (typeof term !== "undefined" && term) term.options.theme = terminalTheme();
+  syncSegs();
 }
 function applyDensity(density) {
   root.dataset.density = density;
   localStorage.setItem("portio.density", density);
+  syncSegs();
 }
 document.getElementById("btn-theme").addEventListener("click", () => {
-  applyTheme(root.dataset.theme === "dark" ? "light" : "dark");
+  const pref = localStorage.getItem("portio.theme") ?? "dark";
+  applyTheme(pref === "dark" ? "light" : pref === "light" ? "system" : "dark");
 });
 document.getElementById("btn-density").addEventListener("click", () => {
   const next = root.dataset.density === "compact" ? "standard" : "compact";
   applyDensity(next);
   toast(next === "compact" ? "已切换到紧凑密度" : "已切换到标准密度");
 });
+
+// ---------- 设置 ----------
+const FONT_KEY = "portio.fontSize";
+const SCROLL_KEY = "portio.scrollback";
+function readFontSize() {
+  const n = Number(localStorage.getItem(FONT_KEY));
+  return Number.isFinite(n) && n >= 11 && n <= 18 ? n : 13;
+}
+function readScrollback() {
+  const n = Number(localStorage.getItem(SCROLL_KEY));
+  return Number.isFinite(n) && n >= 1000 ? n : 8000;
+}
+function setFontSize(px) {
+  localStorage.setItem(FONT_KEY, String(px));
+  if (typeof term !== "undefined" && term) {
+    term.options.fontSize = px;
+    fitQuietly();
+  }
+  syncSegs();
+}
+function setScrollback(rows) {
+  localStorage.setItem(SCROLL_KEY, String(rows));
+  if (typeof term !== "undefined" && term) term.options.scrollback = rows;
+  syncSegs();
+}
+function markSeg(id, value) {
+  const box = document.getElementById(id);
+  if (!box) return;
+  for (const btn of box.querySelectorAll("button")) {
+    btn.classList.toggle("on", btn.dataset.v === String(value));
+  }
+}
+function syncSegs() {
+  markSeg("seg-theme", localStorage.getItem("portio.theme") ?? "dark");
+  markSeg("seg-density", root.dataset.density ?? "standard");
+  markSeg("seg-scroll", readScrollback());
+  const font = document.getElementById("set-font");
+  if (font) font.value = String(readFontSize());
+  const out = document.getElementById("font-val");
+  if (out) out.textContent = String(readFontSize());
+  const note = document.getElementById("theme-note");
+  if (note) {
+    const pref = localStorage.getItem("portio.theme") ?? "dark";
+    note.textContent =
+      pref === "system" ? `跟随系统 · 当前${root.dataset.theme === "light" ? "浅色" : "深色"}`
+        : pref === "light" ? "浅色" : "深色";
+  }
+}
+const settingsModal = document.getElementById("settings-modal");
+function toggleSettings(open) {
+  const want = open ?? !settingsModal.classList.contains("open");
+  if (want) syncSegs();
+  settingsModal.classList.toggle("open", want);
+}
+if (location.hash === "#settings") toggleSettings(true);
+document.getElementById("btn-settings").addEventListener("click", () => toggleSettings());
+document.getElementById("btn-set-close").addEventListener("click", () => toggleSettings(false));
+settingsModal.addEventListener("click", (e) => {
+  if (e.target === settingsModal) toggleSettings(false);
+});
+document.getElementById("seg-theme").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (btn) applyTheme(btn.dataset.v);
+});
+document.getElementById("seg-density").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (btn) applyDensity(btn.dataset.v);
+});
+document.getElementById("seg-scroll").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (btn) setScrollback(Number(btn.dataset.v));
+});
+document.getElementById("set-font").addEventListener("input", (e) => setFontSize(Number(e.target.value)));
 
 // ---------- 可拖拽尺寸：三处，都持久化 ----------
 const PREF = {
@@ -212,8 +298,6 @@ setInterval(tick, 30_000);
 
 // ---------- 终端 ----------
 const termHost = document.getElementById("term");
-let term = null;
-let fitAddon = null;
 let sessionId = null;
 
 function terminalTheme() {
@@ -246,10 +330,10 @@ function ensureTerminal() {
   if (term) return term;
   term = new Terminal({
     fontFamily: "var(--mono), Consolas, monospace",
-    fontSize: 13,
+    fontSize: readFontSize(),
     lineHeight: 1.25,
     cursorBlink: true,
-    scrollback: 8000,
+    scrollback: readScrollback(),
     theme: terminalTheme(),
     allowProposedApi: true,
   });
