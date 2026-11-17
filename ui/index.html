@@ -1,4 +1,4 @@
-<!-- Portio · S1 骨架。这段结构会被 1.2 逐步替换成真实现，先保证令牌与栅格对得上基线。 -->
+<!-- Portio · S1：窗口外壳与布局。所有可交互元素都有真实现或明确提示，不留僵尸按钮。 -->
 <!DOCTYPE html>
 <html lang="zh-CN" data-theme="dark" data-density="standard">
 <head>
@@ -8,50 +8,163 @@
 <link rel="stylesheet" href="tokens.css">
 <style>
   *{box-sizing:border-box}
-  body{margin:0;height:100vh;background:var(--bg);color:var(--text);
-       font-family:var(--ui);font-size:var(--fs-13);display:grid;
-       grid-template-rows:var(--titlebar) 1fr var(--statusbar);overflow:hidden}
-  .titlebar{display:flex;align-items:center;gap:8px;padding:0 8px;
-            background:var(--surface);border-bottom:1px solid var(--line);-webkit-app-region:drag}
-  .titlebar .brand{display:flex;align-items:center;gap:8px;font-weight:600}
-  .titlebar .brand img{width:22px;height:22px}
-  .titlebar .spacer{flex:1}
-  .titlebar button{-webkit-app-region:no-app-region;background:none;border:0;color:var(--text-2);cursor:pointer}
-  .main{display:grid;grid-template-columns:var(--sidebar) 1fr;overflow:hidden}
-  .sidebar{background:var(--surface);border-right:1px solid var(--line);overflow:auto}
-  .sidebar h2{margin:0;padding:8px 12px;font-size:var(--fs-11);letter-spacing:.08em;
-              color:var(--text-3);text-transform:uppercase;border-bottom:1px solid var(--line)}
-  .stage{display:grid;grid-template-rows:1fr var(--drawer);overflow:hidden}
-  .split{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--line)}
-  .pane{border-right:1px solid var(--line);padding:8px 12px;color:var(--text-2);font-family:var(--mono)}
-  .pane.term{background:var(--term-bg)}
-  .drawer{background:var(--surface-2);border-top:1px solid var(--line);padding:8px 12px;
-          color:var(--text-3);font-family:var(--mono);font-size:var(--fs-11)}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--ui);
+       font-size:var(--fs-13);display:grid;grid-template-rows:var(--titlebar) 1fr var(--statusbar);
+       overflow:hidden;user-select:none}
+
+  /* ---------- 标题栏 ---------- */
+  .titlebar{display:flex;align-items:center;gap:10px;padding-left:10px;padding-right:0;
+            background:var(--surface);border-bottom:1px solid var(--line);height:var(--titlebar)}
+  .titlebar .brand{display:flex;align-items:center;gap:8px;font-weight:600;letter-spacing:-.01em;
+                   padding-right:10px;border-right:1px solid var(--line);height:100%}
+  .titlebar .brand img{width:18px;height:18px}
+  .titlebar .brand .ver{color:var(--text-3);font-weight:400;font-family:var(--mono);font-size:var(--fs-11)}
+  .tabs{display:flex;align-items:center;gap:2px;flex:1;min-width:0;height:100%}
+  .tab{display:flex;align-items:center;gap:8px;height:calc(var(--titlebar) - 6px);padding:0 10px;
+       background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-8) var(--r-8) 0 0;
+       border-bottom:0;color:var(--text-2);font-size:var(--fs-12);max-width:220px;min-width:0}
+  .tab.active{background:var(--bg);color:var(--text)}
+  .tab .dot{width:6px;height:6px;border-radius:50%;background:var(--text-3);flex:none}
+  .tab .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tab .x{opacity:.6;padding:0 2px}
+  .tbtn{background:none;border:0;color:var(--text-2);cursor:pointer;height:100%;
+        padding:0 10px;white-space:nowrap;display:inline-flex;align-items:center;
+        justify-content:center;font-size:var(--fs-12)}
+  .tbtn:hover{background:var(--surface-2);color:var(--text)}
+  .win-ctl{display:flex;height:100%}
+  .win-ctl .tbtn{width:44px}
+  .win-ctl #btn-close:hover{background:var(--danger);color:#fff}
+
+  /* ---------- 主体 ---------- */
+  .main{display:grid;grid-template-columns:var(--sidebar) 1fr;overflow:hidden;min-height:0;position:relative}
+  .sidebar{background:var(--surface);border-right:1px solid var(--line);overflow:auto;min-width:0}
+  .sidebar h2{margin:0;padding:8px 12px;display:flex;align-items:center;gap:6px;
+              font-size:var(--fs-11);letter-spacing:.08em;color:var(--text-3);
+              border-bottom:1px solid var(--line)}
+  .sidebar h2 .count{margin-left:auto;font-family:var(--mono);font-weight:400}
+  .empty{padding:28px 16px;color:var(--text-3);font-size:var(--fs-12);line-height:1.7}
+  .empty kbd{font-family:var(--mono);background:var(--surface-2);border:1px solid var(--line);
+             border-radius:4px;padding:1px 5px;font-size:var(--fs-11)}
+
+  /* 拖拽把手：绝对定位压在边界上，不占栅格 */
+  .gutter-v{position:absolute;top:0;bottom:0;width:7px;cursor:col-resize;z-index:6}
+  .gutter-v:hover{background:var(--accent);opacity:.3}
+
+  .stage{display:grid;grid-template-rows:1fr var(--drawer);overflow:hidden;min-width:0;min-height:0;
+         position:relative}
+  .split{display:grid;grid-template-columns:var(--split, 50%) 1fr;overflow:hidden;min-height:0;position:relative}
+  .pane{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
+  .pane-head{display:flex;align-items:center;gap:8px;padding:0 12px;height:28px;flex:none;
+             background:var(--surface);border-bottom:1px solid var(--line);
+             font-size:var(--fs-11);color:var(--text-3);letter-spacing:.04em}
+  .pane-head .path{font-family:var(--mono);color:var(--text-2);letter-spacing:0}
+  .pane-head .right{margin-left:auto;display:flex;gap:4px}
+  .pane-body{flex:1;overflow:auto;padding:12px;font-family:var(--mono);font-size:var(--fs-12);
+             color:var(--text-2);line-height:var(--lh-24)}
+  .pane.term .pane-body{background:var(--term-bg)}
+  .pane.files .pane-body{background:var(--surface-2)}
+  .hint{color:var(--text-3);font-family:var(--ui);font-size:var(--fs-12)}
+
+  .gutter-h{position:absolute;left:0;right:0;height:7px;cursor:row-resize;z-index:6}
+  .gutter-h:hover{background:var(--accent);opacity:.3}
+
+  .drawer{display:flex;flex-direction:column;background:var(--surface-2);border-top:1px solid var(--line);
+          min-height:0;overflow:hidden}
+  .drawer-head{display:flex;align-items:center;gap:10px;height:30px;padding:0 12px;flex:none;
+               font-size:var(--fs-11);color:var(--text-3);cursor:pointer}
+  .drawer-head .num{font-family:var(--mono);color:var(--text-2)}
+  .drawer-head .right{margin-left:auto}
+  .drawer-body{flex:1;padding:0 12px 12px;overflow:auto;font-family:var(--mono);
+               font-size:var(--fs-11);color:var(--text-3)}
+
   .statusbar{display:flex;align-items:center;gap:16px;padding:0 12px;background:var(--surface);
              border-top:1px solid var(--line);font-size:var(--fs-11);color:var(--text-3)}
+  .statusbar .state{display:flex;align-items:center;gap:6px;color:var(--text-2)}
+  .statusbar .state i{width:7px;height:7px;border-radius:50%;background:var(--text-3)}
+  .statusbar .right{margin-left:auto;display:flex;gap:16px;font-family:var(--mono)}
+
+  /* ---------- 密度 ---------- */
+  html[data-density="compact"]{--titlebar:32px;--statusbar:24px;--lh-24:20px}
+  html[data-density="compact"] .pane-head{height:24px}
+  html[data-density="compact"] .pane-body{padding:8px 10px}
+
+  /* ---------- 提示条 ---------- */
+  .toast{position:fixed;right:16px;bottom:calc(var(--statusbar) + 16px);display:flex;flex-direction:column;
+         gap:8px;z-index:99;pointer-events:none}
+  .toast div{background:var(--surface-3);border:1px solid var(--line);border-left:2px solid var(--accent);
+             color:var(--text-2);padding:8px 12px;border-radius:var(--r-4);font-size:var(--fs-12);
+             box-shadow:0 6px 20px rgba(0,0,0,.35);animation:in .16s cubic-bezier(.2,.7,.2,1)}
+  @keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  /* 拖拽中：暂时禁掉 hover 高亮，避免和选区打架 */
+  body.dragging{cursor:col-resize}
+  body.dragging-x{cursor:row-resize}
 </style>
 </head>
 <body>
-  <header class="titlebar">
-    <div class="brand"><img src="mark.svg" alt="Portio"><b>Portio</b><span style="color:var(--text-3);font-weight:400">0.0.1 骨架</span></div>
-    <div class="spacer"></div>
-    <button id="btn-min" aria-label="最小化">&#8212;</button>
-    <button id="btn-max" aria-label="最大化">&#9723;</button>
-    <button id="btn-close" aria-label="关闭">&#10005;</button>
+  <header class="titlebar" data-tauri-drag-region>
+    <div class="brand" data-tauri-drag-region>
+      <img src="mark.svg" alt="Portio" data-tauri-drag-region>
+      <b data-tauri-drag-region>Portio</b><span class="ver">0.0.1</span>
+    </div>
+    <div class="tabs">
+      <div class="tab active" title="当前会话">
+        <span class="dot"></span><span class="name">本地 · 未连接</span>
+      </div>
+    </div>
+    <button class="tbtn" id="btn-theme" title="切换主题（S4 全量主题在设置里）">主题</button>
+    <button class="tbtn" id="btn-density" title="切换密度：标准 / 紧凑">密度</button>
+    <div class="win-ctl">
+      <button class="tbtn" id="btn-min" aria-label="最小化">&#8212;</button>
+      <button class="tbtn" id="btn-max" aria-label="最大化">&#9723;</button>
+      <button class="tbtn" id="btn-close" aria-label="关闭">&#10005;</button>
+    </div>
   </header>
 
-  <div class="main">
-    <aside class="sidebar"><h2>会话</h2></aside>
-    <section class="stage">
-      <div class="split">
-        <div class="pane term">终端（骨架，S2 接 russh）</div>
-        <div class="pane">SFTP（骨架，S8 起）</div>
+  <div class="main" id="main">
+    <aside class="sidebar">
+      <h2>会话 <span class="count">0</span></h2>
+      <div class="empty">
+        还没有会话。<br>
+        按 <kbd>Ctrl</kbd>+<kbd>T</kbd> 新建，或把主机拖到这里。<br>
+        <span style="color:var(--text-3)">会话管理与连接在 S2 接入。</span>
       </div>
-      <div class="drawer">传输队列 0</div>
+    </aside>
+    <div class="gutter-v" id="gutter-v" title="拖动调整会话栏宽度"></div>
+
+    <section class="stage">
+      <div class="split" id="split">
+        <article class="pane term">
+          <div class="pane-head"><span>终端</span><span class="path">—</span>
+            <span class="right"><span>80×24</span></span></div>
+          <div class="pane-body"><span class="hint">终端内核在 S2 接入 russh + xterm.js，这里会变成真终端。</span></div>
+        </article>
+        <div class="gutter-v" id="gutter-split" title="拖动调整终端与文件面板比例"></div>
+        <article class="pane files">
+          <div class="pane-head"><span>文件</span><span class="path">—</span>
+            <span class="right"><span>双栏在 S3</span></span></div>
+          <div class="pane-body"><span class="hint">SFTP 双栏 + 拖拽上传在 S3。</span></div>
+        </article>
+      </div>
+      <div class="gutter-h" id="gutter-drawer" title="拖动调整传输队列高度"></div>
+      <div class="drawer" id="drawer">
+        <div class="drawer-head" id="drawer-head">
+          <span>传输队列</span><span class="num">0</span>
+          <span class="right" id="drawer-toggle">收起</span>
+        </div>
+        <div class="drawer-body">空。上传、下载、同步的进度都会在这里。</div>
+      </div>
     </section>
   </div>
 
-  <footer class="statusbar"><span>未连接</span><span>UTF-8</span><span>120x40</span></footer>
+  <footer class="statusbar">
+    <span class="state"><i></i>未连接</span>
+    <span>UTF-8</span>
+    <span class="right"><span id="clock">--:--</span><span>TERM xterm-256color</span></span>
+  </footer>
+
+  <div class="toast" id="toast"></div>
 <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -17,12 +17,14 @@
         "minHeight": 640,
         "decorations": false,
         "theme": "Dark",
-        "backgroundColor": "#0D1014"
+        "backgroundColor": "#0D1014",
+        "visible": true
       }
     ],
     "security": {
       "csp": null
-    }
+    },
+    "withGlobalTauri": true
   },
   "bundle": {
     "active": true,

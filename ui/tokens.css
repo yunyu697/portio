@@ -7,7 +7,7 @@
   --term-bg:#090c10;
   --r-1:4px; --r-2:8px; --r-3:12px;
   --fs-11:11px; --fs-12:12px; --fs-13:13px; --fs-14:14px; --fs-16:16px; --fs-20:20px;
-  --row:28px; --titlebar:38px; --statusbar:26px; --sidebar:264px; --drawer:172px;
+  --row:28px; --titlebar:38px; --statusbar:26px; --sidebar:264px; --drawer:172px; --split:50%;
   --mono:"JetBrains Mono","Cascadia Mono",ui-monospace,Consolas,monospace;
   --ui:"HarmonyOS Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
   --ease:cubic-bezier(.2,.7,.2,1); --dur:160ms;
