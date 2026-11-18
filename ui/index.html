@@ -179,8 +179,17 @@
   .find-btn:active{background:var(--surface-2)}
   .find-btn svg{display:block;width:16px;height:16px;stroke:currentColor;stroke-width:1.5;
     fill:none;stroke-linecap:round;stroke-linejoin:round}
-  .term-pane{position:absolute;inset:0;padding:4px 0 0 8px;display:none}
+  .term-pane{position:absolute;inset:0;display:none}
   .term-pane.on{display:block}
+  /* 分屏：一个标签里放几格终端，格子之间就用 1px 结构线（gap + 底色），不额外画 border。
+     单格时没有线也没有焦点框；两格以上才给当前格一圈 1px 强调描边。 */
+  .panes-grid{display:grid;height:100%;gap:1px;background:var(--line-strong)}
+  .term-cell{position:relative;min-width:0;min-height:0;overflow:hidden;
+             background:var(--term-bg);padding:4px 0 0 8px}
+  /* 多格时当前格画一圈 1px 强调色（outline 不受 overflow 裁剪，四边都画得出来） */
+  .panes-grid.multi .term-cell.focus{outline:1px solid var(--accent);outline-offset:-1px}
+  /* 三格时让第一格纵向占满左列，网格不留空洞 */
+  .panes-grid.tri .term-cell:first-child{grid-row:span 2}
 
   /* ---------- 文件双栏 ---------- */
   .fp{flex:1;min-height:0;display:grid;grid-template-rows:1fr 1fr;gap:1px;background:var(--line-strong)}
@@ -433,7 +442,7 @@
         <rect x="11.2" y="16.1" width="4.2" height="1.5" rx=".75" fill="var(--mark-accent)" opacity=".5"/>
         <rect x="15.4" y="11.3" width="3.6" height="1.4" rx=".7" fill="var(--mark-accent)"/>
       </svg>
-      <b data-tauri-drag-region>Portio</b><span class="ver" data-tauri-drag-region>1.0.4-Alpha5</span>
+      <b data-tauri-drag-region>Portio</b><span class="ver" data-tauri-drag-region>1.0.4-Alpha6</span>
     </div>
     <!-- 标签条本身就是标题栏里最大的一片空白，之前没挂 drag 区域，
          于是整条中间地段都点不动窗口。挂上后：空白处可拖、可双击最大化，标签项照常点击。 -->
@@ -496,7 +505,7 @@
       <div class="split" id="split">
         <article class="pane term">
           <div class="pane-head"><span>终端</span><span class="path">—</span>
-            <span class="right"><span>80×24</span></span></div>
+            <span class="right"><span id="term-dims">80×24</span></span></div>
           <div class="term-host" id="term">
             <div class="find" id="find" hidden>
               <input id="find-q" type="text" placeholder="查找终端内容" spellcheck="false"
@@ -655,6 +664,9 @@
         <div class="grp">会话</div>
         <div class="row"><span class="k"><kbd>Ctrl</kbd><kbd>T</kbd></span><span class="d">新建连接</span></div>
         <div class="row"><span class="k"><kbd>Ctrl</kbd><kbd>W</kbd></span><span class="d">关闭当前标签（最后一个不关）</span></div>
+<div class="row"><span class="k"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>D</kbd></span><span class="d">左右分一格（同一主机再开一条通道）</span></div>
+<div class="row"><span class="k"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>E</kbd></span><span class="d">上下分一格</span></div>
+<div class="row"><span class="k"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>W</kbd></span><span class="d">关掉当前格（回到单格）</span></div>
         <div class="row"><span class="k"><kbd>双击</kbd></span><span class="d">会话列表里的条目直接连接</span></div>
         <div class="grp">终端</div>
         <div class="row"><span class="k"><kbd>Ctrl</kbd><kbd>C</kbd></span><span class="d">中断当前命令（等同终端里的 ^C）</span></div>

@@ -150,9 +150,11 @@ function resolveTheme(pref) {
 }
 // 设置项（主题 / 字号 / 滚动缓冲）要作用到**每个已开标签**的终端，不能只管当前这一块。
 // tabs 用 var 声明是为了能在它初始化之前（启动时就调用的 applyTheme）安全判空，避开 let 的暂时性死区。
+// 设置项（主题 / 字号 / 滚动缓冲）要作用到**每一格终端**（包括分屏出来的格子），不能只管当前这一块。
+// tabs 用 var 声明是为了能在它初始化之前（启动时就调用的 applyTheme）安全判空，避开 let 的暂时性死区。
 function eachTerm(fn) {
-  if (term && !(tabs && tabs.some((t) => t.term === term))) fn(term);
-  if (tabs) for (const t of tabs) if (t.term) fn(t.term);
+  if (term && !(tabs && tabs.some((t) => t.cells.some((c) => c.term === term)))) fn(term);
+  if (tabs) for (const t of tabs) for (const c of t.cells) if (c.term) fn(c.term);
 }
 function applyTheme(pref) {
   localStorage.setItem("portio.theme", pref);
@@ -450,10 +452,31 @@ window.addEventListener("keydown", (e) => {
     applyFold(!sidebarFolded);
     toast(sidebarFolded ? "会话栏已收起（Ctrl+Alt+B 恢复）" : "会话栏已展开");
   }
-  if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === "w") {
+  if (e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "w") {
     e.preventDefault();
     if (tabs.length <= 1) return toast("只剩一个标签了，再关就空窗口");
     closeTab(activeId);
+  }
+  // 分屏：Ctrl+Shift+D 左右分（竖线），Ctrl+Shift+E 上下分（横线）。
+  // 顺手照顾中文输入法与"大写字母"的两种 key 写法（D / d、E / e）
+  if (e.ctrlKey && e.shiftKey && !e.altKey && ["d", "e"].includes(e.key.toLowerCase())) {
+    e.preventDefault();
+    const tab = activeTab();
+    if (!tab) return;
+    splitTab(tab, e.key.toLowerCase() === "d" ? "v" : "h");
+    const n = tab.cells.length;
+    toast(n ? `已分成 ${n} 格（Ctrl+Shift+W 关掉当前格）` : "分屏失败");
+    return;
+  }
+  // 关当前格（只关一格，不关标签）；只有一格时提示改用 Ctrl+W
+  if (e.ctrlKey && e.shiftKey && !e.altKey && e.key.toLowerCase() === "w") {
+    e.preventDefault();
+    const tab = activeTab();
+    if (!tab) return;
+    if (tab.cells.length < 2) return toast("只有一格，关标签用 Ctrl+W");
+    closeCell(tab, tab.cell);
+    toast(tab.cells.length === 1 ? "已回到单格" : `还剩 ${tab.cells.length} 格`);
+    return;
   }
   if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === "f") {
     e.preventDefault();
@@ -621,6 +644,7 @@ const tabsBox = document.getElementById("tabs");
 var tabs = [];
 let activeId = null;
 let tabSeq = 0;
+let cellSeq = 0; // 分屏格子的自增号，只用来给 DOM 打标记，不参与逻辑
 // term / fitAddon 已在文件顶部声明（那里要避免 TDZ），这里只做"指向当前标签"
 let sessionId = null;
 
@@ -646,17 +670,41 @@ function terminalTheme() {
   };
 }
 
+// 分屏后一个标签里有好几格，每格都要按自己的格子尺寸重算 cols/rows；
+// 隐藏标签里的格子等切回去时由 activateTab 再量。
 function fitQuietly() {
-  if (!fitAddon) return;
-  try {
-    fitAddon.fit();
-  } catch (e) {
-    // 容器还没布局完时 fit 会抛，这里吞掉即可，ResizeObserver 稍后会再来一次
+  const tab = activeTab();
+  const cells = tab ? tab.cells : [];
+  for (const c of cells) {
+    try {
+      c.fit.fit();
+    } catch (e) {
+      // 容器还没布局完时 fit 会抛，这里吞掉即可，ResizeObserver 稍后会再来一次
+    }
+  }
+  if (!cells.length && fitAddon) {
+    try {
+      fitAddon.fit();
+    } catch (e) {
+      /* 同上 */
+    }
   }
 }
 
 function tabById(id) {
   return tabs.find((t) => t.id === id) ?? null;
+}
+function activeTab() {
+  return tabById(activeId);
+}
+// 分屏后"当前终端"是某个标签里的某一格；这层间接让 sftp / 查找条这类只管当前格的功能不用改太多
+function activeCell() {
+  const tab = activeTab();
+  return tab ? tab.cell : null;
+}
+function cellBySid(sid) {
+  for (const t of tabs) for (const c of t.cells) if (c.sid === sid) return c;
+  return null;
 }
 
 function renderTabs() {
@@ -667,7 +715,7 @@ function renderTabs() {
     el.title = t.title;
     const dot = document.createElement("span");
     dot.className = "dot";
-    if (t.sid !== null) dot.style.background = "var(--accent)";
+    if (t.cells.some((c) => c.sid !== null)) dot.style.background = "var(--accent)";
     const name = document.createElement("span");
     name.className = "name";
     name.textContent = t.title;
@@ -711,26 +759,42 @@ function activateTab(id) {
   const tab = tabById(id);
   if (!tab) return;
   activeId = id;
-  for (const t of tabs) t.pane.classList.toggle("on", t.id === id);
-  term = tab.term;
-  fitAddon = tab.fit;
-  sessionId = tab.sid;
+  for (const t of tabs) t.stage.classList.toggle("on", t.id === id);
+  syncActiveCell(tab);
   // 切标签就收起查找条：命中的行号属于上一个标签的 buffer，留着会指错地方
   if (findBar && !findBar.hidden) findToggle(false);
   renderTabs();
   // 容器刚变可见，等一帧再量尺寸，否则 cols/rows 会算成 0
   setTimeout(() => {
     fitQuietly();
-    tab.term.focus();
+    if (tab.cell) tab.cell.term.focus();
   }, 0);
 }
 
-function createTab(title, sid = null) {
-  const id = ++tabSeq;
-  const pane = document.createElement("div");
-  pane.className = "term-pane";
-  pane.dataset.id = String(id);
-  termHost.appendChild(pane);
+// 标题条右侧那串 80×24 是当前格的实时尺寸：分屏后每格列数不同，写死会骗人
+function updateDims() {
+  const el = document.getElementById("term-dims");
+  if (el && term) el.textContent = `${term.cols}×${term.rows}`;
+}
+
+// 把"当前终端"三个全局变量指到标签里的当前格，并标出焦点框
+function syncActiveCell(tab) {
+  const cell = tab.cell;
+  if (!cell) return;
+  term = cell.term;
+  fitAddon = cell.fit;
+  sessionId = cell.sid;
+  for (const c of tab.cells) c.el.classList.toggle("focus", c === cell);
+  updateDims();
+}
+
+// 一格里放一套终端：自己一个 xterm 实例、自己的 fit、自己的会话 id
+function makeCell(tab, sid = null) {
+  const cellId = ++cellSeq;
+  const el = document.createElement("div");
+  el.className = "term-cell";
+  el.dataset.cell = String(cellId);
+  tab.grid.appendChild(el);
   const t = new Terminal({
     fontFamily: "var(--mono), Consolas, monospace",
     fontSize: readFontSize(),
@@ -747,19 +811,23 @@ function createTab(title, sid = null) {
     if (ev.type === "keydown" && ev.ctrlKey && !ev.altKey && ev.key.toLowerCase() === "f") return false;
     return true;
   });
-  t.open(pane);
-  const tab = { id, title, sid, term: t, fit, pane };
-  tabs.push(tab);
-  // 回调绑定到自己的标签，避免后台标签的输入发到别的会话
+  t.open(el);
+  const cell = { id: cellId, el, term: t, fit, sid, tab };
+  tab.cells.push(cell);
+  // 回调绑定到自己的格子，避免后台格子的输入发到别的会话
   t.onData((data) => {
-    if (tab.sid !== null) call("ssh_input", { id: tab.sid, data });
+    if (cell.sid !== null) call("ssh_input", { id: cell.sid, data });
   });
   t.onResize(({ cols, rows }) => {
-    if (tab.sid !== null) call("ssh_resize", { id: tab.sid, cols, rows });
+    if (cell.sid !== null) call("ssh_resize", { id: cell.sid, cols, rows });
+    if (cell.tab.cell === cell) updateDims();
   });
+  // 点一下就把焦点挪到这格（多格的时候必须能看见自己正在敲哪一格）
+  el.addEventListener("mousedown", () => setActiveCell(tab, cell));
   // 终端右键：复制、粘贴、清屏——鼠标党不用记 Ctrl+Shift+V 也能干活
-  pane.addEventListener("contextmenu", (ev) => {
+  el.addEventListener("contextmenu", (ev) => {
     ev.preventDefault();
+    setActiveCell(tab, cell);
     const picked = t.getSelection();
     showCtx(ev.clientX, ev.clientY, [
       {
@@ -768,30 +836,182 @@ function createTab(title, sid = null) {
         disabled: !picked,
         run: () => navigator.clipboard.writeText(picked).then(() => toast("选中内容已复制")),
       },
-      { label: "粘贴", run: () => pasteInto(tab) },
+      { label: "粘贴", run: () => pasteInto(cell) },
       { label: "全选", hint: "Ctrl+A", run: () => t.selectAll() },
       { sep: true },
-      { label: "清屏", hint: "Ctrl+L", run: () => sendRaw(tab, "\f") },
+      { label: "清屏", hint: "Ctrl+L", run: () => sendRaw(cell, "\f") },
       { label: "清空滚动缓冲", run: () => t.clear() },
+      { sep: true },
+      {
+        label: "竖分一格",
+        hint: "Ctrl+Shift+D",
+        disabled: !canSplit(tab, "v"),
+        run: () => splitTab(tab, "v"),
+      },
+      {
+        label: "横分一格",
+        hint: "Ctrl+Shift+E",
+        disabled: !canSplit(tab, "h"),
+        run: () => splitTab(tab, "h"),
+      },
+      {
+        label: "关闭这一格",
+        hint: "Ctrl+Shift+W",
+        disabled: tab.cells.length < 2,
+        run: () => closeCell(tab, cell),
+      },
     ]);
   });
+  return cell;
+}
+
+function setActiveCell(tab, cell) {
+  if (!tab.cells.includes(cell)) return;
+  tab.cell = cell;
+  if (tab.id === activeId) syncActiveCell(tab);
+  cell.term.focus();
+}
+
+// 格子数只走 1 → 2 → 4 三档：分一次变两格，再分一次直接补满四格。
+// 不做 3 格是因为网格里会留一个空洞（2×2 只放三格），比"少一格"更难看。
+function canSplit(tab) {
+  return tab.cells.length < 4;
+}
+function applyGrid(tab) {
+  const g = tab.gridTemplate;
+  tab.grid.style.gridTemplateColumns = `repeat(${g.cols}, minmax(0, 1fr))`;
+  tab.grid.style.gridTemplateRows = `repeat(${g.rows}, minmax(0, 1fr))`;
+  const n = tab.cells.length;
+  tab.grid.classList.toggle("multi", n > 1);
+  // 三格时第一格纵向占满左列，否则 2×2 网格里会空出一个洞
+  tab.grid.classList.toggle("tri", n === 3);
+}
+function splitTab(tab, dir) {
+  if (!canSplit(tab)) return toast("最多四格；要更多终端就开新标签");
+  const before = tab.cells.length;
+  // 两格再分一次 = 补满四格；一格时按方向决定是左右还是上下
+  const target = before === 1 ? 2 : 4;
+  tab.gridTemplate =
+    before === 1 ? { cols: dir === "v" ? 2 : 1, rows: dir === "v" ? 1 : 2 } : { cols: 2, rows: 2 };
+  applyGrid(tab);
+  const fresh = [];
+  while (tab.cells.length < target) fresh.push(makeCell(tab));
+  applyGrid(tab);
+  const last = fresh[fresh.length - 1] ?? null;
+  setActiveCell(tab, last);
+  // 新建的格子刚 open 时尺寸还是 0，这时候写进去的字会被终端丢掉；
+  // 等一帧、量完尺寸再写，字一定落得上。
+  requestAnimationFrame(() => {
+    fitQuietly();
+    for (const c of fresh) {
+      if (tab.spec) continue; // 连主机的格子等通道建好再写自己的横幅
+      c.term.write("\x1b[2m—— 新的一格（本地，未连接）——\x1b[0m\r\n");
+    }
+  });
+  // 已连接的标签里新开格子：每格一条通道，不能两格抢同一个 PTY（两边会互相抢输入）
+  if (tab.spec) for (const c of fresh) openCellChannel(tab, c);
+  return last;
+}
+
+// 给分屏出来的格子单独建一条 SSH 通道：口令只能从加密凭据里取（不弹第二个密码框）
+async function openCellChannel(tab, cell) {
+  if (!bridge || !tab.spec) return;
+  const spec = tab.spec;
+  const key = credKey(spec.user, spec.host, spec.port);
+  let password = null;
+  if (spec.auth === "password") {
+    password = await credPeek(key);
+    if (!password) {
+      cell.term.write(
+        "\x1b[33m这格没能连上：本机没存这台主机的口令。\x1b[0m\r\n" +
+          "先在主格重新连一次并勾上「记住口令」，之后分屏出来的格子会自动接上。\r\n"
+      );
+      return;
+    }
+  }
+  try {
+    const id = await bridge.invoke("ssh_connect", {
+      host: spec.host,
+      port: Number(spec.port ?? 22) || 22,
+      user: spec.user,
+      password,
+      keyfile: spec.auth === "key" ? String(spec.keyfile ?? "") : null,
+      cols: cell.term.cols,
+      rows: cell.term.rows,
+      onHandshake: null,
+    });
+    cell.sid = id;
+    cell.term.write(`\r\n\x1b[2m—— 新的一格：${spec.user}@${spec.host}:${spec.port} ——\x1b[0m\r\n`);
+    renderTabs();
+    if (tab.id === activeId) sessionId = tab.cell.sid;
+  } catch (err) {
+    const raw = String(err);
+    cell.term.write(
+      `\r\n\x1b[31m这格连不上：${raw.includes("HOSTKEY_CHANGED") ? "主机指纹变了，去设置里确认后再连" : explainError("ssh_connect", raw)}\x1b[0m\r\n`
+    );
+  }
+}
+
+function closeCell(tab, cell) {
+  if (tab.cells.length < 2) return;
+  const idx = tab.cells.indexOf(cell);
+  if (idx < 0) return;
+  if (cell.sid !== null) call("ssh_disconnect", { id: cell.sid });
+  cell.term.dispose();
+  cell.el.remove();
+  tab.cells.splice(idx, 1);
+  // 关完按剩下的格数重排：1 格回单屏、2 格左右并排、3 格回到"左高右两格"
+  const n = tab.cells.length;
+  tab.gridTemplate = n === 1 ? { cols: 1, rows: 1 } : n === 2 ? { cols: 2, rows: 1 } : { cols: 2, rows: 2 };
+  const next = tab.cells[Math.min(idx, tab.cells.length - 1)];
+  tab.cell = next;
+  applyGrid(tab);
+  if (tab.id === activeId) syncActiveCell(tab);
+  requestAnimationFrame(() => {
+    fitQuietly();
+    next.term.focus();
+  });
+}
+
+function createTab(title, sid = null) {
+  const id = ++tabSeq;
+  const stage = document.createElement("div");
+  stage.className = "term-pane";
+  stage.dataset.id = String(id);
+  const grid = document.createElement("div");
+  grid.className = "panes-grid";
+  stage.appendChild(grid);
+  termHost.insertBefore(stage, findBar ?? null);
+  const tab = {
+    id,
+    title,
+    stage,
+    grid,
+    gridTemplate: { cols: 1, rows: 1 },
+    cells: [],
+    cell: null,
+    spec: null, // 怎么连的（分屏时要用同一套参数再建一条通道）
+  };
+  tabs.push(tab);
+  tab.cell = makeCell(tab, sid);
+  applyGrid(tab);
   activateTab(id);
   return tab;
 }
 
-// 往会话里塞原始控制字符：本地标签没有会话，就写到终端自己身上
-function sendRaw(tab, data) {
-  if (tab.sid !== null) call("ssh_input", { id: tab.sid, data });
-  else tab.term.write(data.replace("\f", ""));
+// 往会话里塞原始控制字符：本地格子没有会话，就写到终端自己身上
+function sendRaw(cell, data) {
+  if (cell.sid !== null) call("ssh_input", { id: cell.sid, data });
+  else cell.term.write(data.replace("\f", ""));
 }
 
-async function pasteInto(tab) {
+async function pasteInto(cell) {
   try {
     const text = await navigator.clipboard.readText();
     if (!text) return;
-    if (tab.sid !== null) call("ssh_input", { id: tab.sid, data: text });
-    else tab.term.write(text);
-    tab.term.focus();
+    if (cell.sid !== null) call("ssh_input", { id: cell.sid, data: text });
+    else cell.term.write(text);
+    cell.term.focus();
   } catch {
     toast("剪贴板读不出来，检查系统的剪贴板权限");
   }
@@ -801,9 +1021,12 @@ function closeTab(id) {
   const idx = tabs.findIndex((t) => t.id === id);
   if (idx < 0) return;
   const tab = tabs[idx];
-  if (tab.sid !== null) call("ssh_disconnect", { id: tab.sid });
-  tab.term.dispose();
-  tab.pane.remove();
+  // 一个标签里可能有好几格，每格都要断干净、各自 dispose
+  for (const c of tab.cells) {
+    if (c.sid !== null) call("ssh_disconnect", { id: c.sid });
+    c.term.dispose();
+  }
+  tab.stage.remove();
   tabs.splice(idx, 1);
   if (tabs.length === 0) {
     createLocalTab();
@@ -819,7 +1042,7 @@ function closeTab(id) {
 
 function createLocalTab(title = "本地 · 未连接") {
   const tab = createTab(title);
-  tab.term.write("Portio · 未连接。点左上「新建连接」开始。\r\n");
+  tab.cell.term.write("Portio · 未连接。点左上「新建连接」开始。\r\n");
   return tab;
 }
 
@@ -833,6 +1056,36 @@ function ensureTerminal() {
 if (location.hash === "#tabs-demo") {
   createLocalTab("demo-web-01");
   createLocalTab("demo-db-02");
+}
+// 带 #split-demo 直接摊成 2×2 四格，核对分屏线、焦点描边与每格的 fit 尺寸
+if (location.hash === "#split-demo") {
+  const t = createLocalTab("split-demo");
+  splitTab(t, "v");
+  splitTab(t, "h");
+}
+// 带 #split-test 跑一遍分屏的状态机断言，结果写进 <title>（自动推进时用无头浏览器跑这一页核对）
+if (location.hash === "#split-test") {
+  const fails = [];
+  const ok = (cond, msg) => { if (!cond) fails.push(msg); };
+  const t = createLocalTab("t");
+  ok(t.cells.length === 1 && t.gridTemplate.cols === 1 && t.gridTemplate.rows === 1, "1格应 1x1");
+  splitTab(t, "v");
+  ok(t.cells.length === 2 && t.gridTemplate.cols === 2 && t.gridTemplate.rows === 1, "竖分应 1x2");
+  ok(t.cells[0].term.cols !== t.cells[1].term.cols || t.cells[0].term.cols > 0, "两格应各自量过尺寸");
+  ok(t.cell === t.cells[1], "焦点应落在新格");
+  splitTab(t, "h");
+  ok(t.cells.length === 4 && t.gridTemplate.cols === 2 && t.gridTemplate.rows === 2, "再分应 2x2");
+  splitTab(t, "v");
+  ok(t.cells.length === 4 && t.gridTemplate.cols === 2 && t.gridTemplate.rows === 2, "满四格后不该再分");
+  const before = t.cells.length;
+  closeCell(t, t.cell);
+  ok(t.cells.length === before - 1 && t.grid.classList.contains("tri"), "四格关一格应成三格且补洞");
+  closeCell(t, t.cell);
+  ok(t.cells.length === 2 && t.gridTemplate.cols === 2 && t.gridTemplate.rows === 1, "三格关一格应成左右两格");
+  closeCell(t, t.cell);
+  ok(t.cells.length === 1 && t.gridTemplate.cols === 1 && t.gridTemplate.rows === 1, "两格关一格应回单屏");
+  ok(!t.grid.classList.contains("multi"), "单格时不该有焦点描边类");
+  document.title = fails.length ? "ERR: " + fails.join(" / ") : "SELFTEST-OK";
 }
 
 new ResizeObserver(() => fitQuietly()).observe(termHost);
@@ -1364,8 +1617,10 @@ async function connectWith(spec) {
     }
     // 连接成功后开一个新标签，标题就是 user@host；旧本地标签留着不动
     const tab = createTab(`${user}@${host}`, id);
-    tab.term.write(`\r\n\x1b[2m—— 已连接 ${user}@${host}:${port} ——\x1b[0m\r\n`);
-    tab.term.focus();
+    // 记下"怎么连的"：这个标签分屏时要用同一套参数再建一条通道
+    tab.spec = { host, port, user, auth, keyfile };
+    tab.cell.term.write(`\r\n\x1b[2m—— 已连接 ${user}@${host}:${port} ——\x1b[0m\r\n`);
+    tab.cell.term.focus();
     const home = await call("sftp_home", { id });
     if (home) loadRemote(home);
   } catch (err) {
@@ -1526,18 +1781,18 @@ if (location.hash.startsWith("#sess-demo") || location.hash.includes("ctx-demo")
 if (window.__TAURI__?.event) {
   window.__TAURI__.event.listen("shell", (e) => {
     const { id, kind, text } = e.payload ?? {};
-    // 按会话 id 找到它所属的标签，后台标签的输出也要落到自己的终端里
-    const tab = tabs.find((t) => t.sid === id);
-    if (!tab) return;
-    const t = tab.term;
+    // 按会话 id 找到它所属的那一格，后台标签 / 分屏里另一格的输出也要落到自己的终端里
+    const cell = cellBySid(id);
+    if (!cell) return;
+    const t = cell.term;
     if (kind === "output") t.write(text);
     if (kind === "exit") t.write(`\r\n\x1b[2m[进程退出 ${text}]\x1b[0m\r\n`);
     if (kind === "error") t.write(`\r\n\x1b[31m${text}\x1b[0m\r\n`);
     if (kind === "closed") {
       t.write("\r\n\x1b[2m[连接已断开]\x1b[0m\r\n");
-      tab.sid = null;
-      if (activeId === tab.id) {
-        sessionId = null;
+      cell.sid = null;
+      if (activeId === cell.tab.id) {
+        sessionId = cell.tab.cell.sid;
         setStatus("连接已断开", "bad");
       }
       renderTabs();
@@ -1553,10 +1808,10 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
-// 关窗前把所有会话断干净，别把服务端会话挂在那儿
+// 关窗前把所有会话断干净（分屏出来的格子也算），别把服务端会话挂在那儿
 window.addEventListener("beforeunload", () => {
   for (const t of tabs) {
-    if (t.sid !== null) call("ssh_disconnect", { id: t.sid });
+    for (const c of t.cells) if (c.sid !== null) call("ssh_disconnect", { id: c.sid });
   }
 });
 
