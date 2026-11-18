@@ -14,9 +14,9 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use ring::aead;
+use ring::aead::NONCE_LEN;
 use ring::hkdf;
 use ring::rand::{SecureRandom, SystemRandom};
-use ring::aead::NONCE_LEN;
 
 /// 主密钥派生出加密密钥时用的上下文串。换加密参数就得换这个串，老密文自然解不开。
 const HKDF_INFO: &[u8] = b"portio-credential-vault-v1";
@@ -53,7 +53,8 @@ impl Vault {
             .expand(&[HKDF_INFO], &aead::AES_256_GCM)
             .map_err(|_| VaultError::KeyDerive)?;
         let mut key_bytes = [0u8; 32];
-        okm.fill(&mut key_bytes).map_err(|_| VaultError::KeyDerive)?;
+        okm.fill(&mut key_bytes)
+            .map_err(|_| VaultError::KeyDerive)?;
         let key = aead::UnboundKey::new(&aead::AES_256_GCM, &key_bytes)
             .map_err(|_| VaultError::KeyDerive)?;
         Ok(Self {
@@ -65,8 +66,7 @@ impl Vault {
     pub fn seal(&self, plaintext: &str) -> Result<Vec<u8>, VaultError> {
         let rng = SystemRandom::new();
         let mut nonce_bytes = [0u8; NONCE_LEN_USIZE];
-        rng.fill(&mut nonce_bytes)
-            .map_err(|_| VaultError::Random)?;
+        rng.fill(&mut nonce_bytes).map_err(|_| VaultError::Random)?;
         let nonce = aead::Nonce::assume_unique_for_key(nonce_bytes);
 
         let mut buf = plaintext.as_bytes().to_vec();
@@ -86,8 +86,8 @@ impl Vault {
             return Err(VaultError::Open);
         }
         let (nonce_bytes, cipher) = blob.split_at(NONCE_LEN_USIZE);
-        let nonce = aead::Nonce::try_assume_unique_for_key(nonce_bytes)
-            .map_err(|_| VaultError::Open)?;
+        let nonce =
+            aead::Nonce::try_assume_unique_for_key(nonce_bytes).map_err(|_| VaultError::Open)?;
         let mut buf = cipher.to_vec();
         let plain = self
             .key
@@ -124,8 +124,7 @@ impl CredentialStore {
         let vault = Vault::from_secret(secret)?;
         let mut entries = BTreeMap::new();
         if path.exists() {
-            let text = std::fs::read_to_string(&path)
-                .map_err(|e| VaultError::Io(e.to_string()))?;
+            let text = std::fs::read_to_string(&path).map_err(|e| VaultError::Io(e.to_string()))?;
             entries = parse_credentials(&text)?;
         }
         Ok(Self {
@@ -183,8 +182,8 @@ impl CredentialStore {
 }
 
 fn parse_credentials(text: &str) -> Result<BTreeMap<String, Vec<u8>>, VaultError> {
-    let doc: serde_json::Value = serde_json::from_str(text)
-        .map_err(|e| VaultError::Format(e.to_string()))?;
+    let doc: serde_json::Value =
+        serde_json::from_str(text).map_err(|e| VaultError::Format(e.to_string()))?;
     let ver = doc
         .get("version")
         .and_then(|v| v.as_u64())
@@ -201,8 +200,8 @@ fn parse_credentials(text: &str) -> Result<BTreeMap<String, Vec<u8>>, VaultError
         let hex = v
             .as_str()
             .ok_or_else(|| VaultError::Format(format!("{k} 的值不是字符串")))?;
-        let bytes = from_hex(hex)
-            .ok_or_else(|| VaultError::Format(format!("{k} 的密文不是合法 hex")))?;
+        let bytes =
+            from_hex(hex).ok_or_else(|| VaultError::Format(format!("{k} 的密文不是合法 hex")))?;
         out.insert(k.clone(), bytes);
     }
     Ok(out)
@@ -227,7 +226,7 @@ fn to_hex(bytes: &[u8]) -> String {
 }
 
 fn from_hex(text: &str) -> Option<Vec<u8>> {
-    if text.len() % 2 != 0 {
+    if !text.len().is_multiple_of(2) {
         return None;
     }
     let mut out = Vec::with_capacity(text.len() / 2);
@@ -253,7 +252,9 @@ pub fn load_or_create_master_secret(path: &Path) -> Result<Vec<u8>, VaultError> 
     if path.exists() {
         let bytes = std::fs::read(path).map_err(|e| VaultError::Io(e.to_string()))?;
         if bytes.len() < 16 {
-            return Err(VaultError::Format("主密钥文件内容太短，可能被截断了".into()));
+            return Err(VaultError::Format(
+                "主密钥文件内容太短，可能被截断了".into(),
+            ));
         }
         return Ok(bytes);
     }
@@ -348,7 +349,10 @@ mod tests {
 
         // 重开同一把密钥能读回来
         let reopened = CredentialStore::load(&path, b"master").unwrap();
-        assert_eq!(reopened.password("sess-1").unwrap().as_deref(), Some("pw-1"));
+        assert_eq!(
+            reopened.password("sess-1").unwrap().as_deref(),
+            Some("pw-1")
+        );
         assert_eq!(
             reopened.password("sess-2").unwrap().as_deref(),
             Some("pw-2-中文")

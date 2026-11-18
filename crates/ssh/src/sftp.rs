@@ -6,8 +6,8 @@
 use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
 
-use russh_sftp::client::SftpSession;
 use russh_sftp::client::error::Error as SftpError;
+use russh_sftp::client::SftpSession;
 use russh_sftp::protocol::OpenFlags;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
@@ -74,7 +74,6 @@ pub struct Sftp {
     inner: SftpSession,
 }
 
-
 impl Sftp {
     /// 登录后的落脚点，通常是 /home/<user>。
     pub async fn home(&self) -> Result<String, SshError> {
@@ -86,12 +85,12 @@ impl Sftp {
 
     pub async fn list(&self, path: &str) -> Result<Vec<RemoteEntry>, SshError> {
         let mut out = Vec::new();
-        let mut dir = self
+        let dir = self
             .inner
             .read_dir(path.to_string())
             .await
             .map_err(|e| err("列远端目录", e))?;
-        while let Some(item) = dir.next() {
+        for item in dir {
             let name = item.file_name();
             if name == "." || name == ".." {
                 continue;
@@ -141,7 +140,10 @@ impl Sftp {
             std::fs::create_dir_all(parent).map_err(|e| SshError::Protocol(e.to_string()))?;
         }
         let tmp: PathBuf = crate::resume::part_path(local);
-        let part_len = tokio::fs::metadata(&tmp).await.map(|m| m.len()).unwrap_or(0);
+        let part_len = tokio::fs::metadata(&tmp)
+            .await
+            .map(|m| m.len())
+            .unwrap_or(0);
         let start = crate::resume::resume_offset(part_len, total);
         if start == 0 && part_len > 0 {
             // 半截文件已经不能续（远端变小或早就传满），留着只会误导下一次，直接丢掉

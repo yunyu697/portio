@@ -35,7 +35,8 @@ fn with_store<T>(
     if guard.is_none() {
         let dir = data_dir(app)?;
         std::fs::create_dir_all(&dir).map_err(|e| format!("建目录失败：{e}"))?;
-        let secret = load_or_create_master_secret(&dir.join(KEY_FILE)).map_err(|e| e.to_string())?;
+        let secret =
+            load_or_create_master_secret(&dir.join(KEY_FILE)).map_err(|e| e.to_string())?;
         let store =
             CredentialStore::load(dir.join(CRED_FILE), &secret).map_err(|e| e.to_string())?;
         *guard = Some(store);
@@ -85,5 +86,8 @@ pub fn cred_forget(
 /// 凭据文件在哪，给用户看（方便自己备份或彻底删除）。
 #[tauri::command]
 pub fn cred_path(app: tauri::AppHandle) -> Result<String, String> {
-    Ok(data_dir(&app)?.join(CRED_FILE).to_string_lossy().to_string())
+    Ok(data_dir(&app)?
+        .join(CRED_FILE)
+        .to_string_lossy()
+        .to_string())
 }

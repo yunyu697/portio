@@ -17,7 +17,9 @@ const TAIL_LIMIT: usize = 200;
 static IN_HOOK: AtomicBool = AtomicBool::new(false);
 
 pub fn log_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    app.path().app_log_dir().map_err(|e| format!("拿不到日志目录：{e}"))
+    app.path()
+        .app_log_dir()
+        .map_err(|e| format!("拿不到日志目录：{e}"))
 }
 
 /// 日志文件路径：`<app_log_dir>/portio.log`
@@ -127,7 +129,8 @@ pub fn append_line(file: &Path, line: &str) -> Result<(), String> {
         .append(true)
         .open(file)
         .map_err(|e| format!("打开日志失败：{e}"))?;
-    f.write_all(line.as_bytes()).map_err(|e| format!("写日志失败：{e}"))
+    f.write_all(line.as_bytes())
+        .map_err(|e| format!("写日志失败：{e}"))
 }
 
 /// 写一条日志。任何失败都咽掉——记录日志这件事本身不该把应用带崩。
@@ -135,7 +138,12 @@ pub fn write_entry(app: &tauri::AppHandle, level: &str, source: &str, message: &
     if IN_HOOK.swap(true, Ordering::SeqCst) {
         return; // 已经在一个失败的写日志调用里，别再往下钻
     }
-    let result = log_file(app).and_then(|p| append_line(&p, &format_line(&iso8601_utc(now_secs()), level, source, message)));
+    let result = log_file(app).and_then(|p| {
+        append_line(
+            &p,
+            &format_line(&iso8601_utc(now_secs()), level, source, message),
+        )
+    });
     IN_HOOK.store(false, Ordering::SeqCst);
     let _ = result;
 }
@@ -183,7 +191,7 @@ pub fn diag_tail(app: tauri::AppHandle, lines: Option<usize>) -> Result<String, 
         Ok(t) => t,
         Err(_) => return Ok(String::new()),
     };
-    let want = lines.unwrap_or(40).min(TAIL_LIMIT).max(1);
+    let want = lines.unwrap_or(40).clamp(1, TAIL_LIMIT);
     let all: Vec<&str> = raw.lines().collect();
     let start = all.len().saturating_sub(want);
     Ok(all[start..].join("\n"))
@@ -238,7 +246,10 @@ mod tests {
         assert_eq!(iso8601_utc(1794960000), "2026-11-18T00:00:00Z");
         // 2024 闰年 2 月 29 日
         assert_eq!(iso8601_utc(1709164800), "2024-02-29T00:00:00Z");
-        assert_eq!(iso8601_utc(1794960000 + 15 * 3600 + 40 * 60 + 12), "2026-11-18T15:40:12Z");
+        assert_eq!(
+            iso8601_utc(1794960000 + 15 * 3600 + 40 * 60 + 12),
+            "2026-11-18T15:40:12Z"
+        );
     }
 
     #[test]
@@ -257,7 +268,10 @@ mod tests {
         assert_eq!(normalize_source("rust-panic"), "rust-panic");
         assert_eq!(normalize_source("bad source \u{7f}!"), "badsource");
         assert_eq!(normalize_source(""), "app");
-        assert_eq!(normalize_source("averyveryverylongsource"), "averyveryverylon");
+        assert_eq!(
+            normalize_source("averyveryverylongsource"),
+            "averyveryverylon"
+        );
     }
 
     #[test]
@@ -276,7 +290,10 @@ mod tests {
         let out = clean_message(&raw);
         assert!(out.ends_with("…(截断)"));
         // 4000 个汉字 + 标记，按字节算早就爆了，这里必须按字符裁
-        assert_eq!(out.chars().filter(|c| *c == '汉').count(), MAX_MESSAGE_CHARS);
+        assert_eq!(
+            out.chars().filter(|c| *c == '汉').count(),
+            MAX_MESSAGE_CHARS
+        );
     }
 
     #[test]

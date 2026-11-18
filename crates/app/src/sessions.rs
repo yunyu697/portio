@@ -9,8 +9,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use portio_ssh::{
-    options, perm_string, AuthMethod, HostKeyVerdict, KnownHosts, PtySize, RemoteEntry, ShellCommand,
-    ShellEvent, Sftp, SshSession,
+    options, perm_string, AuthMethod, HostKeyVerdict, KnownHosts, PtySize, RemoteEntry, Sftp,
+    ShellCommand, ShellEvent, SshSession,
 };
 use serde::Serialize;
 use tauri::ipc::Channel;
@@ -376,7 +376,11 @@ pub async fn sftp_upload(
     let handle = sftp_of(&reg, id)?;
     let guard = handle.lock().await;
     let sftp = guard.as_ref().ok_or("SFTP 未就绪")?;
-    let name = local.rsplit(['\\', '/']).next().unwrap_or("file").to_string();
+    let name = local
+        .rsplit(['\\', '/'])
+        .next()
+        .unwrap_or("file")
+        .to_string();
 
     let mut last_emit = 0u64;
     let mut cb = |done: u64, total: u64| {
@@ -460,11 +464,16 @@ mod tests {
         // 目录在前、同类按名字（小写）排
         assert_eq!(
             names,
-            vec!["报表#2026", "文档 汇总", "会话记录 中文.txt", "配置&参考.yaml"]
+            vec![
+                "报表#2026",
+                "文档 汇总",
+                "会话记录 中文.txt",
+                "配置&参考.yaml"
+            ]
         );
         // 目录不显示大小、文件显示真实大小
         assert_eq!(items[0].size, 0);
-        assert!(items[2].is_dir == false && items[2].size == 5);
+        assert!(!items[2].is_dir && items[2].size == 5);
         // 本地栏没有 POSIX 位，固定占位
         assert!(items.iter().all(|i| i.perm == "—"));
         // 路径里同样是原样的中文
