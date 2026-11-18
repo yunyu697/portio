@@ -406,3 +406,31 @@ S11 的第二个交付：指纹不再是只能看文件的东西，设置里能�
 - 机器仍锁屏，实机窗口点检未做（只有无头渲染证据）。
 
 **下一步**：S11 收口评审（是否把 S11 标 ✅）→ 然后进 S12：终端分屏与搜索（分屏布局已定，搜索要接 xterm 的搜索插件/自绘）。
+## 2026-11-18 · v1.0.4-Alpha4 · S12：终端查找（Ctrl+F）
+
+S12 的第一件：终端能找了。第二个交付（分屏）还没动。
+
+- 查找条浮在画布右上（`.find`，绝对定位在 `.term-host` 里），不挤压字符网格，也不改 xterm 的 fit 计算。
+- 扫 buffer 而不是可视区：`buffer.active.getLine(row).translateToString(true)` 逐行取文本、忽略大小写找 `indexOf`，命中记 `{row, col}`。这样 8000 行滚动缓冲里的旧输出一样找得到。
+- 高亮用 `term.select(col, row, len)`，跳转用 `term.scrollToLine(row - rows/2)` 把命中挪到视野中间。实测这两个都是公共 API（先写了个 `ui/_p1.html` 探针确认 `select` 存在且 `getSelection()` 返回预期文本，再动手）。
+- 没引 `@xterm/addon-search`：npm 源能通（`npm view` 试过），但 addon 会带版本对齐和体积成本，而这次的三行 API 就够用。要"全量命中都染色"才需要它，已记 backlog。
+- 键盘：`term.attachCustomKeyEventHandler` 把 `Ctrl+F` 返回 false 拦在 xterm 之前——不拦的话 `^F` 会被当普通输入发给远端。全局 `keydown` 里再开查找条。
+- 交互细节：`Esc` 收起时先摘 `.open` 跑完 240ms 淡出再 `hidden`，不"啪"一下消失；收起时 `clearSelection()` 并 `term.focus()` 把光标交还终端；`activateTab` 里顺手收起查找条（命中行号属于上一个标签的 buffer，留着会指错地方）。
+- 序号环回抽成纯函数 `findStep(n, at, delta)`，这样不用起浏览器也能验：从 -1 出发向后落到第一条、向前落到最后一条，其余按 `(at + delta + n) % n` 回绕。
+- 规范先行：`docs/design-spec.md` §10 先加第 34 行（位置、`--ctl` 高、`--surface-3` 底、计数 `--mono --fs-11`、无命中转 `--danger`、焦点用 `:focus-within` 转 `--accent`、240ms 上移淡入），再写样式。
+
+**验证证据**
+- `cargo test -p portio-core -p portio-app -p portio-ssh`：47 + 6 + 3 + 17 + 1 全绿（本轮无 Rust 改动，跑一遍确认没被前端改动带崩）。
+- `node --check ui/app.js` 通过；`check_ui_scale.py` OK；`check_design_tokens.py` OK。
+- API 探针 `ui/_p1.html`（临时页，已删）：`select=function`、`scrollToLine=function`、`select(0,1,3)` 后 `getSelection()` 返回 `"foo"`。
+- 交互核验（临时页注入断言，跑完即删）：`Ctrl+F` 后 `findBar.hidden=false`；查询 `Portio` → 计数 `1/1`；点「下一个」→ 选中区 `"Portio"`；点「上一个」→ 仍 `1/1`；`Esc` → `.open` 摘掉、选中区清空。
+- `findStep` 纯函数 8 条用例（前进、回绕、单命中、空集、反向）全过。
+- 视觉：`_a14_find.png`（浅色 1180×690@2x，命中高亮可见）、`_a14_hit_dark.png` / `_a14_none_dark.png`（深色命中与无命中两态，无命中计数转红）、`_a14_find_light.png`、`_a14_find_narrow.png`（1024×620 窄窗，查找条不越界、不压标题条）。
+- 无头 `--dump-dom`：四态标题均为 `Portio`，全文无 `ERR:`。
+
+**未验证**
+- 真实会话里的手感（大缓冲、连续跳转、tmux 里滚动区）没有服务器可跑；只有本地 banner 与注入文本的证据。
+- 跨折行的命中（一个词被终端折成两行）扫不到，行为已写进 CHANGELOG 的 Known limitations。
+- 机器仍锁屏，实机窗口点检未做。
+
+**下一步**：S12 第二件——终端分屏（Ctrl+Shift+D 竖切 / Ctrl+Shift+E 横切，各自一套 xterm 实例与 fit，标签粒度不变）。

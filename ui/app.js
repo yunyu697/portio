@@ -455,6 +455,10 @@ window.addEventListener("keydown", (e) => {
     if (tabs.length <= 1) return toast("只剩一个标签了，再关就空窗口");
     closeTab(activeId);
   }
+  if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === "f") {
+    e.preventDefault();
+    findToggle(true);
+  }
   if (e.key === "F5") {
     e.preventDefault();
     // 重绘而不是重连：清掉 xterm 的渲染缓存，尺寸也跟着重新量一次
@@ -465,6 +469,110 @@ window.addEventListener("keydown", (e) => {
     }
   }
 });
+
+// ---------- 终端查找（Ctrl+F） ----------
+// 不引 xterm 的 search addon：用公共 API 扫 buffer，命中那条用 select() 高亮、scrollToLine() 跳过去。
+// 扫的是 buffer 文本而不是可视区，所以滚进滚动缓冲的旧行一样找得到。
+const findBar = document.getElementById("find");
+const findInput = document.getElementById("find-q");
+const findCount = document.getElementById("find-n");
+const findHits = { q: "", all: [], at: -1 };
+let findTimer = 0;
+
+function findScan(q) {
+  const all = [];
+  if (!term || !q) return all;
+  const buf = term.buffer.active;
+  const needle = q.toLowerCase();
+  for (let row = 0; row < buf.length; row += 1) {
+    const line = buf.getLine(row);
+    if (!line) continue;
+    const text = line.translateToString(true);
+    if (!text) continue;
+    const hay = text.toLowerCase();
+    let at = hay.indexOf(needle);
+    while (at !== -1) {
+      all.push({ row, col: at });
+      at = hay.indexOf(needle, at + needle.length);
+    }
+  }
+  return all;
+}
+
+function findPaint() {
+  const n = findHits.all.length;
+  findCount.textContent = n ? `${findHits.at + 1}/${n}` : "0/0";
+  findCount.classList.toggle("bad", !!findHits.q && n === 0);
+}
+
+// 命中序号怎么走：首跳从 -1 出发，往后 +1 落到第一条、往前 -1 落到最后一条，其余按环回绕。
+// 抽成纯函数是为了能不依赖 xterm 单独验（见 autopilot-log 里那条单测）。
+function findStep(n, at, delta) {
+  if (!n) return -1;
+  if (at < 0) return delta > 0 ? 0 : n - 1;
+  return (at + delta + n) % n;
+}
+
+function findJump(delta) {
+  const n = findHits.all.length;
+  if (!n) {
+    findPaint();
+    return;
+  }
+  findHits.at = findStep(n, findHits.at, delta);
+  const hit = findHits.all[findHits.at];
+  term.select(hit.col, hit.row, findHits.q.length);
+  term.scrollToLine(Math.max(0, hit.row - Math.floor(term.rows / 2)));
+  findPaint();
+}
+
+function findRefresh() {
+  findHits.q = findInput.value;
+  findHits.all = findScan(findHits.q);
+  findHits.at = -1;
+  if (term) term.clearSelection();
+  if (findHits.all.length) findJump(1);
+  else findPaint();
+}
+
+function findToggle(open) {
+  const want = open ?? findBar.hidden;
+  clearTimeout(findTimer);
+  if (want) {
+    if (!findBar.hidden) {
+      findInput.select();
+      return;
+    }
+    findBar.hidden = false;
+    requestAnimationFrame(() => findBar.classList.add("open"));
+    findInput.focus();
+    findInput.select();
+    findRefresh();
+  } else {
+    findBar.classList.remove("open");
+    // 等淡出跑完再真隐藏，避免"啪"一下消失
+    findTimer = setTimeout(() => { findBar.hidden = true; }, 240);
+    if (term) {
+      term.clearSelection();
+      term.focus();
+    }
+    findHits.at = -1;
+  }
+}
+
+findInput.addEventListener("input", findRefresh);
+findInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    findJump(e.shiftKey ? -1 : 1);
+  } else if (e.key === "Escape") {
+    e.preventDefault();
+    findToggle(false);
+  }
+});
+document.getElementById("find-prev").addEventListener("click", () => findJump(-1));
+document.getElementById("find-next").addEventListener("click", () => findJump(1));
+document.getElementById("find-x").addEventListener("click", () => findToggle(false));
 
 function 初次提示() {}
 
@@ -607,6 +715,8 @@ function activateTab(id) {
   term = tab.term;
   fitAddon = tab.fit;
   sessionId = tab.sid;
+  // 切标签就收起查找条：命中的行号属于上一个标签的 buffer，留着会指错地方
+  if (findBar && !findBar.hidden) findToggle(false);
   renderTabs();
   // 容器刚变可见，等一帧再量尺寸，否则 cols/rows 会算成 0
   setTimeout(() => {
@@ -632,6 +742,11 @@ function createTab(title, sid = null) {
   });
   const fit = new FitAddon.FitAddon();
   t.loadAddon(fit);
+  // Ctrl+F 归查找条：先拦住，别让 ^F 被当成输入发给远端
+  t.attachCustomKeyEventHandler((ev) => {
+    if (ev.type === "keydown" && ev.ctrlKey && !ev.altKey && ev.key.toLowerCase() === "f") return false;
+    return true;
+  });
   t.open(pane);
   const tab = { id, title, sid, term: t, fit, pane };
   tabs.push(tab);
@@ -1379,6 +1494,18 @@ if (location.hash.startsWith("#hosts-demo")) {
 }
 
 // 会话清单以前端内存镜像为准，启动时从磁盘拉一次
+if (location.hash.startsWith("#find-demo")) {
+  // 终端里本来就有启动 banner，直接拿它当搜索素材，验证全链路：扫 buffer → 高亮 → 计数
+  const q = location.hash.includes("?")
+    ? new URLSearchParams(location.hash.split("?")[1]).get("q") ?? "Portio"
+    : "Portio";
+  setTimeout(() => {
+    findToggle(true);
+    findInput.value = q;
+    findRefresh();
+  }, 60);
+}
+
 if (location.hash.startsWith("#sess-demo") || location.hash.includes("ctx-demo")) {
   saveSession({ host: "web-01.example.com", port: 22, user: "deploy", auth: "key", keyfile: "~/.ssh/id_ed25519" });
   saveSession({ host: "10.0.8.12", port: 2222, user: "root", auth: "password" });

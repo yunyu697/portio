@@ -169,6 +169,7 @@
 | 31 | 窗口控制按钮 | 控件 | 宽 44、高满标题栏；hover `--surface-2`；关闭 hover `--danger` + `--on-danger` |
 | 32 | 记住口令勾选行 | 控件 | 跟在密码输入下方、同一列；行高 `--ctl`、gap `--sp-2`、12 号 `--text-3`；勾选框 12×12（`--sp-3`）、`--r-4`、1px `--line-strong`、底 `--surface-2`；`hover` 边框转 `--accent`；选中底 `--accent` + 对勾 `--on-accent`（自绘，不用系统原生勾选框——原生在深色下是亮白方块） |
 | 33 | 已知主机行 | 列表 | 单行一个 `host:port`：行高 `--ctl`、`padding` 左 `--sp-3` 右 `--sp-2`、gap `--sp-3`、`--r-6`、1px `--line` 边框、底 `--surface-2`、列 `minmax(0,1fr) / auto / auto`；主机名 `--text` 单行省略、端口 `--mono` `--text-3`；指纹 `--mono` `--fs-11` `--text-3` （中段省略、全文进 `title`）；删除按钮无边框、`--fs-11` `--text-3`，hover `--danger` + `--surface-3`；空态是 `--line` 虚线框 + `--fs-12` `--text-3` 居中（删除只删本地记录，下次连接重新走首次信任，不降低校验标准） |
+| 34 | 终端搜索条（Ctrl+F） | 浮层 | 贴终端面板右上（`top` / `right` = `--sp-2`）、高 `--ctl`、底 `--surface-3`、1px `--line`、`--r-6`、`--shadow-1`、内边距 `0 --sp-1 0 --sp-2`、gap `--sp-1`；输入透明底、`--mono` `--fs-12`、宽 132、placeholder `--text-3`、无系统 outline；计数 `--mono` `--fs-11` `--text-3`，无命中转 `--danger`；图标钮 `--ctl` 见方、16 号内联 SVG 描边 1.5、hover `--accent` + `--line-soft`、active `--surface-2`；聚焦用 `:focus-within` 把整条边框转 `--accent`；进出 240ms 上移 4px 淡入（`--dur-2` / `--ease-out`），Esc 关闭并把焦点交还终端；`prefers-reduced-motion` 下无动画 |
 
 ## 11. 文案
 

@@ -156,6 +156,29 @@
   /* ---------- 终端宿主 ---------- */
   .term-host{flex:1;min-width:0;min-height:0;padding:0;background:var(--term-bg);overflow:hidden;position:relative}
   .term-host .xterm{height:100%}
+  /* 终端查找条（规范 §10 #34）：浮在画布右上，不挤压字符网格 */
+  .find{position:absolute;top:var(--sp-2);right:var(--sp-2);z-index:3;
+    display:flex;align-items:center;gap:var(--sp-1);height:var(--ctl);
+    padding:0 var(--sp-1) 0 var(--sp-2);background:var(--surface-3);
+    border:1px solid var(--line);border-radius:var(--r-6);box-shadow:var(--shadow-1);
+    opacity:0;transform:translateY(-4px);pointer-events:none;
+    transition:opacity var(--dur) var(--ease),transform var(--dur-2) var(--ease-out),
+      border-color var(--dur) var(--ease)}
+  .find.open{opacity:1;transform:none;pointer-events:auto}
+  .find[hidden]{display:none}
+  .find:focus-within{border-color:var(--accent)}
+  .find input{flex:1;width:132px;min-width:0;height:100%;border:0;background:transparent;
+    color:var(--text);font-family:var(--mono);font-size:var(--fs-12);outline:none}
+  .find input::placeholder{color:var(--text-3)}
+  .find-n{font-family:var(--mono);font-size:var(--fs-11);color:var(--text-3);
+    padding-right:var(--sp-1);white-space:nowrap}
+  .find-n.bad{color:var(--danger)}
+  .find-btn{appearance:none;display:grid;place-items:center;flex:none;width:var(--ctl);height:var(--ctl);
+    border:0;background:transparent;color:var(--text-2);border-radius:var(--r-4);cursor:pointer}
+  .find-btn:hover{color:var(--accent);background:var(--line-soft)}
+  .find-btn:active{background:var(--surface-2)}
+  .find-btn svg{display:block;width:16px;height:16px;stroke:currentColor;stroke-width:1.5;
+    fill:none;stroke-linecap:round;stroke-linejoin:round}
   .term-pane{position:absolute;inset:0;padding:4px 0 0 8px;display:none}
   .term-pane.on{display:block}
 
@@ -396,7 +419,7 @@
         <rect x="11.2" y="16.1" width="4.2" height="1.5" rx=".75" fill="var(--mark-accent)" opacity=".5"/>
         <rect x="15.4" y="11.3" width="3.6" height="1.4" rx=".7" fill="var(--mark-accent)"/>
       </svg>
-      <b data-tauri-drag-region>Portio</b><span class="ver" data-tauri-drag-region>1.0.4-Alpha3</span>
+      <b data-tauri-drag-region>Portio</b><span class="ver" data-tauri-drag-region>1.0.4-Alpha4</span>
     </div>
     <!-- 标签条本身就是标题栏里最大的一片空白，之前没挂 drag 区域，
          于是整条中间地段都点不动窗口。挂上后：空白处可拖、可双击最大化，标签项照常点击。 -->
@@ -458,7 +481,22 @@
         <article class="pane term">
           <div class="pane-head"><span>终端</span><span class="path">—</span>
             <span class="right"><span>80×24</span></span></div>
-          <div class="term-host" id="term"></div>
+          <div class="term-host" id="term">
+            <div class="find" id="find" hidden>
+              <input id="find-q" type="text" placeholder="查找终端内容" spellcheck="false"
+                     autocomplete="off" aria-label="查找终端内容">
+              <span class="find-n" id="find-n">0/0</span>
+              <button class="find-btn" id="find-prev" type="button" title="上一个（Shift+Enter）" aria-label="上一个匹配">
+                <svg viewBox="0 0 16 16"><path d="M4 10l4-4 4 4"/></svg>
+              </button>
+              <button class="find-btn" id="find-next" type="button" title="下一个（Enter）" aria-label="下一个匹配">
+                <svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg>
+              </button>
+              <button class="find-btn" id="find-x" type="button" title="关闭（Esc）" aria-label="关闭查找">
+                <svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+              </button>
+            </div>
+          </div>
         </article>
         <div class="gutter-v" id="gutter-split" title="拖动调整终端与文件面板比例"></div>
         <article class="pane files">

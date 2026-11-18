@@ -10,6 +10,23 @@
 > 规则：**先写更新内容，再打包**。每个版本一个 `## [版本] - 日期` 小节，发布时整段复制到 GitHub Release 即可。
 > 只写用户能感知的变化；内部重构放 `### Changed`，未验证的能力写进 `### Known limitations`。
 
+## [1.0.4-Alpha4] - 2026-11-18
+
+### Added
+- **终端查找（Ctrl+F）**：画布右上浮出一条查找栏，输入即扫、`Enter` 下一个、`Shift+Enter` 上一个、`Esc` 收起并把焦点还给终端；右侧 `n/N` 计数，没有命中时转危险色。
+  - 扫的是整条 buffer（含滚进滚动缓冲的旧行），不是当前可视区。
+  - 命中的那一条用 xterm 的 `select()` 高亮，`scrollToLine()` 把它挪到视野中间。
+  - 没引 xterm 的 search addon：`select` / `scrollToLine` / `buffer.active` 三个公共 API 就够，少一个依赖也少一份版本对齐的麻烦。
+- 给终端装了 `attachCustomKeyEventHandler`，先把 `Ctrl+F` 拦下来——否则 `^F` 会被当成输入发给远端。
+
+### Changed
+- 设计规范 §10 加第 34 行「终端搜索条（Ctrl+F）」，写清位置、高度、计数配色、按钮态与进出行效。
+
+### Known limitations
+- 只高亮**当前一条**命中，不像编辑器那样把所有命中都染一遍（要做到得引 search addon，已记 backlog）。
+- 按 buffer 行扫描，跨折行边界的命中找不到（终端折行时一个词被劈成两行的情况）。
+- 大滚动缓冲（20000 行）下的手感只在 8000 行档估过，未实测卡顿。
+
 ## [1.0.4-Alpha3] - 2026-11-18
 
 ### Added
