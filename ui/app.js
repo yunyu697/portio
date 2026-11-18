@@ -2505,3 +2505,122 @@ if (location.hash.includes("ctx-test")) {
     ? `CTX-SELFTEST-OK ${cases.length}`
     : `CTX-SELFTEST-FAIL ${JSON.stringify(bad)}`;
 }
+
+// #narrow-test：窄窗布局门禁。无头里用 --window-size 换宽度跑同一页，量的是真实几何。
+// 收三类用户亲自报过的问题：导入下拉的条目会溢到侧栏外；传输队列收起后还留半截空白；
+// 文件面板"能完全折叠"到底是不是真折叠（折叠后终端必须吃满整列）。
+// 另加两条兜底：整页不许有横向滚动条，右键菜单贴到窗口右缘必须往回收。
+if (location.hash.includes("narrow-test")) {
+  document.body.classList.add("dragging", "dragging-x"); // 关过渡，只量终态
+  const rect = (el) => el.getBoundingClientRect();
+  const bad = [];
+  const rows = {};
+  const W = window.innerWidth;
+
+  // 侧栏按最窄（180）算，这是菜单最容易被挤出去的情形
+  const prevSide = parseFloat(getComputedStyle(root).getPropertyValue("--sidebar")) || 264;
+  const prevFoldedMain = mainEl.classList.contains("collapsed");
+  mainEl.classList.remove("collapsed");
+  applySidebar(PREF.sidebar.min);
+
+  // ① 导入下拉：整条落在侧栏里，条目文字不出菜单边框
+  const trigger = document.getElementById("btn-import");
+  const menu = document.getElementById("import-menu");
+  menu.hidden = false;
+  trigger.setAttribute("aria-expanded", "true");
+  const side = rect(sidebarEl);
+  const m = rect(menu);
+  const items = [...menu.querySelectorAll(".item")];
+  const itemRight = Math.max(...items.map((it) => rect(it).right));
+  const itemLeft = Math.min(...items.map((it) => rect(it).left));
+  rows.menu = {
+    sideW: Math.round(side.width),
+    gapToSideRight: Math.round(side.right - m.right),
+    itemOverMenuRight: Math.round(itemRight - m.right),
+    itemOverMenuLeft: Math.round(m.left - itemLeft),
+    items: items.length,
+  };
+  if (m.right > side.right + 0.5) bad.push(`导入下拉右侧越出侧栏 ${Math.round(m.right - side.right)}px`);
+  if (m.left < side.left - 0.5) bad.push(`导入下拉左侧越出侧栏 ${Math.round(side.left - m.left)}px`);
+  if (itemRight > m.right + 0.5) bad.push(`导入条目文字越出菜单右侧 ${Math.round(itemRight - m.right)}px`);
+  if (itemLeft < m.left - 0.5) bad.push(`导入条目文字越出菜单左侧 ${Math.round(m.left - itemLeft)}px`);
+  // 光是盒子在框内不算数：条目里的文字得真被裁住。条目自己 overflow 可见、文字又比盒子宽，
+  // 就是用户截图里那种"字跑到菜单边框外面、再被侧栏边缘切掉"的样子。
+  for (const it of items) {
+    const cs = getComputedStyle(it);
+    const over = it.scrollWidth - it.clientWidth;
+    if (over > 1 && cs.overflowX === "visible") {
+      bad.push(`导入条目「${it.textContent.trim()}」文字比盒子宽 ${over}px 且没裁住`);
+    }
+  }
+  const acts = document.getElementById("sess-actions");
+  rows.menu.actionsOverflow = acts.scrollWidth - acts.clientWidth;
+  if (acts.scrollWidth > acts.clientWidth + 1) {
+    bad.push(`动作行横向溢出 ${acts.scrollWidth - acts.clientWidth}px（菜单会被侧栏边缘切掉）`);
+  }
+
+  // ② 传输队列收起后只占一行（等于标题条高度），正文整块不占地方
+  const prevDrawer = parseFloat(getComputedStyle(root).getPropertyValue("--drawer")) || 172;
+  applyDrawer(PREF.drawer.min);
+  const dBox = rect(drawerEl);
+  const dHead = rect(document.getElementById("drawer-head"));
+  const dBody = rect(document.querySelector(".drawer-body"));
+  rows.drawer = { h: Math.round(dBox.height), head: Math.round(dHead.height), body: Math.round(dBody.height) };
+  if (!drawerEl.classList.contains("collapsed")) bad.push("抽屉收到一行高却没进 collapsed 态");
+  if (Math.abs(dBox.height - dHead.height) > 1) bad.push(`抽屉收起后 ${Math.round(dBox.height)}px，标题条 ${Math.round(dHead.height)}px，不是一行`);
+  if (dBody.height > 0.5) bad.push(`抽屉收起后正文还占 ${Math.round(dBody.height)}px`);
+
+  // ③ 文件面板完全折叠：面板宽度归 0、终端吃满整列、把手还是 10px
+  const prevFolded = filesFolded;
+  applyFilesFold(true);
+  const sp = rect(splitEl);
+  const fp = rect(filesPaneEl);
+  const tp = rect(document.querySelector(".pane.term"));
+  const gp = rect(document.getElementById("gutter-split"));
+  rows.fold = {
+    split: Math.round(sp.width),
+    files: Math.round(fp.width),
+    term: Math.round(tp.width),
+    gutter: Math.round(gp.width),
+  };
+  if (fp.width > 0.5) bad.push(`文件面板折叠后还剩 ${Math.round(fp.width)}px 宽`);
+  if (Math.abs(tp.width - (sp.width - gp.width)) > 1) bad.push("文件面板折叠后终端没吃满整列");
+  if (gp.width < 9 || gp.width > 11) bad.push(`折叠态把手 ${Math.round(gp.width)}px，应为 10px`);
+
+  // ④ 整页不许有横向滚动条
+  const doc = document.documentElement;
+  if (doc.scrollWidth > W + 0.5) bad.push(`整页出现横向滚动 ${Math.round(doc.scrollWidth - W)}px`);
+
+  // ⑤ 窄窗下模态不能被挤出窗口：「完成」按钮得在窗里，卡片四条边都得留出余量
+  const settingsModal = document.getElementById("settings-modal");
+  const wasOpen = settingsModal.classList.contains("open");
+  if (!wasOpen) settingsModal.classList.add("open");
+  const sheet = rect(settingsModal.querySelector(".sheet"));
+  const done = rect(document.getElementById("btn-set-close"));
+  rows.sheet = { w: Math.round(sheet.width), h: Math.round(sheet.height), rightGap: Math.round(W - sheet.right), bottomGap: Math.round(window.innerHeight - sheet.bottom) };
+  if (sheet.right > W - 4) bad.push(`设置卡片右侧越出窗口 ${Math.round(sheet.right - W)}px`);
+  if (sheet.left < 4) bad.push(`设置卡片左侧越出窗口 ${Math.round(-sheet.left)}px`);
+  if (done.right > W - 4 || done.left < 0) bad.push("「完成」按钮被挤出窗口");
+  if (sheet.height > window.innerHeight) bad.push(`设置卡片高 ${Math.round(sheet.height)}px 超过视口`);
+  if (!wasOpen) settingsModal.classList.remove("open");
+
+  // ⑥ 右键菜单贴到窗口右缘要往回收（窄窗最容易越界）
+  showCtx(W + 200, 120, [{ label: "窄窗内收", run() {} }]);
+  const cBox = rect(ctxMenu);
+  if (cBox.right > W - 5) bad.push(`右键菜单右侧越出视口 ${Math.round(cBox.right - W)}px`);
+  if (cBox.left < 0) bad.push(`右键菜单左侧越出视口 ${Math.round(-cBox.left)}px`);
+
+  // 收拾现场：菜单收起、折叠与宽度都还原
+  hideCtx();
+  applyFilesFold(prevFolded);
+  applyDrawer(prevDrawer);
+  applySidebar(prevSide);
+  if (prevFoldedMain) mainEl.classList.add("collapsed");
+  menu.hidden = true;
+  trigger.setAttribute("aria-expanded", "false");
+  document.body.classList.remove("dragging", "dragging-x");
+
+  document.title = bad.length === 0
+    ? `NARROW-SELFTEST-OK w=${W} ${JSON.stringify(rows)}`
+    : `NARROW-SELFTEST-FAIL w=${W} ${JSON.stringify(bad)} ${JSON.stringify(rows)}`;
+}

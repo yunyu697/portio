@@ -150,18 +150,21 @@ def a_script(script: str, label: str) -> tuple[str, str]:
     return PASS, (out.splitlines()[-1] if out else label)
 
 
-def chrome_title(chrome: str, url: str, profile: str) -> tuple[int, str]:
+def chrome_title(chrome: str, url: str, profile: str, window: str | None = None) -> tuple[int, str]:
+    args = [
+        chrome,
+        "--headless=new",
+        "--disable-gpu",
+        "--allow-file-access-from-files",
+        "--virtual-time-budget=4000",
+        f"--user-data-dir={profile}",
+        "--dump-dom",
+    ]
+    if window:
+        args.insert(5, f"--window-size={window}")
+    args.append(url)
     proc = subprocess.run(
-        [
-            chrome,
-            "--headless=new",
-            "--disable-gpu",
-            "--allow-file-access-from-files",
-            "--virtual-time-budget=4000",
-            f"--user-data-dir={profile}",
-            "--dump-dom",
-            url,
-        ],
+        args,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -170,6 +173,24 @@ def chrome_title(chrome: str, url: str, profile: str) -> tuple[int, str]:
     )
     m = re.search(r"<title>(.*?)</title>", proc.stdout or "", re.S)
     return proc.returncode, (m.group(1).strip() if m else "")
+
+
+def a_narrow(chrome: str | None, profile: str) -> tuple[str, str]:
+    """A13：同一页在两档窄窗（1024 / 900）各量一遍几何，两档都得 OK。"""
+    if not chrome:
+        return SKIP, "找不到 Chrome（设 PORTIO_CHROME）"
+    url = (UI / "index.html").as_uri() + "#narrow-test"
+    details = []
+    for win in ("1024,620", "900,620"):
+        code, title = chrome_title(chrome, url, profile, window=win)
+        if code != 0:
+            return FAIL, f"{win}: Chrome 退出码 {code}"
+        if "ERR:" in title:
+            return FAIL, f"{win}: 标题里出现 ERR: → {title}"
+        if not title.startswith("NARROW-SELFTEST-OK"):
+            return FAIL, f"{win}: {title or '抓不到 title'}"
+        details.append(f"{win.split(',')[0]} OK")
+    return PASS, " / ".join(details)
 
 
 def a_page(chrome: str | None, profile: str, frag: str, expect: str) -> tuple[str, str]:
@@ -240,6 +261,7 @@ def main(argv: list[str]) -> int:
         ("A10", "portio-app.exe 子系统 = GUI", True),
         ("A11", "NSIS 安装包体积与文件名", True),
         ("A12", "#ctx-test = CTX-SELFTEST-OK 9（九处面板右键菜单）", True),
+        ("A13", "#narrow-test 两档窄窗（1024 / 900）几何", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -289,8 +311,10 @@ def main(argv: list[str]) -> int:
             status, detail = a10_pe_subsystem()
         elif code == "A11":
             status, detail = a11_bundle()
-        else:
+        elif code == "A12":
             status, detail = a_page(chrome, profile, "#ctx-test", "CTX-SELFTEST-OK 9")
+        else:
+            status, detail = a_narrow(chrome, profile)
         results.append((code, label, status, detail))
         print(f"[{status}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
 
