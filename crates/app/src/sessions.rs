@@ -372,3 +372,23 @@ pub async fn sftp_remove(
     let sftp = guard.as_ref().ok_or("SFTP 未就绪")?;
     sftp.remove(&path, is_dir).await.map_err(|e| e.to_string())
 }
+
+/// SFTP 的 rename 是"移动 + 改名"合一，所以只给同一目录内的改名调用；
+/// 跨目录移动留给以后的文件操作面板，避免这里悄悄变成 mover。
+#[tauri::command]
+pub async fn sftp_rename(
+    reg: State<'_, Registry>,
+    id: u32,
+    from: String,
+    to: String,
+) -> Result<(), String> {
+    let handle = sftp_of(&reg, id)?;
+    let guard = handle.lock().await;
+    let sftp = guard.as_ref().ok_or("SFTP 未就绪")?;
+    sftp.rename(&from, &to).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn local_rename(from: String, to: String) -> Result<(), String> {
+    std::fs::rename(&from, &to).map_err(|e| format!("重命名本地文件失败：{e}"))
+}

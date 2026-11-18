@@ -69,7 +69,9 @@ pub fn run() {
             sessions::sftp_download,
             sessions::sftp_upload,
             sessions::sftp_mkdir,
-            sessions::sftp_remove
+            sessions::sftp_remove,
+            sessions::sftp_rename,
+            sessions::local_rename
         ])
         .setup(|app| {
             if let Some(win) = app.get_webview_window("main") {

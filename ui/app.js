@@ -1086,6 +1086,7 @@ function renderList(el, items, side) {
           },
           { label: "进入目录", disabled: !it.is_dir, run: () => loadRemote(it.path) },
           { sep: true },
+          { label: "重命名", run: () => renameRemote(it) },
           { label: "新建文件夹", run: () => newRemoteDir() },
           { label: "删除", hint: it.is_dir ? "目录" : "文件", run: () => removeRemote(it) },
           { sep: true },
@@ -1097,6 +1098,7 @@ function renderList(el, items, side) {
           { label: "上传到远端", disabled: it.is_dir, run: () => uploadFile(it) },
           { label: "进入目录", disabled: !it.is_dir, run: () => loadLocal(it.path) },
           { sep: true },
+          { label: "重命名", run: () => renameLocal(it) },
           { label: "复制路径", run: () => copyText(it.path) },
           { label: "刷新列表", run: () => loadLocal(localPath) },
         ]);
@@ -1205,6 +1207,32 @@ async function removeRemote(item) {
   if (ok !== null) {
     toast(`已删除 ${item.name}`);
     loadRemote(remotePath);
+  }
+}
+
+// 重命名只改同一目录内的名字；改名后如果撞名，服务端会直接报错，这里不替它兜底
+async function renameRemote(item) {
+  if (sessionId === null) return;
+  const name = window.prompt(`把「${item.name}」改成：`, item.name);
+  if (!name || name === item.name) return;
+  const ok = await call("sftp_rename", {
+    id: sessionId,
+    from: item.path,
+    to: posixJoin(remotePath, name),
+  });
+  if (ok !== null) {
+    toast(`已重命名为 ${name}`);
+    loadRemote(remotePath);
+  }
+}
+
+async function renameLocal(item) {
+  const name = window.prompt(`把「${item.name}」改成：`, item.name);
+  if (!name || name === item.name) return;
+  const ok = await call("local_rename", { from: item.path, to: winJoin(localPath, name) });
+  if (ok !== null) {
+    toast(`已重命名为 ${name}`);
+    loadLocal(localPath);
   }
 }
 
