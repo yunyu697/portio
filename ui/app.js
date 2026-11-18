@@ -328,7 +328,8 @@ document.getElementById("hosts-list").addEventListener("click", async (e) => {
 const PREF = {
   sidebar: { key: "portio.sidebar", min: 180, max: 420 },
   split: { key: "portio.split", min: 0.32, max: 0.66 },
-  drawer: { key: "portio.drawer", min: 34, max: 360 },
+  // 抽屉的最小高度就是一行标题条：收起时只剩「传输队列 0 … 展开」这一行
+  drawer: { key: "portio.drawer", min: 28, max: 360 },
 };
 
 function readNum(key, fallback) {
@@ -348,11 +349,18 @@ function applySplit(ratio) {
   localStorage.setItem(PREF.split.key, ratio.toFixed(4));
 }
 // 抽屉高度
+let drawerLast = 172;
 function applyDrawer(px) {
-  root.style.setProperty("--drawer", `${Math.round(px)}px`);
-  localStorage.setItem(PREF.drawer.key, String(Math.round(px)));
+  const h = Math.round(px);
+  root.style.setProperty("--drawer", `${h}px`);
+  localStorage.setItem(PREF.drawer.key, String(h));
+  // 收到一行高就算"收起"：正文整块隐藏，别在标题条下面留半指宽的空白
+  const collapsed = h <= PREF.drawer.min + 2;
+  document.getElementById("drawer").classList.toggle("collapsed", collapsed);
   const head = document.getElementById("drawer-head");
-  if (head) head.querySelector(".right").textContent = px <= PREF.drawer.min + 2 ? "展开" : "收起";
+  if (head) head.querySelector(".right").textContent = collapsed ? "展开" : "收起";
+  // 抽屉一变，终端可用高度跟着变，量一次尺寸
+  requestAnimationFrame(() => fitQuietly());
 }
 
 // 把手不再按像素贴边：位置由栅格与 CSS 的 calc() 决定（见 index.html 的 .main/.split/.gutter-h），
@@ -409,7 +417,28 @@ document.getElementById("gutter-v").addEventListener("click", () => {
   if (sidebarFolded) applyFold(false);
 });
 
+// 文件面板折叠：整块收掉，终端铺满，右缘留一条把手（与会话栏折叠同一套做法）
+const FFOLD_KEY = "portio.filesFolded";
+let filesFolded = localStorage.getItem(FFOLD_KEY) === "1";
+function applyFilesFold(folded) {
+  filesFolded = folded;
+  splitEl.classList.toggle("files-folded", folded);
+  localStorage.setItem(FFOLD_KEY, folded ? "1" : "0");
+  const btn = document.getElementById("files-fold");
+  if (btn) btn.setAttribute("aria-label", folded ? "展开文件面板" : "折叠文件面板");
+  // 终端宽度变了，等一帧让网格落定再量，否则列数按旧宽度算
+  requestAnimationFrame(() => fitQuietly());
+}
+
+document.getElementById("files-fold").addEventListener("click", () => applyFilesFold(true));
+
+// 折叠态：单击右缘把手把文件面板拉回来；展开态：双击把手回到 50%（拖拽不会误触发 dblclick）
+document.getElementById("gutter-split").addEventListener("click", () => {
+  if (filesFolded) applyFilesFold(false);
+});
+
 document.getElementById("gutter-split").addEventListener("pointerdown", dragWith("x", (ev) => {
+  if (filesFolded) return; // 折叠态的把手只用来展开，不调比例
   const box = splitEl.getBoundingClientRect();
   const ratio = (ev.clientX - box.left) / box.width;
   applySplit(Math.min(PREF.split.max, Math.max(PREF.split.min, ratio)));
@@ -421,8 +450,7 @@ document.getElementById("gutter-drawer").addEventListener("pointerdown", dragWit
   applyDrawer(px);
 }));
 
-// 抽屉：点标题栏折叠/展开，比拖拽更常用
-let drawerLast = 172;
+// 抽屉：点标题栏折叠/展开，比拖拽更常用。原来 `drawerLast` 声明在下面，这里先挪上来。
 document.getElementById("drawer-head").addEventListener("click", () => {
   const cur = parseFloat(getComputedStyle(root).getPropertyValue("--drawer")) || 172;
   if (cur > PREF.drawer.min + 2) {
@@ -437,7 +465,10 @@ document.getElementById("drawer-head").addEventListener("click", () => {
 document.getElementById("gutter-v").addEventListener("dblclick", () => {
   if (!sidebarFolded) applyFold(true);
 });
-document.getElementById("gutter-split").addEventListener("dblclick", () => applySplit(0.5));
+document.getElementById("gutter-split").addEventListener("dblclick", () => {
+  if (filesFolded) applyFilesFold(false);
+  else applySplit(0.5);
+});
 
 // ---------- 快捷键 ----------
 window.addEventListener("keydown", (e) => {
@@ -451,6 +482,11 @@ window.addEventListener("keydown", (e) => {
     e.preventDefault();
     applyFold(!sidebarFolded);
     toast(sidebarFolded ? "会话栏已收起（Ctrl+Alt+B 恢复）" : "会话栏已展开");
+  }
+  if (mod && e.key.toLowerCase() === "f") {
+    e.preventDefault();
+    applyFilesFold(!filesFolded);
+    toast(filesFolded ? "文件面板已收起（Ctrl+Alt+F 恢复）" : "文件面板已展开");
   }
   if (e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "w") {
     e.preventDefault();
@@ -608,6 +644,7 @@ applyDensity(localStorage.getItem("portio.density") ?? "standard");
 applySidebar(readNum(PREF.sidebar.key, 264));
 if (sidebarFolded) applyFold(true);
 applySplit(Math.min(PREF.split.max, Math.max(PREF.split.min, readNum(PREF.split.key, 0.5))));
+if (filesFolded) applyFilesFold(true);
 applyDrawer(readNum(PREF.drawer.key, 172));
 
 
@@ -2063,8 +2100,10 @@ function finishTransfer(name, dir, bytes) {
   row.querySelector(".meta").textContent = ok ? `完成 · ${fmtSize(bytes)}` : "失败";
   document.querySelector(".drawer .num").textContent = String(transferRows.size);
   if (window.__TAURI__?.event) {
-    // 让队列自动浮出来看一眼，用户不用自己去翻抽屉
-    document.querySelector(".drawer").classList.remove("collapsed");
+    // 让队列自动浮出来看一眼，用户不用自己去翻抽屉（收起态就恢复到上次的高度，别只露一行）
+    if (document.getElementById("drawer").classList.contains("collapsed")) {
+      applyDrawer(Math.max(drawerLast, 120));
+    }
   }
 }
 

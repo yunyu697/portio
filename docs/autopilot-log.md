@@ -523,3 +523,40 @@ S12 的第一件：终端能找了。第二个交付（分屏）还没动。
 
 **下一步**：S12 第三件——每格的颜色/字号独立设置（或按排期取下一个未完成单元：工作区标签组 / 会话标签页重命名）。
 `docs/backlog.md` 追加：分屏格可拖动改宽窄。
+
+## 2026-11-18 · v1.0.4-Alpha7 · 三处界面修正（用户当轮截图驱动）
+
+**本轮性质**：用户给出实机截图（v1.0.4-Alpha5 窄窗）并直接要求三项改动，属排期外增项（S4 / S14 方向），
+按 autopilot 1.1 条先改 §10 覆盖矩阵再动代码。
+
+**做了什么**
+1. **导入下拉窄窗不溢出**：`.item` 由「文字 + 路径」直接并排改成分段 `<span class="lbl">` + `<span class="path">`；
+   `.item` 加 `min-width:0` + `overflow:hidden`，`.lbl` 拿 `flex:1 1 auto` + 省略号，`.path` 让位（`max-width:48%`）。
+   根因是 grid/flex 子项 `min-width:auto` + `nowrap` 会按内容撑宽，绝对定位菜单（`left/right:0`）定死了宽度，
+   内容便画出边框外并压到终端上。
+2. **文件面板可整块折叠**：`.split.files-folded` 三列改 `minmax(0,1fr) 0 10px`，`.pane.files{display:none}`，
+   `#gutter-split` 搬进第 3 列 `justify-self:stretch`、`::before` 隐去、`::after` 换成 `‹` 字形
+   （与会话栏折叠 `›` 同一套观感）；文件标题条右侧加 `#files-fold` 图标钮（`.pane-tbtn` 26 见方、16 号 SVG）；
+   `applyFilesFold()` + `FFOLD_KEY` 落盘 + 启动恢复；三个入口（标题条钮 / 折叠后单击右缘把手 / `Ctrl+Alt+F`）；
+   `#gutter-split` 的 pointerdown 在折叠态下不调比例，避免拖到 0 宽度。
+3. **传输抽屉收起只占一行**：`PREF.drawer.min` 34 → 28（= `--row`），`applyDrawer()` 里判 `h <= min+2` 加
+   `.drawer.collapsed`（正文 `display:none`）、标题右侧文案切「展开」，末尾 `rAF(fitQuietly)`；
+   `.drawer.collapsed{border-radius:0}`（一行高时圆角会切文字）；`finishTransfer` 里原来只是
+   `classList.remove("collapsed")`（高度不跟着变，会出现「没收起却只露一行」），改成收起态时 `applyDrawer(drawerLast)`。
+4. `.split` 补 `grid-template-columns` 240ms 过渡，`body.dragging` 时与 `.main` / `.stage` 一起关掉。
+
+**验证证据**
+- `node --check ui/app.js` 通过；`check_ui_scale.py`、`check_design_tokens.py` 均 `OK`。
+- 无头量测（1024×620，侧栏压到 180，核验页放在 `ui/` 内、关掉过渡只量终态）标题
+  `PROBE-OK`：`menuRight 168 / sideRight 180`（`menuOverflow −12`）、菜单与条目 `scrollWidth−clientWidth = 0`；
+  折叠后 `filesDisplay none`、`termW 564 = splitW 574 − handleW 10`、折回后回到 360；
+  抽屉收起 `h 28`（`--row` 28）、正文 `none`、文案「展开」，再点回 172 且正文恢复。
+- 截图：`_u3_narrow_menu.png`（1024×620@2x，导入菜单整条落在侧栏内、三项省略号）、
+  `_u3_fold.png`（1180×690@2x，文件面板收起后终端 101×30、抽屉只剩一行）、`_u3_edge.png`（右缘 `‹` 把手 4× 放大）。
+- 提交正文写明验证方式。
+
+**未验证项**
+- 三处收放的实机点检（机器仍锁屏）：鼠标 hover 把手亮箭头、实机按 `Ctrl+Alt+F`、收起后拖回比例的手感。
+- 无头里 rAF/过渡不推进（轨迹停在起点值），核验页一律关过渡只量终态，因此**过渡动画本身**没被观测到。
+
+**下一步**：S12 第三件（每格独立字号/配色），或按排期取「工作区标签组 / 标签重命名」。

@@ -105,6 +105,18 @@
          position:relative}
   .split{display:grid;grid-template-columns:minmax(360px,var(--split, 50%)) 0 minmax(340px,1fr);
          overflow:hidden;min-width:0;min-height:0;position:relative}
+  /* 文件面板整体折叠：终端铺满，右缘只留一条把手，箭头指着"还能拉出来"。
+     与会话栏折叠（.main.collapsed）同一套做法，别另起一套视觉。 */
+  .split.files-folded{grid-template-columns:minmax(0,1fr) 0 10px}
+  .split.files-folded > .pane.files{display:none}
+  .split.files-folded > #gutter-split{grid-column:3;justify-self:stretch;width:10px;margin-left:0;
+         cursor:pointer;background:transparent}
+  .split.files-folded > #gutter-split::before{display:none}
+  .split.files-folded > #gutter-split::after{content:"‹";position:absolute;top:50%;left:50%;
+         width:auto;height:auto;transform:translate(-50%,-50%);background:none;opacity:.55;
+         font-size:var(--fs-12);color:var(--text-3);border-radius:0;transition:opacity .12s,color .12s}
+  .split.files-folded > #gutter-split:hover{box-shadow:inset 1px 0 0 var(--accent)}
+  .split.files-folded > #gutter-split:hover::after{opacity:1;color:var(--accent);transform:translate(-50%,-50%)}
   .split > .pane.term{grid-column:1}
   .split > .pane.files{grid-column:3}
   .split > #gutter-split{grid-column:2}
@@ -113,7 +125,14 @@
              background:var(--surface);border-bottom:1px solid var(--line-strong);
              font-size:var(--fs-11);color:var(--text-3);letter-spacing:.04em}
   .pane-head .path{font-family:var(--mono);color:var(--text-2);letter-spacing:0}
-  .pane-head .right{margin-left:auto;display:flex;gap:4px}
+  .pane-head .right{margin-left:auto;display:flex;gap:4px;align-items:center}
+  /* 标题条里的图标钮：与 .fp-btn 同一档（16 号图标、hover 转强调色），只是盒高按 --ctl */
+  .pane-tbtn{appearance:none;display:grid;place-items:center;width:var(--ctl);height:var(--ctl);
+             border:0;background:transparent;color:var(--text-3);border-radius:var(--r-4);cursor:pointer;
+             transition:color var(--dur) var(--ease),background var(--dur) var(--ease)}
+  .pane-tbtn:hover{color:var(--accent);background:var(--line-soft)}
+  .pane-tbtn svg{display:block;width:16px;height:16px;stroke:currentColor;stroke-width:1.5;fill:none;
+                 stroke-linecap:round;stroke-linejoin:round}
   .pane-body{flex:1;overflow:auto;padding:12px;font-family:var(--mono);font-size:var(--fs-12);
              color:var(--text-2);line-height:var(--lh-24)}
   .pane.term .pane-body{background:var(--term-bg)}
@@ -141,6 +160,9 @@
   .drawer-head .right{margin-left:auto}
   .drawer-body{flex:1;padding:0 12px 12px;overflow:auto;font-family:var(--mono);
                font-size:var(--fs-11);color:var(--text-3)}
+  /* 收起态只占一行高度：只剩标题条那一行，正文整块不占位（原来留出半个空白条） */
+  .drawer.collapsed .drawer-body{display:none}
+  .drawer.collapsed{border-radius:0}
 
   .statusbar{display:flex;align-items:center;gap:16px;padding:0 12px;background:var(--surface);
              border-top:1px solid var(--line-strong);font-size:var(--fs-11);color:var(--text-3)}
@@ -317,12 +339,17 @@
   .sess-import .menu[hidden]{display:none}
   .sess-import .item{display:flex;align-items:center;gap:8px;height:var(--ctl);padding:0 8px;
              border:0;background:none;border-radius:var(--r-4);color:var(--text-2);
-             font-size:var(--fs-12);text-align:left;cursor:pointer;white-space:nowrap;
+             font-size:var(--fs-12);text-align:left;cursor:pointer;white-space:nowrap;min-width:0;
+             overflow:hidden;
              transition:background var(--dur) var(--ease),color var(--dur) var(--ease)}
   .sess-import .item:hover{background:var(--surface-2);color:var(--text)}
+  /* 菜单宽度跟着动作行走，条目内容不能反过来把菜单撑破：文字先省略，路径再让位。
+     面板被拖窄时（哪怕只有 160）菜单也整条留在侧栏里，不会溢出到终端上。 */
+  .sess-import .item .lbl{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;
+             white-space:nowrap}
   /* 来源路径是补充信息：动作行窄到放不下时优先让它省略，别把整行撑出菜单边框 */
   .sess-import .item .path{color:var(--text-3);font-family:var(--mono);font-size:var(--fs-11);
-             margin-left:auto;padding-left:8px;flex:0 1 auto;min-width:0;
+             margin-left:auto;padding-left:8px;flex:0 1 auto;min-width:0;max-width:48%;
              overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .sess-empty{padding:24px 16px;color:var(--text-3);font-size:var(--fs-12)}
   /* 右键菜单：所有模块共用一套，位置在鼠标点，越界自动内收 */
@@ -401,8 +428,10 @@
   /* 面板伸缩：会话栏收放、传输抽屉高低都靠栅格轨道过渡，不是跳一下 */
   .main{transition:grid-template-columns var(--dur-2) var(--ease-out)}
   .stage{transition:grid-template-rows var(--dur-2) var(--ease-out)}
+  /* 文件面板折叠也走同一条曲线，别让右边突然"消失" */
+  .split{transition:grid-template-columns var(--dur-2) var(--ease-out)}
   /* 拖拽时关掉过渡，否则跟手感被吃掉 */
-  body.dragging .main,body.dragging-x .stage{transition:none}
+  body.dragging .main,body.dragging .split,body.dragging-x .stage{transition:none}
   .tbtn,.seg button,.btn,.fp-btn{transition:background var(--dur) var(--ease),color var(--dur) var(--ease),
     border-color var(--dur) var(--ease)}
   .sess-row,.fp-row,.ctx-item,.tr{transition:background var(--dur) var(--ease),color var(--dur) var(--ease)}
@@ -442,7 +471,7 @@
         <rect x="11.2" y="16.1" width="4.2" height="1.5" rx=".75" fill="var(--mark-accent)" opacity=".5"/>
         <rect x="15.4" y="11.3" width="3.6" height="1.4" rx=".7" fill="var(--mark-accent)"/>
       </svg>
-      <b data-tauri-drag-region>Portio</b><span class="ver" data-tauri-drag-region>1.0.4-Alpha6</span>
+      <b data-tauri-drag-region>Portio</b><span class="ver" data-tauri-drag-region>1.0.4-Alpha7</span>
     </div>
     <!-- 标签条本身就是标题栏里最大的一片空白，之前没挂 drag 区域，
          于是整条中间地段都点不动窗口。挂上后：空白处可拖、可双击最大化，标签项照常点击。 -->
@@ -480,9 +509,9 @@
             <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.2l6 6 6-6"/></svg>
           </button>
           <div class="menu" id="import-menu" role="menu" hidden>
-            <button class="item" role="menuitem" id="btn-import-ssh">从 SSH 配置<span class="path">~/.ssh/config</span></button>
-            <button class="item" role="menuitem" id="btn-import-xshell">从 Xshell<span class="path">Sessions</span></button>
-            <button class="item" role="menuitem" id="btn-import-winscp">从 WinSCP<span class="path">WinSCP.ini</span></button>
+            <button class="item" role="menuitem" id="btn-import-ssh"><span class="lbl">从 SSH 配置</span><span class="path">~/.ssh/config</span></button>
+            <button class="item" role="menuitem" id="btn-import-xshell"><span class="lbl">从 Xshell</span><span class="path">Sessions</span></button>
+            <button class="item" role="menuitem" id="btn-import-winscp"><span class="lbl">从 WinSCP</span><span class="path">WinSCP.ini</span></button>
           </div>
         </div>
       </div>
@@ -526,7 +555,12 @@
         <div class="gutter-v" id="gutter-split" title="拖动调整终端与文件面板比例"></div>
         <article class="pane files">
           <div class="pane-head"><span>文件</span><span class="path" id="files-path">—</span>
-            <span class="right"><span id="files-mode">未连接</span></span></div>
+            <span class="right"><span id="files-mode">未连接</span>
+              <button class="pane-tbtn" id="files-fold" type="button"
+                      title="折叠文件面板（Ctrl+Alt+F）" aria-label="折叠文件面板">
+                <svg viewBox="0 0 16 16"><path d="M6 3l5 5-5 5"/></svg>
+              </button>
+            </span></div>
           <div class="fp" id="fp">
             <div class="fp-block" data-side="remote">
               <div class="fp-bar">
@@ -675,6 +709,7 @@
         <div class="row"><span class="k"><kbd>F5</kbd></span><span class="d">刷新终端显示与尺寸</span></div>
         <div class="row"><span class="k"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>H</kbd></span><span class="d">切换窗口全屏</span></div>
         <div class="row"><span class="k"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>B</kbd></span><span class="d">收起 / 展开左侧会话栏（也可双击分隔把手）</span></div>
+<div class="row"><span class="k"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>F</kbd></span><span class="d">收起 / 展开右侧文件面板（也可点标题条箭头、单击右缘把手）</span></div>
         <div class="grp">文件</div>
         <div class="row"><span class="k"><kbd>双击</kbd></span><span class="d">目录进入；文件则直接下载或上传</span></div>
         <div class="row"><span class="k"><kbd>↑</kbd></span><span class="d">回到上级目录</span></div>
