@@ -149,3 +149,11 @@
 - 验证：`cargo test -p portio-core` 34 passed（含 xshell 5 条）；`cargo test -p portio-app` 4 passed（含 xshell 目录 1 条）；`cargo check` 全绿；`node --check ui/app.js` exit 0；`check_design_tokens.py` → OK（新按钮沿用 `.sess-import`，未引入新色值）；无头 2× 截图 `_s6_xshell.png`（浅色）确认两个导入按钮同时在会话栏且样式一致、`<title>` 仍是 `Portio`（无 `ERR:`）。
 - 未验证：真实 Xshell 会话目录（本机未装 Xshell，`%APPDATA%\NetSarang\Xshell\Sessions` 不存在）；桌面版点击按钮后的 IPC 往返与 toast；带密码字段的 `.xsh` 真样本（只用构造样例覆盖）。
 - 下一步：S6 收尾单元 WinSCP `.ini` 导入；之后 S7 会话分组 / S8 设置项。
+## 2026-11-18 · v1.0.2-Alpha10 · S6 收尾单元：WinSCP .ini 导入
+
+- 新增 `crates/core/src/winscp.rs`：`parse_winscp_ini(text) -> ImportOutcome`。按段解析，只认 `[Sessions\...]`；取 `HostName` / `UserName` / `PortNumber` / `FSProtocol` / `PublicKeyFile`|`KeyFilePath`（→ `auth=key`）。`FSProtocol` 3 以上（FTP/WebDAV/S3）与非会话段不计入记录，前者计入 skipped、后者不计；`[Sessions\分组\主机]` 的组名用 ` / ` 并入备注名；缺主机或缺账号跳过；密码不读。5 条单测。
+- 外壳 `session_store.rs` 新增 `sessions_import_winscp(app, path?)` 与可单测的 `import_winscp_file`。`path` 为空时按 `%APPDATA%\WinSCP.ini` → `%LOCALAPPDATA%\WinSCP.ini` → `文档\WinSCP.ini` 顺序找第一份存在的，全都没有就把试过的路径列出来报错（本机暂无文件选择对话框，登记为后续项）。有新增才原子写回。1 条 app 单测。
+- `lib.rs` 注册命令；`ui/index.html` 加第三个虚线按钮「导入 WinSCP 站点」；`ui/app.js` 加 handler。
+- 验证：`cargo test -p portio-core` 39 passed（winscp 5 条）；`cargo test -p portio-app` 5 passed（winscp 1 条：1 个 SSH＋1 个 FTP → added=1 / skipped=1）；`node --check ui/app.js` 0；`check_design_tokens.py` OK；无头 2× 截图 `_s6_winscp.png` 三个导入按钮同排、样式一致；`#theme-dark` dump-dom 的 `<title>` 仍 `Portio`（无 `ERR:`）。
+- 未验证：真实 `WinSCP.ini`（本机未装 WinSCP，三条候选路径都无文件）；桌面版点击按钮的 IPC 与 toast；「30 条真实会话」这条 S6 完成定义仍缺样本。
+- 下一步：S7 会话分组（按项目分组、组内折叠）与 S8 设置项；下一步版本按规则进到 1.0.3-Alpha1。

@@ -107,6 +107,7 @@ pub fn run() {
             session_store::sessions_path,
             session_store::sessions_import_ssh_config,
             session_store::sessions_import_xshell,
+            session_store::sessions_import_winscp,
             sessions::ssh_connect,
             sessions::ssh_input,
             sessions::ssh_resize,

@@ -7,11 +7,13 @@ mod session;
 mod sshconfig;
 mod store;
 mod tabs;
+mod winscp;
 mod xshell;
 
 pub use session::{GroupId, HostId, Session, SessionGroup, SessionId, SessionKind};
 pub use sshconfig::{parse_ssh_config, ImportOutcome};
 pub use store::{SessionRecord, SessionStore, MAX_RECORDS};
+pub use winscp::parse_winscp_ini;
 pub use xshell::parse_xshell_session;
 pub use tabs::{DEFAULT_MAX_TABS, Tab, TabId, TabSet};
 

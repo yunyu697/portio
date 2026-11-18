@@ -205,6 +205,93 @@ fn import_xshell_dir(
     Ok((added, skipped + dup))
 }
 
+/// WinSCP 的 INI 可能在的地方：便携模式放用户目录，官方安装版导出时也常见在 Documents。
+/// 没有文件选择对话框之前，按顺序找这几处，都找不到就把路径列给用户看。
+fn winscp_candidates(app: &tauri::AppHandle) -> Vec<PathBuf> {
+    let mut v = Vec::new();
+    if let Ok(d) = app.path().data_dir() {
+        v.push(d.join("WinSCP.ini"));
+    }
+    if let Ok(d) = app.path().local_data_dir() {
+        v.push(d.join("WinSCP.ini"));
+    }
+    if let Ok(d) = app.path().document_dir() {
+        v.push(d.join("WinSCP.ini"));
+    }
+    v
+}
+
+/// 从 `WinSCP.ini` 导入站点。`path` 为空时按 `winscp_candidates` 顺序找第一份存在的。
+#[tauri::command]
+pub fn sessions_import_winscp(
+    app: tauri::AppHandle,
+    path: Option<String>,
+) -> Result<ImportReport, String> {
+    let source = match path.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
+        Some(p) => std::path::PathBuf::from(p),
+        None => {
+            let candidates = winscp_candidates(&app);
+            match candidates.iter().find(|p| p.is_file()) {
+                Some(p) => p.clone(),
+                None => {
+                    let list = candidates
+                        .iter()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .collect::<Vec<_>>()
+                        .join(" / ");
+                    return Err(format!(
+                        "没找到 WinSCP.ini（找过这些位置：{list}）；把配置导出一份放到其中一处再试"
+                    ));
+                }
+            }
+        }
+    };
+    if !source.is_file() {
+        return Err(format!("读不到 WinSCP 配置：{}", source.to_string_lossy()));
+    }
+
+    let store_json = match fs::read_to_string(store_path(&app)?) {
+        Ok(t) => t,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(err) => return Err(format!("读会话清单失败：{err}")),
+    };
+    let mut store = SessionStore::from_json(&store_json).map_err(|e| e.to_string())?;
+    let (added, skipped) = import_winscp_file(&mut store, &source)?;
+    let json = store.to_json();
+    if added > 0 {
+        let p = store_path(&app)?;
+        if let Some(parent) = p.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("建目录失败：{e}"))?;
+        }
+        let tmp = p.with_extension("json.tmp");
+        fs::write(&tmp, json.as_bytes()).map_err(|e| format!("写临时文件失败：{e}"))?;
+        fs::rename(&tmp, &p).map_err(|e| format!("替换清单文件失败：{e}"))?;
+    }
+    Ok(ImportReport {
+        json,
+        added,
+        skipped,
+        source: source.to_string_lossy().to_string(),
+    })
+}
+
+/// 把一份 `WinSCP.ini` 合并进清单（不落盘）。返回（新增条数，跳过总数）。
+fn import_winscp_file(
+    store: &mut SessionStore,
+    source: &std::path::Path,
+) -> Result<(usize, usize), String> {
+    let text = fs::read_to_string(source).map_err(|e| {
+        format!("读不到 {}：{e}", source.to_string_lossy())
+    })?;
+    let outcome = portio_core::parse_winscp_ini(&text);
+    let mut incoming = SessionStore::new();
+    for rec in outcome.records {
+        let _ = incoming.upsert(rec);
+    }
+    let (added, dup) = store.merge(incoming);
+    Ok((added, outcome.skipped + dup))
+}
+
 /// 把一份 ssh config 合并进已有清单（不落盘）。返回（新增条数，跳过总数）。
 /// 抽成独立函数是为了能脱离 Tauri 直接测：解析、合并、跳过的规则都在这里，
 /// 命令层只剩"找路径 / 读 / 写"三件事。
@@ -343,6 +430,31 @@ Host *
         let db = store.records.iter().find(|r| r.host == "10.9.9.10").unwrap();
         assert_eq!(db.auth, "key");
         assert_eq!(db.name.as_deref(), Some("db-01"), "文件名当备注名");
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn winscp_ini_imports_ssh_and_skips_ftp() {
+        let dir = std::env::temp_dir().join(format!(
+            "portio_ini_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let ini = dir.join("WinSCP.ini");
+        fs::write(
+            &ini,
+            "[Sessions\\web-02]\nHostName=10.4.4.4\nUserName=deploy\nPortNumber=22\nFSProtocol=2\n\n\
+             [Sessions\\ftp-legacy]\nHostName=ftp.example.com\nUserName=anon\nFSProtocol=3\n",
+        )
+        .unwrap();
+        let mut store = SessionStore::new();
+        assert_eq!(import_winscp_file(&mut store, &ini).unwrap(), (1, 1));
+        assert_eq!(store.records[0].host, "10.4.4.4");
+        assert_eq!(store.records[0].name.as_deref(), Some("web-02"));
         fs::remove_dir_all(&dir).ok();
     }
 }

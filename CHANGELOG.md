@@ -10,6 +10,13 @@
 > 规则：**先写更新内容，再打包**。每个版本一个 `## [版本] - 日期` 小节，发布时整段复制到 GitHub Release 即可。
 > 只写用户能感知的变化；内部重构放 `### Changed`，未验证的能力写进 `### Known limitations`。
 
+## [1.0.2-Alpha10] - 2026-11-18
+
+### Added
+- **WinSCP 站点导入**：会话栏「导入 WinSCP 站点」会依次找 `%APPDATA%\WinSCP.ini`、`%LOCALAPPDATA%\WinSCP.ini`、`文档\WinSCP.ini`，取第一份存在的。只收 SSH 系列站点（`FSProtocol` 0/1/2），FTP / WebDAV / S3 跳过并计数；分组站点 `[Sessions\分组\主机]` 的组名会并进备注名，`PublicKeyFile` / `KeyFilePath` 认作密钥认证。密码同样不导入。
+
+### Notes
+- 至此 S6 的三种迁移来源（OpenSSH 配置、Xshell `.xsh`、WinSCP `.ini`）都能导入。
 ## [1.0.2-Alpha9] - 2026-11-18
 
 ### Added
