@@ -297,11 +297,17 @@ window.addEventListener("keydown", (e) => {
   }
   if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === "w") {
     e.preventDefault();
-    toast("关闭标签在 S2 接入；现在只有一个标签");
+    if (tabs.length <= 1) return toast("只剩一个标签了，再关就空窗口");
+    closeTab(activeId);
   }
   if (e.key === "F5") {
     e.preventDefault();
-    toast("刷新连接在 S2 接入");
+    // 重绘而不是重连：清掉 xterm 的渲染缓存，尺寸也跟着重新量一次
+    if (term) {
+      term.refresh(0, term.rows - 1);
+      fitQuietly();
+      toast("终端已重绘");
+    }
   }
 });
 
@@ -327,7 +333,15 @@ tick();
 setInterval(tick, 30_000);
 
 // ---------- 终端 ----------
+// ---------- 终端与标签 ----------
+// 每个标签一个独立 xterm 实例，各自一个 SSH 会话；切换标签只是切换可见容器，
+// 后台标签的会话仍在跑（这是 Xshell / 浏览器标签的共同习惯）。
 const termHost = document.getElementById("term");
+const tabsBox = document.getElementById("tabs");
+let tabs = [];
+let activeId = null;
+let tabSeq = 0;
+// term / fitAddon 已在文件顶部声明（那里要避免 TDZ），这里只做"指向当前标签"
 let sessionId = null;
 
 function terminalTheme() {
@@ -356,9 +370,63 @@ function fitQuietly() {
   }
 }
 
-function ensureTerminal() {
-  if (term) return term;
-  term = new Terminal({
+function tabById(id) {
+  return tabs.find((t) => t.id === id) ?? null;
+}
+
+function renderTabs() {
+  tabsBox.textContent = "";
+  for (const t of tabs) {
+    const el = document.createElement("div");
+    el.className = "tab" + (t.id === activeId ? " active" : "");
+    el.title = t.title;
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    if (t.sid !== null) dot.style.background = "var(--accent)";
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = t.title;
+    el.append(dot, name);
+    // 只剩一个标签时不给关闭按钮，避免误关成空窗口
+    if (tabs.length > 1) {
+      const x = document.createElement("span");
+      x.className = "x";
+      x.textContent = "×";
+      x.title = "关闭标签";
+      x.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        closeTab(t.id);
+      });
+      el.append(x);
+    }
+    el.addEventListener("click", () => activateTab(t.id));
+    tabsBox.append(el);
+  }
+}
+
+function activateTab(id) {
+  const tab = tabById(id);
+  if (!tab) return;
+  activeId = id;
+  for (const t of tabs) t.pane.classList.toggle("on", t.id === id);
+  term = tab.term;
+  fitAddon = tab.fit;
+  sessionId = tab.sid;
+  renderTabs();
+  // 容器刚变可见，等一帧再量尺寸，否则 cols/rows 会算成 0
+  setTimeout(() => {
+    fitQuietly();
+    tab.term.focus();
+  }, 0);
+}
+
+function createTab(title, sid = null) {
+  const id = ++tabSeq;
+  const pane = document.createElement("div");
+  pane.className = "term-pane";
+  pane.dataset.id = String(id);
+  termHost.appendChild(pane);
+  const t = new Terminal({
     fontFamily: "var(--mono), Consolas, monospace",
     fontSize: readFontSize(),
     lineHeight: 1.25,
@@ -367,22 +435,62 @@ function ensureTerminal() {
     theme: terminalTheme(),
     allowProposedApi: true,
   });
-  fitAddon = new FitAddon.FitAddon();
-  term.loadAddon(fitAddon);
-  term.open(termHost);
-  fitQuietly();
-  term.write("Portio · 未连接。点左上「新建连接」开始。\r\n");
+  const fit = new FitAddon.FitAddon();
+  t.loadAddon(fit);
+  t.open(pane);
+  const tab = { id, title, sid, term: t, fit, pane };
+  tabs.push(tab);
+  // 回调绑定到自己的标签，避免后台标签的输入发到别的会话
+  t.onData((data) => {
+    if (tab.sid !== null) call("ssh_input", { id: tab.sid, data });
+  });
+  t.onResize(({ cols, rows }) => {
+    if (tab.sid !== null) call("ssh_resize", { id: tab.sid, cols, rows });
+  });
+  activateTab(id);
+  return tab;
+}
 
-  term.onData((data) => {
-    if (sessionId !== null) call("ssh_input", { id: sessionId, data });
-  });
-  term.onResize(({ cols, rows }) => {
-    if (sessionId !== null) call("ssh_resize", { id: sessionId, cols, rows });
-  });
-  new ResizeObserver(() => fitQuietly()).observe(termHost);
-  window.addEventListener("resize", () => fitQuietly());
+function closeTab(id) {
+  const idx = tabs.findIndex((t) => t.id === id);
+  if (idx < 0) return;
+  const tab = tabs[idx];
+  if (tab.sid !== null) call("ssh_disconnect", { id: tab.sid });
+  tab.term.dispose();
+  tab.pane.remove();
+  tabs.splice(idx, 1);
+  if (tabs.length === 0) {
+    createLocalTab();
+    return;
+  }
+  if (activeId === id) {
+    // 与 core 里的规则保持一致：先右邻、没有才左邻
+    activateTab(tabs[Math.min(idx, tabs.length - 1)].id);
+  } else {
+    renderTabs();
+  }
+}
+
+function createLocalTab(title = "本地 · 未连接") {
+  const tab = createTab(title);
+  tab.term.write("Portio · 未连接。点左上「新建连接」开始。\r\n");
+  return tab;
+}
+
+// 兼容旧调用点：没有终端就补一个本地标签
+function ensureTerminal() {
+  if (!term) createLocalTab();
   return term;
 }
+
+// 带 #tabs-demo 时额外开两个本地标签，用来核对标签条与关闭按钮的排版
+if (location.hash === "#tabs-demo") {
+  createLocalTab("demo-web-01");
+  createLocalTab("demo-db-02");
+}
+
+new ResizeObserver(() => fitQuietly()).observe(termHost);
+window.addEventListener("resize", () => fitQuietly());
 
 // ---------- 会话状态 ----------
 function setStatus(text, tone) {
@@ -480,9 +588,10 @@ document.getElementById("btn-connect").addEventListener("click", async () => {
     modal.classList.remove("open");
     setStatus(`已连接 ${user}@${host}:${port}`, "ok");
     addSessionRow(`${user}@${host}`);
-    document.querySelector(".tab .name").textContent = `${user}@${host}`;
-    term.focus();
-    term.write(`\r\n\x1b[2m—— 已连接 ${user}@${host}:${port} ——\x1b[0m\r\n`);
+    // 连接成功后开一个新标签，标题就是 user@host；旧本地标签留着不动
+    const tab = createTab(`${user}@${host}`, id);
+    tab.term.write(`\r\n\x1b[2m—— 已连接 ${user}@${host}:${port} ——\x1b[0m\r\n`);
+    tab.term.focus();
     const home = await call("sftp_home", { id });
     if (home) loadRemote(home);
   } catch (err) {
@@ -512,15 +621,21 @@ document.getElementById("btn-connect").addEventListener("click", async () => {
 if (window.__TAURI__?.event) {
   window.__TAURI__.event.listen("shell", (e) => {
     const { id, kind, text } = e.payload ?? {};
-    if (id !== sessionId) return;
-    ensureTerminal();
-    if (kind === "output") term.write(text);
-    if (kind === "exit") term.write(`\r\n\x1b[2m[进程退出 ${text}]\x1b[0m\r\n`);
-    if (kind === "error") term.write(`\r\n\x1b[31m${text}\x1b[0m\r\n`);
+    // 按会话 id 找到它所属的标签，后台标签的输出也要落到自己的终端里
+    const tab = tabs.find((t) => t.sid === id);
+    if (!tab) return;
+    const t = tab.term;
+    if (kind === "output") t.write(text);
+    if (kind === "exit") t.write(`\r\n\x1b[2m[进程退出 ${text}]\x1b[0m\r\n`);
+    if (kind === "error") t.write(`\r\n\x1b[31m${text}\x1b[0m\r\n`);
     if (kind === "closed") {
-      setStatus("连接已断开", "bad");
-      term.write("\r\n\x1b[2m[连接已断开]\x1b[0m\r\n");
-      sessionId = null;
+      t.write("\r\n\x1b[2m[连接已断开]\x1b[0m\r\n");
+      tab.sid = null;
+      if (activeId === tab.id) {
+        sessionId = null;
+        setStatus("连接已断开", "bad");
+      }
+      renderTabs();
     }
   });
 }
@@ -533,9 +648,11 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
-// 关窗前把连接断干净，别把服务端会话挂在那儿
+// 关窗前把所有会话断干净，别把服务端会话挂在那儿
 window.addEventListener("beforeunload", () => {
-  if (sessionId !== null) call("ssh_disconnect", { id: sessionId });
+  for (const t of tabs) {
+    if (t.sid !== null) call("ssh_disconnect", { id: t.sid });
+  }
 });
 
 // 启动就把终端画出来，占位文案说明下一步做什么，避免一块空白面板
