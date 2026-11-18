@@ -106,3 +106,11 @@
 - 验证：`node --check ui/app.js` 通过；Chrome 无头 2× 截 `_p1_light.png` / `_p1_dark.png`，浅色下标记为浅底描线、无深色底板，两套主题结构分隔线均可见；`check_versions.py` OK v1.0.2-Alpha4；提交 `093e4c4`。
 - 未验证：把手 hover / 拖拽胶囊与各处动效只按代码路径核对，未做实机拖拽录屏；真实 SSH/SFTP 端到端仍缺测试主机与凭据。
 - 下一步：S7 终端字号/主题运行时联动自检；随后 S6 会话导入器（git 导入 ssh config）。
+## 2026-11-18 · v1.0.2-Alpha5 · 移除安装期刷图标缓存的 NSIS 钩子
+
+- 用户反馈：安装时重启资源管理器刷图标缓存，会黑屏一段时间，体验很差 → 判定"图标晚一步更新"比"安装黑屏"代价更小，撤掉钩子。
+- 改动：`crates/app/tauri.conf.json` 去掉 `bundle.resources`（只装那份 ps1）与 `nsis.installerHooks`；删除 `scripts/nsis-hooks.nsh`；`scripts/refresh-icon-cache.ps1` 保留在仓库，仍可手动跑一次救急。
+- 新建 `docs/backlog.md`（排期外点子落点），登记替代方案：快捷方式图标指向按版本命名的 ico 路径，绕过 Windows 的"路径＋时间"缓存，不用重启资源管理器。
+- 验证：`json.load` 校验配置合法，`bundle` 下已无那两个键；`cargo` 构建 + NSIS 打包 exit=0；`/S` 静默安装 1.0.2-Alpha5（6.2 秒），安装前后 `explorer.exe` 启动时间均为 11:33:07（没有被重启），`_iconhook.log` 时间戳 11:33:06 未变（钩子确实没执行），安装目录 exe 版本读回 1.0.2-Alpha5；`check_versions.py` OK。
+- 未验证 / 已知代价：覆盖安装后桌面图标可能仍是旧画法，要等资源管理器自己刷新缓存；真实 SSH/SFTP 端到端仍缺测试主机与凭据。
+- 下一步：S6 会话导入器（从 OpenSSH `~/.ssh/config` 导入，主机 / 端口 / 用户 / 私钥路径映射），先做解析与单测。
