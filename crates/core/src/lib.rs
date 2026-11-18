@@ -7,6 +7,7 @@ mod session;
 mod sshconfig;
 mod store;
 mod tabs;
+mod vault;
 mod winscp;
 mod xshell;
 
@@ -16,6 +17,7 @@ pub use store::{SessionRecord, SessionStore, MAX_RECORDS};
 pub use winscp::parse_winscp_ini;
 pub use xshell::parse_xshell_session;
 pub use tabs::{DEFAULT_MAX_TABS, Tab, TabId, TabSet};
+pub use vault::{load_or_create_master_secret, new_master_secret, CredentialStore, Vault, VaultError};
 
 /// 核心层的错误。刻意不用 `anyhow`：调用方要能分辨错误种类。
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]

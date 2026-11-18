@@ -331,3 +331,26 @@ S10 的完成定义是「断网后恢复继续传，进度与速率准确」。�
 - `open_with_flags(WRITE)` + `seek` 在真实服务器上的行为（尤其是不支持随机写的实现）。
 
 **下一步**：S10 收口——远端半截文件的 UI 处理（列表里标记"未完成"并可清理），或转 S11 凭据加密存储。
+## 2026-11-18 · v1.0.4-Alpha1 · S11：口令加密存储（地基）
+
+S10 之后按看板进 S11「安全与凭据」。S11 有两块：口令加密落盘、指纹管理界面。本轮只做第一块的加密层，而且刻意只做到"能测、能复用"为止，接线留到下一轮。
+
+- `crates/core/src/vault.rs`（新）：`Vault::from_secret` 用 HKDF-SHA256 把本地主密钥派生成 AES-256-GCM 密钥；`seal` 输出 `nonce(12) || 密文`，`open` 解回来。选 AEAD 而不是"加密+哈希校验"是因为 AEAD 自带完整性，改一个字节就解不开。
+- `CredentialStore`：`entries` 以会话 id 为键（同一主机换账号是两回事，不能拿主机名当键）；`flush` 先写 `.json.tmp` 再改名，断电不会留下半个 JSON；`parse_credentials` 遇到版本号不认识或 hex 不合法要报错，不做"当空处理"。
+- 空口令按"清除"处理：`set_password(id, "")` 直接删条目，避免存上去一个空密码，下次连接拿着空串去认证。
+- 主密钥：`load_or_create_master_secret` 首次生成 32 字节随机写盘，之后复用；POSIX 上收 0600，Windows 依赖用户目录 ACL（再强的隔离得走系统钥匙串，写进 docs 与代码注释）。
+- 依赖：只用工程图上已有的 `ring`（russh 的 ring 特性已经把它带进来），没有为这件事新增加密库，`Cargo.lock` 只多了 `portio-core → ring` 一条依赖边。
+
+**能力边界（如实写进代码注释与 CHANGELOG）**
+- 主密钥与密文同机，能读本机文件的人就能解出口令。这层防的是"明文被同步盘/打包/日志带走"，不是本地提权。要更强需要把主密钥交给 Windows Credential Manager / macOS Keychain，接口层不用改。
+
+**验证证据**
+- `cargo test -p portio-core`：**47 passed / 0 failed**，其中本轮新增 8 条：`seal_then_open_roundtrips`（含中文口令、断言明文片段不出现在密文里）、`same_plaintext_stays_same`（两次密文不同、都能解回原值）、`tampered_ciphertext_is_rejected`（改 1 字节与截断都返回 `Open`）、`wrong_master_secret_cannot_open`、`store_persists_and_forgets`（落盘→重开读回→文件里搜不到明文→删除生效）、`empty_password_clears_instead_of_storing_blank`、`broken_file_is_reported_not_silently_empty`（坏 JSON / 版本 9 都报 `Format`）、`master_secret_is_created_once_then_reused`。
+- `store_persists_and_forgets` 里的关键断言：读回后 `std::fs::read_to_string(path)` 里搜不到 `pw-1` 与 `pw-2-中文`——口令确实没有以明文落在磁盘上。
+- 本轮无 UI 改动；机器仍锁屏，实机点检未做。
+
+**未验证**
+- 真实连接流程用上这把密钥（下一轮接线）；Windows 上主密钥文件的 ACL 是否真的只有当前用户可读（依赖默认 ACL，未实测）。
+- S11 的 v0.3 gate（10GB 文件中断续传）无服务器，仍不可验。
+
+**下一步**：把加密层接到连接流程——连接参数里带"记住口令"选项，`CredentialStore` 的路径落到 `%APPDATA%\io.portio.desktop\credentials.json`，主密钥落 `vault.key`；然后做指纹管理界面（列出 known_hosts 记录、删一条、看指纹）。

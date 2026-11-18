@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/app", "crates/core", "crates/ssh"]
 
 [workspace.package]
-version = "1.0.3-Alpha10"
+version = "1.0.4-Alpha1"
 edition = "2021"
 license = "MIT"
 authors = ["Portio contributors"]
@@ -13,3 +13,4 @@ portio-core = { path = "crates/core" }
 portio-ssh = { path = "crates/ssh" }
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"
+ring = "0.17"
