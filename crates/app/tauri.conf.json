@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Portio",
-  "version": "1.0.0-Alpha6",
+  "version": "1.0.0-Alpha7",
   "identifier": "io.portio.desktop",
   "build": {
     "frontendDist": "../../ui"
@@ -30,12 +30,27 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "publisher": "Portio contributors",
+    "copyright": "Copyright © 2026 Portio contributors",
+    "category": "DeveloperTool",
+    "shortDescription": "SSH 终端 + SFTP 双栏",
+    "longDescription": "Portio 把 SSH 终端与 SFTP 双栏文件管理放进同一个窗口：一边敲命令，一边拖文件，切换成本接近于零。",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["SimpChinese", "English"],
+        "displayLanguageSelector": false
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    }
   }
 }

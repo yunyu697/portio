@@ -3321,7 +3321,7 @@ dependencies = [
 
 [[package]]
 name = "portio-app"
-version = "1.0.0-Alpha6"
+version = "1.0.0-Alpha7"
 dependencies = [
  "portio-core",
  "portio-ssh",
@@ -3334,7 +3334,7 @@ dependencies = [
 
 [[package]]
 name = "portio-core"
-version = "1.0.0-Alpha6"
+version = "1.0.0-Alpha7"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
@@ -3342,7 +3342,7 @@ dependencies = [
 
 [[package]]
 name = "portio-ssh"
-version = "1.0.0-Alpha6"
+version = "1.0.0-Alpha7"
 dependencies = [
  "portio-core",
  "russh",
