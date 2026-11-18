@@ -168,6 +168,7 @@
 | 30 | 把手 | 交互 | 见 §5：位置由布局算；静止 1px、hover 渐变 2px、拖拽 3px + 外发光 |
 | 31 | 窗口控制按钮 | 控件 | 宽 44、高满标题栏；hover `--surface-2`；关闭 hover `--danger` + `--on-danger` |
 | 32 | 记住口令勾选行 | 控件 | 跟在密码输入下方、同一列；行高 `--ctl`、gap `--sp-2`、12 号 `--text-3`；勾选框 12×12（`--sp-3`）、`--r-4`、1px `--line-strong`、底 `--surface-2`；`hover` 边框转 `--accent`；选中底 `--accent` + 对勾 `--on-accent`（自绘，不用系统原生勾选框——原生在深色下是亮白方块） |
+| 33 | 已知主机行 | 列表 | 单行一个 `host:port`：行高 `--ctl`、`padding` 左 `--sp-3` 右 `--sp-2`、gap `--sp-3`、`--r-6`、1px `--line` 边框、底 `--surface-2`、列 `minmax(0,1fr) / auto / auto`；主机名 `--text` 单行省略、端口 `--mono` `--text-3`；指纹 `--mono` `--fs-11` `--text-3` （中段省略、全文进 `title`）；删除按钮无边框、`--fs-11` `--text-3`，hover `--danger` + `--surface-3`；空态是 `--line` 虚线框 + `--fs-12` `--text-3` 居中（删除只删本地记录，下次连接重新走首次信任，不降低校验标准） |
 
 ## 11. 文案
 

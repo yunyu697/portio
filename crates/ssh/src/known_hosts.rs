@@ -21,6 +21,14 @@ pub enum HostKeyVerdict {
     Changed { previous: String },
 }
 
+/// 界面要用的一条记录。文件里的键是 `host:port`，这里拆开，免得前端再猜。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KnownHostRecord {
+    pub host: String,
+    pub port: u16,
+    pub fingerprint: String,
+}
+
 #[derive(Debug)]
 pub struct KnownHosts {
     path: PathBuf,
@@ -80,6 +88,36 @@ impl KnownHosts {
         self.entries
             .insert(key_of(host, port), fingerprint.to_string());
         self.persist();
+    }
+
+    /// 全部记录，按 `host:port` 升序（BTreeMap 本身就是有序的）。
+    /// 键拆不开的行（手改文件改坏了）直接跳过，不让它把整张表带崩。
+    pub fn records(&self) -> Vec<KnownHostRecord> {
+        self.entries
+            .iter()
+            .filter_map(|(k, v)| {
+                let (host, port) = k.rsplit_once(':')?;
+                let port = port.parse::<u16>().ok()?;
+                Some(KnownHostRecord {
+                    host: host.to_string(),
+                    port,
+                    fingerprint: v.clone(),
+                })
+            })
+            .collect()
+    }
+
+    /// 删掉一台主机的记录（下次连接重新走 TOFU）。返回是否真的删了。
+    pub fn forget(&mut self, host: &str, port: u16) -> bool {
+        let removed = self.entries.remove(&key_of(host, port)).is_some();
+        if removed {
+            self.persist();
+        }
+        removed
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
     }
 
     fn persist(&self) {
@@ -160,6 +198,54 @@ mod tests {
             kh.verify("h", 22, "SHA256:NEW").unwrap(),
             HostKeyVerdict::Match
         );
+        let _ = fs::remove_file(&p);
+    }
+
+    #[test]
+    fn records_split_key_and_can_be_forgotten() {
+        let p = tmp_path("records");
+        let _ = fs::remove_file(&p);
+        let mut kh = KnownHosts::load(&p);
+        kh.verify("b.example.com", 2222, "SHA256:B").unwrap();
+        kh.verify("a.example.com", 22, "SHA256:A").unwrap();
+        let recs = kh.records();
+        assert_eq!(recs.len(), 2);
+        // BTreeMap 按 host:port 字符串排序，a 在 b 前
+        assert_eq!(recs[0].host, "a.example.com");
+        assert_eq!(recs[0].port, 22);
+        assert_eq!(recs[1].port, 2222);
+
+        assert!(kh.forget("a.example.com", 22));
+        assert_eq!(kh.records().len(), 1);
+        assert!(!kh.forget("a.example.com", 22), "重复删除应返回 false");
+        // 删除要落盘，重载后不该复活
+        let kh2 = KnownHosts::load(&p);
+        assert_eq!(kh2.records().len(), 1);
+        let _ = fs::remove_file(&p);
+    }
+
+    #[test]
+    fn records_keep_ipv6_hosts_whole() {
+        let p = tmp_path("ipv6");
+        let _ = fs::remove_file(&p);
+        let mut kh = KnownHosts::load(&p);
+        kh.verify("[::1]", 22, "SHA256:V6").unwrap();
+        let recs = kh.records();
+        assert_eq!(recs[0].host, "[::1]", "按最后一个冒号切，IPv6 地址不能被切碎");
+        assert_eq!(recs[0].port, 22);
+        let _ = fs::remove_file(&p);
+    }
+
+    #[test]
+    fn broken_line_is_skipped_not_fatal() {
+        let p = tmp_path("broken");
+        let _ = fs::remove_file(&p);
+        fs::write(&p, "good.example.com:22 SHA256:OK\nbroken-no-port SHA256:X\nx:99999 SHA256:Y\n")
+            .unwrap();
+        let kh = KnownHosts::load(&p);
+        let recs = kh.records();
+        assert_eq!(recs.len(), 1, "坏行跳过，好行照常显示");
+        assert_eq!(recs[0].host, "good.example.com");
         let _ = fs::remove_file(&p);
     }
 

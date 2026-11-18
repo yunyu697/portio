@@ -46,6 +46,42 @@ fn known_hosts_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
     Ok(dir.join("known_hosts"))
 }
 
+/// 设置里「已知主机」要的一行。
+#[derive(Serialize, Clone)]
+pub struct HostRecord {
+    host: String,
+    port: u16,
+    fingerprint: String,
+}
+
+/// 已记录的主机指纹清单（按 host:port 升序）。
+#[tauri::command]
+pub fn hosts_list(app: AppHandle) -> Result<Vec<HostRecord>, String> {
+    let kh = KnownHosts::load(known_hosts_path(&app)?);
+    Ok(kh
+        .records()
+        .into_iter()
+        .map(|r| HostRecord {
+            host: r.host,
+            port: r.port,
+            fingerprint: r.fingerprint,
+        })
+        .collect())
+}
+
+/// 删掉一台主机的记录，下次连接重新走首次信任。返回是否真的删了。
+#[tauri::command]
+pub fn hosts_forget(app: AppHandle, host: String, port: u16) -> Result<bool, String> {
+    let mut kh = KnownHosts::load(known_hosts_path(&app)?);
+    Ok(kh.forget(&host, port))
+}
+
+/// 记录文件在哪，给想手动看一眼的人一个路径。
+#[tauri::command]
+pub fn hosts_path(app: AppHandle) -> Result<String, String> {
+    Ok(known_hosts_path(&app)?.display().to_string())
+}
+
 /// 建连 + 认证 + 开 PTY。成功后返回会话 id，之后的输入/改尺寸都带这个 id。
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]

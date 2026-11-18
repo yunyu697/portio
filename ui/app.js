@@ -233,11 +233,66 @@ function syncSegs() {
         : pref === "light" ? "浅色" : "深色";
   }
 }
+// ---------- 已知主机（指纹管理） ----------
+// 只读本地 known_hosts：列出 host:port + SHA256 指纹，能删一条。
+// 删一条只是让这台主机下次重新走首次信任，不降低校验标准。
+let hostDemo = null; // 核验用：无头页面没有后端，用假数据看版式
+function shortFp(fp) {
+  const body = fp.startsWith("SHA256:") ? fp.slice(7) : fp;
+  return "SHA256:" + (body.length > 10 ? body.slice(0, 10) + "…" : body);
+}
+function renderHostRows(recs) {
+  const list = document.getElementById("hosts-list");
+  const count = document.getElementById("hosts-count");
+  list.textContent = "";
+  count.textContent = recs.length ? `${recs.length} 条` : "无";
+  if (!recs.length) {
+    const empty = document.createElement("div");
+    empty.className = "hosts-empty";
+    empty.textContent = "还没有记录。第一次连上某台主机时会自动记住它的指纹。";
+    list.append(empty);
+    return;
+  }
+  for (const r of recs) {
+    const row = document.createElement("div");
+    row.className = "hz";
+    const hh = document.createElement("span");
+    hh.className = "hh";
+    hh.textContent = r.host;
+    const hp = document.createElement("span");
+    hp.className = "hp";
+    hp.textContent = ":" + r.port;
+    hh.append(hp);
+    const hf = document.createElement("code");
+    hf.className = "hf";
+    hf.textContent = shortFp(r.fingerprint);
+    hf.title = r.fingerprint;
+    const del = document.createElement("button");
+    del.className = "hz-del";
+    del.type = "button";
+    del.textContent = "删除";
+    del.dataset.host = r.host;
+    del.dataset.port = String(r.port);
+    del.title = `删掉 ${r.host}:${r.port} 的记录`;
+    row.append(hh, hf, del);
+    list.append(row);
+  }
+}
+async function renderHosts() {
+  if (hostDemo) {
+    renderHostRows(hostDemo);
+    return;
+  }
+  const recs = await call("hosts_list");
+  renderHostRows(Array.isArray(recs) ? recs : []);
+}
+
 const settingsModal = document.getElementById("settings-modal");
 function toggleSettings(open) {
   const want = open ?? !settingsModal.classList.contains("open");
   if (want) syncSegs();
   settingsModal.classList.toggle("open", want);
+  if (want) renderHosts();
 }
 if (location.hash === "#settings") toggleSettings(true);
 document.getElementById("btn-settings").addEventListener("click", () => toggleSettings());
@@ -258,6 +313,14 @@ document.getElementById("seg-scroll").addEventListener("click", (e) => {
   if (btn) setScrollback(Number(btn.dataset.v));
 });
 document.getElementById("set-font").addEventListener("input", (e) => setFontSize(Number(e.target.value)));
+document.getElementById("hosts-list").addEventListener("click", async (e) => {
+  const btn = e.target.closest(".hz-del");
+  if (!btn) return;
+  const port = Number(btn.dataset.port);
+  const gone = await call("hosts_forget", { host: btn.dataset.host, port });
+  toast(gone ? `已删除 ${btn.dataset.host}:${port} 的记录` : "这条记录已经不在了");
+  renderHosts();
+});
 
 // ---------- 可拖拽尺寸：三处，都持久化 ----------
 const PREF = {
@@ -1199,7 +1262,7 @@ async function connectWith(spec) {
       term.write(
         `\r\n\x1b[31m主机密钥变了！\x1b[0m\r\n` +
           `  记录：${previous}\r\n  本次：${current}\r\n` +
-          `如果你确认服务器重装过，删掉 known_hosts 里这台机器的条目再连。\r\n`
+          `如果你确认服务器重装过，去「设置 → 已知主机」删掉这台机器的记录，再连一次就会重新信任。\r\n`
       );
     } else {
       const friendly = explainError("ssh_connect", raw);
@@ -1303,6 +1366,16 @@ if (location.hash.startsWith("#quick-demo")) {
   saveSession({ host: "10.0.8.12", port: 2222, user: "deploy", auth: "key", keyfile: "~/.ssh/id_ed25519" });
   document.getElementById("quick-input").value = "deploy@10.0.8.12:2222";
   quickConnect();
+}
+
+// 已知主机的核验入口：无头页面没有后端，先塞几条假记录看版式与删除交互
+if (location.hash.startsWith("#hosts-demo")) {
+  hostDemo = [
+    { host: "web-01.prod", port: 22, fingerprint: "SHA256:9fKq2mZpQ0aBcDeFgHiJkLmNoPqRsTuVwXyZ01234" },
+    { host: "10.0.8.12", port: 2222, fingerprint: "SHA256:Zx81MnBvC3xY7tReWqAsDfGhJkLzXcVbNm1234567" },
+    { host: "stage-01.internal.example.com", port: 22, fingerprint: "SHA256:Qw3ErTyUiOpAsDfGhJkLzXcVbNm1234567890abcd" },
+  ];
+  toggleSettings(true);
 }
 
 // 会话清单以前端内存镜像为准，启动时从磁盘拉一次

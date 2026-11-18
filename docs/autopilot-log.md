@@ -379,3 +379,30 @@ S10 之后按看板进 S11「安全与凭据」。S11 有两块：口令加密�
 - 机器仍锁屏，实机窗口点检未做（GUI 侧只做了无头渲染）。
 
 **下一步**：S11 后半——指纹管理界面（列 known_hosts 记录、显示 SHA256 指纹、删一条）。
+## 2026-11-18 · v1.0.4-Alpha3 · S11：已知主机（指纹管理界面）
+
+S11 的第二个交付：指纹不再是只能看文件的东西，设置里能列、能删。
+
+- 协议层 `crates/ssh/src/known_hosts.rs` 加 `KnownHosts::records()` 与 `forget()`。键是 `host:port`，拆分用 `rsplit_once(':')` 而不是 `split_once`——IPv6 地址自带冒号，正向切会把 `[::1]:22` 切碎。文件被手改坏的行（没有端口、端口超范围）在 `records()` 里跳过，不让一条坏数据把整张表带崩。
+- `crates/app/src/sessions.rs` 加三个命令：`hosts_list`（返回 host/port/fingerprint 三条字段）、`hosts_forget`（删一条，返回是否真删了）、`hosts_path`（记录文件在哪）。列表复用 `known_hosts_path()`，和建连时写的是同一个文件，不存在"界面看到的和校验用的不是一份"。
+- 设置面板加「已知主机」：每条一行 `host:port` + `SHA256:xxxx…`（中段省略，完整值放 `title` 里悬停可见）+ 删除按钮；没有记录时是虚线空态加一句说明。点删除会 toast 并就地重绘。
+- 顺手改了一处话术：`HOSTKEY_CHANGED` 的终端提示原本让人"删掉 known_hosts 里这台机器的条目"，现在指向「设置 → 已知主机」——界面里有入口了，就不该再让人去改文件。
+- 规范先行：先在 `docs/design-spec.md` §10 加第 33 行「已知主机行」（行高 `--ctl`、`--r-6`、三列 `minmax(0,1fr)/auto/auto`、指纹 `--mono` `--fs-11`、删除按钮 hover 转 `--danger`），再写样式。
+
+**验证证据**
+- `cargo test -p portio-ssh`：17 条全绿，新增 3 条——`records_split_key_and_can_be_forgotten`（排序、删除、落盘后重载不复活、重复删除返回 false）、`records_keep_ipv6_hosts_whole`（`[::1]:22` 不被切碎）、`broken_line_is_skipped_not_fatal`（坏行跳过、好行照常）。
+- `cargo check -p portio-app` 通过（第一次报 `HostRecord is private`，把结构体改成 `pub` 后无 error / warning）。
+- `node --check ui/app.js` 通过；`check_ui_scale.py` OK；`check_design_tokens.py` OK。
+- Chrome 无头，真实 `ui/index.html`，两个入口各跑截图 + `--dump-dom`：
+  - `#settings`（空态）：标题仍为 `Portio`、无 `ERR:`、`hosts-list` 在 DOM、空态块渲染；
+  - `#hosts-demo`（三条假记录）：无 `ERR:`、三行 `class="hz"` 渲染；
+  - 浅色主题（临时页 `applyTheme('light')`，用完即删）：行与行之间 1px 边框在浅色下看得见，指纹小字不糊。
+  - 截图 `_a13_empty.png` / `_a13_demo.png` / `_a13_light.png`。
+- 一次插曲：`records()` 一开始想用 `split_once(':')`，写测试时才想到 IPv6，改成 `rsplit_once` 并单独立了一条测试。
+
+**未验证**
+- 真实连接"删记录 → 重连 → 重新 TOFU"的完整回路没有服务器可跑；只有文件层单测。
+- 界面里没有"确认变更、直接用新指纹"的一键信任；现在的路径是删记录再连，行为正确但多一步。已写入 `docs/backlog.md` 等拍板。
+- 机器仍锁屏，实机窗口点检未做（只有无头渲染证据）。
+
+**下一步**：S11 收口评审（是否把 S11 标 ✅）→ 然后进 S12：终端分屏与搜索（分屏布局已定，搜索要接 xterm 的搜索插件/自绘）。
