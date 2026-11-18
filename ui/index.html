@@ -52,9 +52,14 @@
   .win-ctl #btn-close:hover{background:var(--danger);color:var(--on-danger)}
 
   /* ---------- 主体 ---------- */
-  .main{display:grid;grid-template-columns:var(--sidebar) 1fr;overflow:hidden;min-height:0;position:relative}
-  .sidebar{background:var(--surface);border-right:1px solid var(--line-strong);overflow:auto;min-width:0}
-  .sidebar h2{margin:0;padding:8px 12px;display:flex;align-items:center;gap:6px;
+  /* 主体：中间插一条 0 宽的栅格轨放把手——把手由布局引擎定位，
+     不再靠 JS 量像素，窗口缩放怎么变、把手都压在真正的边界上。 */
+  .main{display:grid;grid-template-columns:var(--sidebar) 0 1fr;overflow:hidden;min-height:0;position:relative}
+  .main > .sidebar{grid-column:1}
+  .main > .stage{grid-column:3}
+  .main > #gutter-v{grid-column:2}
+  .sidebar{background:var(--surface);overflow:auto;min-width:0}
+  .sidebar h2{margin:0;padding:0 12px;display:flex;align-items:center;gap:6px;height:var(--row);
               font-size:var(--fs-11);letter-spacing:.08em;color:var(--text-3);
               border-bottom:1px solid var(--line)}
   .sidebar h2 .count{margin-left:auto;font-family:var(--mono);font-weight:400}
@@ -65,7 +70,10 @@
   /* 拖拽把手：绝对定位压在边界上，不占栅格。
      平时完全透明（不留一条高亮色带），鼠标移上来才浮出一小段胶囊，拖拽时胶囊变长变实——
      提示"这里能拖"，又不改写布局本身的观感。 */
-  .gutter-v{position:absolute;top:0;bottom:0;width:9px;cursor:col-resize;z-index:6;background:none}
+  /* 拖拽把手：占所在栅格断点的 0 宽轨，自己往两边各溢出 4px——
+     视觉上一条 1px 结构线正好压在边界上，命中区 9px。布局走栅格，跟手不跟像素。 */
+  .gutter-v{position:relative;width:9px;height:100%;margin-left:-4px;justify-self:start;
+            cursor:col-resize;z-index:6;background:none}
   /* 静止态留一条 1px 的结构线：面板之间得看得出哪里是分界，
      鼠标移上来再换成强调色的胶囊提示"这里能拖"。 */
   .gutter-v::before{content:"";position:absolute;top:0;bottom:0;left:3px;width:1px;
@@ -80,9 +88,10 @@
   .gutter-v.dragging::after{opacity:1;width:3px;box-shadow:0 0 10px var(--accent)}
   /* 折叠态：会话栏整块收走，只留一条把手，鼠标移上去才浮出箭头。
      注意列数要变成单列——写成 "0 1fr" 时剩下的唯一子元素会落进那个 0 宽的第一列，整屏空白。 */
-  .main.collapsed{grid-template-columns:1fr}
+  .main.collapsed{grid-template-columns:10px 0 1fr}
+  .main.collapsed > .stage{grid-column:3}
   .main.collapsed .sidebar{display:none}
-  .main.collapsed #gutter-v{width:10px;cursor:pointer;background:transparent;
+  .main.collapsed #gutter-v{grid-column:1;width:10px;margin-left:0;cursor:pointer;background:transparent;
     box-shadow:inset -1px 0 0 var(--line-strong)}
   .main.collapsed #gutter-v::before{display:none}
   .main.collapsed #gutter-v::after{display:none}
@@ -94,9 +103,13 @@
 
   .stage{display:grid;grid-template-rows:1fr var(--drawer);overflow:hidden;min-width:0;min-height:0;
          position:relative}
-  .split{display:grid;grid-template-columns:minmax(0,var(--split, 50%)) minmax(340px,1fr);overflow:hidden;min-width:0;min-height:0;position:relative}
+  .split{display:grid;grid-template-columns:minmax(360px,var(--split, 50%)) 0 minmax(340px,1fr);
+         overflow:hidden;min-width:0;min-height:0;position:relative}
+  .split > .pane.term{grid-column:1}
+  .split > .pane.files{grid-column:3}
+  .split > #gutter-split{grid-column:2}
   .pane{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
-  .pane-head{display:flex;align-items:center;gap:8px;padding:0 12px;height:28px;flex:none;
+  .pane-head{display:flex;align-items:center;gap:8px;padding:0 12px;height:var(--row);flex:none;
              background:var(--surface);border-bottom:1px solid var(--line-strong);
              font-size:var(--fs-11);color:var(--text-3);letter-spacing:.04em}
   .pane-head .path{font-family:var(--mono);color:var(--text-2);letter-spacing:0}
@@ -107,7 +120,8 @@
   .pane.files .pane-body{background:var(--surface-2)}
   .hint{color:var(--text-3);font-family:var(--ui);font-size:var(--fs-12)}
 
-  .gutter-h{position:absolute;left:0;right:0;height:9px;cursor:row-resize;z-index:6;background:none}
+  .gutter-h{position:absolute;left:0;right:0;top:calc(100% - var(--drawer));height:9px;margin-top:-4px;
+          cursor:row-resize;z-index:6;background:none}
   .gutter-h::before{content:"";position:absolute;left:0;right:0;top:3px;height:1px;
     background:var(--line-strong);transition:background var(--dur) var(--ease)}
   .gutter-h:hover::before,.gutter-h.dragging::before{background:var(--accent)}
@@ -119,9 +133,9 @@
   .gutter-h.dragging::before{opacity:0}
   .gutter-h.dragging::after{opacity:1;height:3px;box-shadow:0 0 10px var(--accent)}
 
-  .drawer{display:flex;flex-direction:column;background:var(--surface-2);border-top:1px solid var(--line-strong);
+  .drawer{display:flex;flex-direction:column;background:var(--surface-2);
           min-height:0;overflow:hidden;border-radius:var(--r-8) var(--r-8) 0 0}
-  .drawer-head{display:flex;align-items:center;gap:10px;height:30px;padding:0 12px;flex:none;
+  .drawer-head{display:flex;align-items:center;gap:10px;height:var(--row);padding:0 12px;flex:none;
                font-size:var(--fs-11);color:var(--text-3);cursor:pointer}
   .drawer-head .num{font-family:var(--mono);color:var(--text-2)}
   .drawer-head .right{margin-left:auto}
@@ -136,7 +150,7 @@
 
   /* ---------- 密度 ---------- */
   html[data-density="compact"]{--titlebar:32px;--statusbar:24px;--lh-24:20px}
-  html[data-density="compact"] .pane-head{height:24px}
+  
   html[data-density="compact"] .pane-body{padding:8px 10px}
 
   /* ---------- 终端宿主 ---------- */
@@ -146,7 +160,7 @@
   .term-pane.on{display:block}
 
   /* ---------- 文件双栏 ---------- */
-  .fp{flex:1;min-height:0;display:grid;grid-template-rows:1fr 1fr;gap:1px;background:var(--line)}
+  .fp{flex:1;min-height:0;display:grid;grid-template-rows:1fr 1fr;gap:1px;background:var(--line-strong)}
   .fp-block{background:var(--surface);display:flex;flex-direction:column;min-height:0;
             border-radius:var(--r-8);overflow:hidden}
   .fp-bar{display:flex;align-items:center;gap:6px;overflow:hidden;padding:0 8px;height:var(--row);
@@ -337,7 +351,7 @@
         <rect x="11.2" y="16.1" width="4.2" height="1.5" rx=".75" fill="var(--mark-accent)" opacity=".5"/>
         <rect x="15.4" y="11.3" width="3.6" height="1.4" rx=".7" fill="var(--mark-accent)"/>
       </svg>
-      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.3-Alpha3</span>
+      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.3-Alpha4</span>
     </div>
     <div class="tabs" id="tabs"></div>
     <button class="tbtn icon-only" id="btn-theme" aria-label="切换主题" title="切换主题：深色 / 浅色（跟随系统在设置里选）">

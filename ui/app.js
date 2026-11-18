@@ -276,13 +276,11 @@ function readNum(key, fallback) {
 function applySidebar(px) {
   root.style.setProperty("--sidebar", `${Math.round(px)}px`);
   localStorage.setItem(PREF.sidebar.key, String(Math.round(px)));
-  positionGutters();
 }
 // 终端:文件比例
 function applySplit(ratio) {
   root.style.setProperty("--split", `${(ratio * 100).toFixed(2)}%`);
   localStorage.setItem(PREF.split.key, ratio.toFixed(4));
-  positionGutters();
 }
 // 抽屉高度
 function applyDrawer(px) {
@@ -290,22 +288,13 @@ function applyDrawer(px) {
   localStorage.setItem(PREF.drawer.key, String(Math.round(px)));
   const head = document.getElementById("drawer-head");
   if (head) head.querySelector(".right").textContent = px <= PREF.drawer.min + 2 ? "展开" : "收起";
-  positionGutters();
 }
 
-// 把手按当前尺寸贴边定位（绝对定位，不参与栅格）
+// 把手不再按像素贴边：位置由栅格与 CSS 的 calc() 决定（见 index.html 的 .main/.split/.gutter-h），
+// 窗口缩放、栅格夹取都不会错位。这里只保留拖拽起止与尺寸落盘。
 const mainEl = document.getElementById("main");
 const splitEl = document.getElementById("split");
 const stageEl = document.querySelector(".stage");
-function positionGutters() {
-  const sidebar = parseFloat(getComputedStyle(root).getPropertyValue("--sidebar")) || 264;
-  const split = parseFloat(getComputedStyle(root).getPropertyValue("--split")) || 50;
-  const drawer = parseFloat(getComputedStyle(root).getPropertyValue("--drawer")) || 172;
-  document.getElementById("gutter-v").style.left = sidebarFolded ? "0px" : `${sidebar - 3}px`;
-  document.getElementById("gutter-split").style.left = `${splitEl.clientWidth * split / 100 - 3}px`;
-  document.getElementById("gutter-drawer").style.top = `${stageEl.clientHeight - drawer - 3}px`;
-  document.getElementById("gutter-drawer").style.bottom = "auto";
-}
 
 // 通用拖拽：按轴更新，松手落盘。拖拽期间给把手加 .dragging，胶囊把手变长变实。
 function dragWith(axis, onMove) {
@@ -320,7 +309,6 @@ function dragWith(axis, onMove) {
       if (handle && handle.classList) handle.classList.remove("dragging");
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-      positionGutters();
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -340,7 +328,6 @@ function applyFold(folded) {
   } else {
     applySidebar(readNum(PREF.sidebar.key, 264));
   }
-  positionGutters();
   // 折叠展开改变了终端可用宽度，布局稳定后再 fit 一次，否则列数不对
   requestAnimationFrame(() => fitQuietly());
 }
@@ -428,7 +415,7 @@ applySidebar(readNum(PREF.sidebar.key, 264));
 if (sidebarFolded) applyFold(true);
 applySplit(Math.min(PREF.split.max, Math.max(PREF.split.min, readNum(PREF.split.key, 0.5))));
 applyDrawer(readNum(PREF.drawer.key, 172));
-window.addEventListener("resize", positionGutters);
+
 
 // ---------- 尽快把窗口放出来 ----------
 // 窗口在 tauri.conf.json 里是 visible:false：主题和尺寸都恢复好之后再 show，

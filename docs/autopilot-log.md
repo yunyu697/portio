@@ -182,3 +182,12 @@
 - 验证：README 里每条说法都对着代码核过（`Ctrl+T/W//`、`Ctrl+Alt+B/H`、`F5` 的实现在 `ui/app.js` 392–412 与 1300 行附近；三个导入路径与 `session_store.rs` 里的候选顺序一致；`node --check ui/app.js` exit 0；`check_design_tokens.py` OK；无头 dump-dom `#theme-light` 的 `<title>` 仍 `Portio`，无 `ERR:`）。
 - 未验证：文档里的安装/首次连接步骤没有在"干净机器 + 真实 SSH 服务器"上走一遍（仍受「无测试服务器」限制）。
 - 下一步：S8 —— SFTP 通道复用已有 SSH 连接（同一连接开文件通道，不二次鉴权）。
+## 2026-11-18 · v1.0.3-Alpha4 · 修三处布局缺陷（分界线粗细 / 标题条高度 / 缩放错位）
+
+- 分界线粗细不一：`.sidebar` 自带 `border-right:1px`，把手又画一条 1px，两线叠加在会话栏右界；终端/文件那条只有一条，于是粗细不同。改法：去掉 `.sidebar` 的 `border-right`，两条分界统一由同一个 `.gutter-v::before` 画。
+- 标题条高度不统一：`.pane-head` 写死 28px、`.drawer-head` 30px、`.sidebar h2` 8px 上下内边距（实测 32px）。改法：三者统一 `height:var(--row)`（标准 28 / 紧凑 24），`h2` 改成 `padding:0 12px` 垂直居中；compact 密度里那条单独 `.pane-head{height:24px}` 覆盖删掉（`--row` 已经管到）。
+- 窗口缩小错位：把手原来绝对定位、由 JS 拿 `--sidebar` / `--split` 算像素贴边；栅格被夹取时（`.split` 右侧 `minmax(340px,1fr)`、窄窗口）算出来的位置和真实边界不一，只有 resize 补偿才对齐。改法：`.main` 改 `var(--sidebar) 0 1fr`、`.split` 改 `minmax(360px,var(--split,50%)) 0 minmax(340px,1fr)`，把把手放进那条 0 宽轨并 `margin-left:-4px` 自行溢出；横向把手改 `top:calc(100% - var(--drawer))`。JS 的 `positionGutters()` 及其 resize 监听、各 apply* 里的调用全部删除。
+- 顺带：`.fp` 的远端/本地分隔从 `--line` 提到 `--line-strong`（规范第 4 节要求区域分界用 strong）；`design-spec.md` 组件条款新增「面板标题条」「把手定位」两条，偏差表新增 7/8/9 三条并标已修。
+- 验证：真几何量测（临时 `_probe.html` 用 iframe + `getBoundingClientRect` 写进 `<title>`，读完即删）：1180×690 下 `pane-head` 28/28、`fp-bar` 28、`drawer-head` 28、`sidebar h2` 28；`gutter-v` 与 `sidebar.right` dx=0.00、`gutter-split` 与 `panes` 交界 dx=0.00、`gutter-h` 与 `drawer.top` dx=0.00。窄到 700px 时同样 dx=0.00（旧实现此例会偏）。折叠态量测：sidebar 0、gutter 0–10、stage 10–1180。截图 `_s9_dark.png`（1440×900@2x）、`_s9_light.png`（1180×690@2x）、`_s9_fold.png`（折叠态）；两条竖线 6× 裁切对比 `_s9_line_side.png` / `_s9_line_split.png` 宽度一致；`node --check ui/app.js` exit 0；`check_design_tokens.py` OK；`cargo test -p portio-core` / `-p portio-app` 均 ok；无头 dump-dom `<title>` 仍 `Portio`。
+- 未验证：真实窗口里 hover/拖拽的手感与渐变高亮实拖（无头不能 hover/拖拽），只验证了静止态几何与折叠态。
+- 下一步：S8 —— SFTP 通道复用已有 SSH 连接。
