@@ -46,3 +46,33 @@
 - 验证：`node --check` 通过；无头 dump-dom 标题无 ERR；截图 `_s8_groups.png`（最近使用 2 条 / 更早 1 条，计数 3）、`_s7_search.png`（搜索时不分组、1/2）。
 - 未验证：透明图标在白色桌面上对比度偏低（右半浅色面板在白底上接近隐形），实际浅色壁纸下观感需用户确认；macOS 的 824 圆角安全区只按比例做了，未出 .icns。
 - 下一步：主题与字号运行时联动自检、终端面板圆角是否跟进（待用户确认），然后进 S7。
+
+## 2026-11-18 · v1.0.1-Alpha5~Alpha10 · 图标缓存、右键菜单、图标贴边
+
+### Alpha5 图标缓存脚本 + 安装钩子
+- 用户反馈"安装之后桌面图标没有更新"。诊断：快捷方式 `Portio.lnk` 的 IconLocation 已经是 `,0`（取目标 exe 内嵌图标），装的 exe 也已是 Alpha4 —— 不是指向问题，是 Explorer 的 `iconcache_*.db` 分片按"路径+时间"缓存了旧画法。
+- `scripts/refresh-icon-cache.ps1`：停 explorer → 删 iconcache_*.db 与旧 IconCache.db → 重启 explorer → `ie4uinit -show`。实跑删掉 15 个分片，`_desktop_glyph.png` 显示新图形。
+- `scripts/nsis-hooks.nsh` 的 `NSIS_HOOK_POSTINSTALL` + `tauri.conf.json` 的 `bundle.windows.nsis.installerHooks`，让安装结束自动刷一次。
+
+### Alpha6 四处右键菜单
+- 统一 `showCtx/hideCtx` 组件；终端面板、远端文件行、本地文件行、会话行、标签页五处挂 `contextmenu`。
+- 终端：复制选中（无选中置灰并显示长度）/ 粘贴 / 全选 / 清屏 / 清空滚动缓冲；新增 `sendRaw`、`pasteInto`。
+- 远端文件行：下载到本地 / 进入目录 / 新建文件夹 / 删除 / 复制路径 / 刷新。
+- 本地文件行：上传到远端 / 进入目录 / 复制路径 / 刷新。
+- 会话行：连接 / 编辑参数 / 复制地址 / 复制 ssh 命令 / 从列表删除。
+- 标签页：关闭 / 关闭其它 / 复制标题。
+- 深链 `#ctx-demo`、`#ctx-demo-file`、`#ctx-demo-tab`、`#ctx-demo-term` 走真实 handler 派发事件，便于无头截图。
+
+### Alpha7~Alpha9 钩子三处翻车（逐层拆）
+1. `nsExec::ExecToLog 'cmd /c taskkill ...'` 在静默安装（/S）下拿不到 explorer 的结果 —— 不再自己拼命令行，整段交给 ps1。
+2. ps1 改成随包安装到 `$INSTDIR\scripts\`（`bundle.resources` 映射），钩子里用 `$SYSDIR\WindowsPowerShell\v1.0\powershell.exe` 绝对路径调用。
+3. 致命项：ps1 存成 **UTF-8 无 BOM**，钩子走 Windows PowerShell **5.1**，它按 ANSI 读，中文注释全成乱码（`鍋滄 explorer`）→ ParserError 退出 1。改存 UTF-8 带 BOM 后正常。
+- 顺带给 ps1 加 `%LOCALAPPDATA%\Portio\_iconhook.log` 时间戳：静默安装没有它，就分不清"没执行"和"执行了没效果"。
+- 验证：Alpha9 安装包 `/S` 后 `_iconhook.log` 记 `2026-11-18 10:45:41 开始刷新（PID 14572）`，explorer StartTime 10:29:50→10:45:42。
+
+### Alpha10 图标贴边
+- 用户追问"去掉背景后图标又变小了"。原因：Apple 的 80.5% 内容区比例前提是**有底板**——底板定义视觉外框，macOS 再由系统裁圆角；Windows 桌面不裁、直接把 PNG 摊在壁纸上，透明留白就成了"图标更小"。这条规则不该套到无底板图形上。
+- 改 `--margin 0.01` 重出：内容包围盒 1003×903 = 宽 97.9% / 高 88.2%。图形自身是圆角窗口形状，贴边不会被看扁。
+- 验证：Alpha10 `/S` 安装 → log `10:48:32` → explorer 重启 `10:45:42→10:48:33` → `_desktop_big.png` 与 3× 裁切 `_desktop_big_row.png` 显示体量已与 SQX/Creo 齐平。
+- 未验证：浅色壁纸下右半浅色面板的对比度（是否加描边仍未拍板）；交互式（带界面）安装时钩子的 explorer 重启是否会打断安装进度显示。
+- 下一步：S7 终端字号/主题运行时联动自检；`docs/backlog.md` 待建；`sftp_rename` 仍是缺口（右键菜单暂无重命名）。
