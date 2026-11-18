@@ -44,6 +44,60 @@ async function call(cmd, args) {
   }
 }
 
+// ---------- 右键菜单 ----------
+const ctxMenu = document.getElementById("ctx-menu");
+function hideCtx() {
+  ctxMenu.classList.remove("open");
+  ctxMenu.innerHTML = "";
+}
+// items: [{label, hint, run, disabled} | {sep:true}]
+function showCtx(x, y, items) {
+  ctxMenu.innerHTML = "";
+  for (const it of items) {
+    if (it.sep) {
+      const s = document.createElement("div");
+      s.className = "ctx-sep";
+      ctxMenu.appendChild(s);
+      continue;
+    }
+    const row = document.createElement("div");
+    row.className = "ctx-item" + (it.disabled ? " dis" : "");
+    row.setAttribute("role", "menuitem");
+    const label = document.createElement("span");
+    label.textContent = it.label;
+    row.appendChild(label);
+    if (it.hint) {
+      const hint = document.createElement("span");
+      hint.className = "hint";
+      hint.textContent = it.hint;
+      row.appendChild(hint);
+    }
+    if (!it.disabled) {
+      row.addEventListener("click", () => {
+        hideCtx();
+        try {
+          it.run();
+        } catch (err) {
+          toast(`操作失败：${explainError("unknown", String(err))}`);
+        }
+      });
+    }
+    ctxMenu.appendChild(row);
+  }
+  ctxMenu.classList.add("open");
+  // 先摆出来再量尺寸，超出视口就往里收，避免菜单被窗口边缘切掉
+  const box = ctxMenu.getBoundingClientRect();
+  ctxMenu.style.left = `${Math.max(6, Math.min(x, window.innerWidth - box.width - 8))}px`;
+  ctxMenu.style.top = `${Math.max(6, Math.min(y, window.innerHeight - box.height - 8))}px`;
+}
+document.addEventListener("mousedown", (e) => {
+  if (!ctxMenu.contains(e.target)) hideCtx();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") hideCtx();
+});
+window.addEventListener("blur", hideCtx);
+
 // ---------- 提示条 ----------
 const toastBox = document.getElementById("toast");
 function toast(text) {
@@ -430,6 +484,24 @@ function renderTabs() {
       el.append(x);
     }
     el.addEventListener("click", () => activateTab(t.id));
+    // 标签右键：关掉这一个、关掉其它的、复制标题
+    el.addEventListener("contextmenu", (ev) => {
+      ev.preventDefault();
+      showCtx(ev.clientX, ev.clientY, [
+        { label: "关闭", hint: "Ctrl+W", run: () => closeTab(t.id) },
+        {
+          label: "关闭其它标签",
+          hint: `${tabs.length - 1} 个`,
+          disabled: tabs.length < 2,
+          run: () => {
+            for (const other of [...tabs]) if (other.id !== t.id) closeTab(other.id);
+            activateTab(t.id);
+          },
+        },
+        { sep: true },
+        { label: "复制标题", run: () => copyText(t.title) },
+      ]);
+    });
     tabsBox.append(el);
   }
 }
@@ -477,8 +549,44 @@ function createTab(title, sid = null) {
   t.onResize(({ cols, rows }) => {
     if (tab.sid !== null) call("ssh_resize", { id: tab.sid, cols, rows });
   });
+  // 终端右键：复制、粘贴、清屏——鼠标党不用记 Ctrl+Shift+V 也能干活
+  pane.addEventListener("contextmenu", (ev) => {
+    ev.preventDefault();
+    const picked = t.getSelection();
+    showCtx(ev.clientX, ev.clientY, [
+      {
+        label: "复制选中",
+        hint: picked ? `${picked.length} 字符` : "无选中",
+        disabled: !picked,
+        run: () => navigator.clipboard.writeText(picked).then(() => toast("选中内容已复制")),
+      },
+      { label: "粘贴", run: () => pasteInto(tab) },
+      { label: "全选", hint: "Ctrl+A", run: () => t.selectAll() },
+      { sep: true },
+      { label: "清屏", hint: "Ctrl+L", run: () => sendRaw(tab, "\f") },
+      { label: "清空滚动缓冲", run: () => t.clear() },
+    ]);
+  });
   activateTab(id);
   return tab;
+}
+
+// 往会话里塞原始控制字符：本地标签没有会话，就写到终端自己身上
+function sendRaw(tab, data) {
+  if (tab.sid !== null) call("ssh_input", { id: tab.sid, data });
+  else tab.term.write(data.replace("\f", ""));
+}
+
+async function pasteInto(tab) {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!text) return;
+    if (tab.sid !== null) call("ssh_input", { id: tab.sid, data: text });
+    else tab.term.write(text);
+    tab.term.focus();
+  } catch {
+    toast("剪贴板读不出来，检查系统的剪贴板权限");
+  }
 }
 
 function closeTab(id) {
@@ -728,6 +836,24 @@ function renderSessions() {
       if (s.auth === "key") connectWith({ ...s, keyfile: s.keyfile });
       else openConnect(s);
     });
+    // 会话行右键：连上、改参数、复制地址、删掉这条记录
+    row.addEventListener("contextmenu", (ev) => {
+      ev.preventDefault();
+      const key = sessionKey(s);
+      showCtx(ev.clientX, ev.clientY, [
+        {
+          label: "连接",
+          hint: s.auth === "key" ? "密钥" : "要输密码",
+          run: () => (s.auth === "key" ? connectWith({ ...s, keyfile: s.keyfile }) : openConnect(s)),
+        },
+        { label: "编辑连接参数", run: () => openConnect(s) },
+        { sep: true },
+        { label: "复制地址", hint: `${s.user}@${s.host}:${s.port ?? 22}`, run: () => copyText(key) },
+        { label: "复制 ssh 命令", run: () => copyText(`ssh ${s.user}@${s.host} -p ${s.port ?? 22}`) },
+        { sep: true },
+        { label: "从列表删除", run: () => removeSession(key) },
+      ]);
+    });
     anchor.after(row);
     anchor = row;
     }
@@ -818,7 +944,7 @@ document.getElementById("btn-connect").addEventListener("click", async () => {
 });
 
 // 会话清单以前端内存镜像为准，启动时从磁盘拉一次
-if (location.hash.startsWith("#sess-demo")) {
+if (location.hash.startsWith("#sess-demo") || location.hash.includes("ctx-demo")) {
   saveSession({ host: "web-01.example.com", port: 22, user: "deploy", auth: "key", keyfile: "~/.ssh/id_ed25519" });
   saveSession({ host: "10.0.8.12", port: 2222, user: "root", auth: "password" });
   // 再塞一条"从没用过"的记录，好核对"更早"这组标题
@@ -945,6 +1071,37 @@ function renderList(el, items, side) {
       if (side === "remote") downloadFile(it);
       else uploadFile(it);
     });
+    // 文件行右键：远端是"下载 / 新建 / 删除"，本地是"上传 / 复制路径"
+    row.addEventListener("contextmenu", (ev) => {
+      ev.preventDefault();
+      el.querySelectorAll(".fp-row.sel").forEach((r) => r.classList.remove("sel"));
+      row.classList.add("sel");
+      if (side === "remote") {
+        showCtx(ev.clientX, ev.clientY, [
+          {
+            label: "下载到本地",
+            disabled: it.is_dir,
+            hint: it.is_dir ? "目录不进队列" : "",
+            run: () => downloadFile(it),
+          },
+          { label: "进入目录", disabled: !it.is_dir, run: () => loadRemote(it.path) },
+          { sep: true },
+          { label: "新建文件夹", run: () => newRemoteDir() },
+          { label: "删除", hint: it.is_dir ? "目录" : "文件", run: () => removeRemote(it) },
+          { sep: true },
+          { label: "复制路径", run: () => copyText(it.path) },
+          { label: "刷新列表", run: () => loadRemote(remotePath) },
+        ]);
+      } else {
+        showCtx(ev.clientX, ev.clientY, [
+          { label: "上传到远端", disabled: it.is_dir, run: () => uploadFile(it) },
+          { label: "进入目录", disabled: !it.is_dir, run: () => loadLocal(it.path) },
+          { sep: true },
+          { label: "复制路径", run: () => copyText(it.path) },
+          { label: "刷新列表", run: () => loadLocal(localPath) },
+        ]);
+      }
+    });
     frag.appendChild(row);
   }
   el.appendChild(frag);
@@ -1018,6 +1175,39 @@ async function uploadFile(item) {
   if (bytes !== null) loadRemote(remotePath);
 }
 
+// ---------- 右键菜单里用到的动作 ----------
+function copyText(text) {
+  navigator.clipboard
+    .writeText(text)
+    .then(() => toast("已复制到剪贴板"))
+    .catch(() => toast("复制失败：剪贴板不可用"));
+}
+
+async function newRemoteDir() {
+  if (sessionId === null) {
+    toast("先连一台主机，才能建远端目录");
+    return;
+  }
+  const name = window.prompt("新目录名（建在当前远端目录下）");
+  if (!name) return;
+  const ok = await call("sftp_mkdir", { id: sessionId, path: posixJoin(remotePath, name) });
+  if (ok !== null) {
+    toast(`已建目录 ${name}`);
+    loadRemote(remotePath);
+  }
+}
+
+async function removeRemote(item) {
+  if (sessionId === null) return;
+  const what = item.is_dir ? "目录" : "文件";
+  if (!window.confirm(`删除${what} ${item.path}？此操作不可撤销。`)) return;
+  const ok = await call("sftp_remove", { id: sessionId, path: item.path, is_dir: item.is_dir });
+  if (ok !== null) {
+    toast(`已删除 ${item.name}`);
+    loadRemote(remotePath);
+  }
+}
+
 function finishTransfer(name, dir, bytes) {
   const row = transferRows.get(`${dir}:${name}`);
   if (!row) return;
@@ -1048,12 +1238,7 @@ remotePathEl.addEventListener("keydown", (e) => {
 localPathEl.addEventListener("keydown", (e) => {
   if (e.key === "Enter") loadLocal(localPathEl.value.trim());
 });
-document.getElementById("remote-mkdir").addEventListener("click", async () => {
-  const name = window.prompt("新目录名");
-  if (!name) return;
-  await call("sftp_mkdir", { id: sessionId, path: posixJoin(remotePath, name) });
-  loadRemote(remotePath);
-});
+document.getElementById("remote-mkdir").addEventListener("click", () => newRemoteDir());
 
 if (window.__TAURI__?.event) {
   window.__TAURI__.event.listen("transfer", (e) => updateTransfer(e.payload));
@@ -1061,3 +1246,30 @@ if (window.__TAURI__?.event) {
 
 // 本地目录不用等连接，界面一出来就能看
 loadLocal(localStorage.getItem("portio.localPath") || null);
+
+// #ctx-demo：真的派发一次右键事件，用真实 handler 出菜单，便于截图核对（不是另画一份假菜单）
+if (location.hash.includes("ctx-demo")) {
+  // 无头环境没有后端，本地目录读不出来，这里塞几行假文件，让文件行右键有真实目标可打
+  renderList(
+    localListEl,
+    [
+      { name: "report-2026.pdf", path: "C:\\tmp\\report-2026.pdf", is_dir: false, size: 1048576, modified: 1763460000 },
+      { name: "logs", path: "C:\\tmp\\logs", is_dir: true, size: 0, modified: 1763460000 },
+    ],
+    "local"
+  );
+  const which = location.hash.includes("term")
+    ? ".term-pane"
+    : location.hash.includes("tab")
+      ? ".tab"
+      : location.hash.includes("file")
+        ? ".fp-row"
+        : ".sess-row";
+  const target = document.querySelector(which);
+  if (target) {
+    const r = target.getBoundingClientRect();
+    target.dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, clientX: r.left + 60, clientY: r.top + r.height })
+    );
+  }
+}

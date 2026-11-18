@@ -186,6 +186,18 @@
   .sess-search::placeholder{color:var(--text-3)}
   .sess-search:focus{border-color:var(--accent)}
   .sess-empty{padding:20px 16px;color:var(--text-3);font-size:var(--fs-12)}
+  /* 右键菜单：所有模块共用一套，位置在鼠标点，越界自动内收 */
+  .ctx{position:fixed;z-index:40;min-width:184px;padding:4px;background:var(--surface-2);
+    border:1px solid var(--line);border-radius:var(--r-6);box-shadow:0 14px 32px rgba(0,0,0,.45);
+    display:none}
+  .ctx.open{display:block}
+  .ctx-item{display:flex;align-items:center;gap:10px;height:26px;padding:0 8px;
+    border-radius:var(--r-4);font-size:var(--fs-12);color:var(--text);cursor:pointer;white-space:nowrap}
+  .ctx-item:hover{background:var(--surface-3)}
+  .ctx-item.dis{color:var(--text-3);cursor:default}
+  .ctx-item.dis:hover{background:transparent}
+  .ctx-item .hint{margin-left:auto;color:var(--text-3);font-size:var(--fs-11)}
+  .ctx-sep{height:1px;margin:4px 6px;background:rgba(255,255,255,.10)}
   .sess-group{margin:14px 12px 4px;color:var(--text-3);font-size:var(--fs-11);
     letter-spacing:.04em}
   .sess-row{display:flex;align-items:center;gap:8px;margin:4px 12px 0;padding:0 8px;height:30px;
@@ -233,7 +245,7 @@
   <header class="titlebar" data-tauri-drag-region>
     <div class="brand" data-tauri-drag-region>
       <img src="mark.svg" alt="Portio" data-tauri-drag-region>
-      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.1-Alpha4</span>
+      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.1-Alpha6</span>
     </div>
     <div class="tabs" id="tabs"></div>
     <button class="tbtn icon-only" id="btn-theme" aria-label="切换主题" title="切换主题（深色 / 浅色 / 跟随系统）">
@@ -415,6 +427,8 @@
       </footer>
     </div>
   </div>
+
+<div class="ctx" id="ctx-menu" role="menu" aria-label="右键菜单"></div>
 
 <script src="vendor/xterm.js"></script>
 <script src="vendor/addon-fit.js"></script>
