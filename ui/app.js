@@ -14,12 +14,32 @@ window.addEventListener("error", (e) => {
 // ---------- Tauri 桥 ----------
 // withGlobalTauri 打开后 window.__TAURI__.core.invoke 可用；纯浏览器预览时降级为 null。
 const bridge = window.__TAURI__?.core ?? null;
+
+// 把 Rust 侧的原始错误翻成人话：说清"发生了什么 + 下一步怎么做"。
+// 匹配不上的一律保留原文，宁可粗糙也不隐藏细节。
+function explainError(cmd, err) {
+  const raw = String(err ?? "");
+  const rules = [
+    [/authentication|auth failed|userauth|密码|私钥/, "认证被拒绝", "用户名、密码或私钥不对；确认登录方式与凭据后重试"],
+    [/econnrefused|connection refused|actively refused/i, "连接被拒绝", "端口没开或被防火墙拦了；先用 telnet 探一下 22 端口"],
+    [/timed out|timeout|超时/, "连接超时", "网络不可达或服务端限流；检查网络与允许列表"],
+    [/no space left|磁盘满/, "远端磁盘已满", "清理远端目录或换目标路径"],
+    [/permission denied|permission|权限/i, "权限不足", "该账号对目标路径没有权限；换目录或用有权限的账号"],
+    [/no such file|not found|不存在/, "路径不存在", "目录可能被删或改名；刷新列表确认"],
+    [/host key|hostkey/i, "主机指纹变化", "可能被中间人替换；确认指纹后再决定是否继续"],
+  ];
+  for (const [re, title, hint] of rules) {
+    if (re.test(raw)) return `${title}：${hint}`;
+  }
+  return `${cmd} 失败：${raw}`;
+}
+
 async function call(cmd, args) {
   if (!bridge) return null;
   try {
     return await bridge.invoke(cmd, args);
   } catch (err) {
-    toast(`调用 ${cmd} 失败：${err}`);
+    toast(explainError(cmd, err));
     return null;
   }
 }
@@ -31,6 +51,16 @@ function toast(text) {
   el.textContent = text;
   toastBox.appendChild(el);
   setTimeout(() => el.remove(), 2600);
+}
+// 带 #err-demo 时把几条典型报错的翻译结果摊出来，便于截图核对文案
+if (location.hash === "#err-demo") {
+  for (const s of [
+    "authenticate: userauth failed",
+    "Connection refused (os error 10061)",
+    "Permission denied (os error 13)",
+  ]) {
+    toast(explainError("ssh_connect", s));
+  }
 }
 
 // ---------- 窗口按钮 ----------
@@ -467,9 +497,10 @@ document.getElementById("btn-connect").addEventListener("click", async () => {
           `如果你确认服务器重装过，删掉 known_hosts 里这台机器的条目再连。\r\n`
       );
     } else {
+      const friendly = explainError("ssh_connect", raw);
       setStatus("连接失败", "bad");
-      term.write(`\r\n\x1b[31m连接失败：${raw}\x1b[0m\r\n`);
-      toast("连接失败，详情见终端");
+      term.write(`\r\n\x1b[31m连接失败：${friendly}\x1b[0m\r\n`);
+      toast(friendly);
     }
   } finally {
     btn.disabled = false;
