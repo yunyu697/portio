@@ -107,8 +107,105 @@ pub fn sessions_import_ssh_config(
     })
 }
 
-/// 把一份 ssh config 合并进已有清单（不落盘）。返回（新增条数，跳过总数）。
+/// Xshell 的会话目录默认位置：`%APPDATA%\NetSarang\Xshell\Sessions`。
+/// 那里一个 `.xsh` 对一台主机，用户装过 Xshell 就一定有。
+fn xshell_default_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
+    app.path()
+        .data_dir()
+        .ok()
+        .map(|d| d.join("NetSarang").join("Xshell").join("Sessions"))
+}
+
+/// 从 Xshell 会话目录导入主机。
 ///
+/// 规则全在 `portio_core::parse_xshell_session`（一个文件一台机器）；这里只负责
+/// "遍历目录 → 逐个解析 → 合并 → 落盘"。密码字段不读，识别的只有主机/端口/账号/私钥路径。
+#[tauri::command]
+pub fn sessions_import_xshell(
+    app: tauri::AppHandle,
+    dir: Option<String>,
+) -> Result<ImportReport, String> {
+    let source = match dir.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
+        Some(p) => std::path::PathBuf::from(p),
+        None => xshell_default_dir(&app).ok_or_else(|| "拿不到 Xshell 会话目录".to_string())?,
+    };
+    if !source.is_dir() {
+        return Err(format!(
+            "找不到 Xshell 会话目录：{}（装过 Xshell 才会有这个目录）",
+            source.to_string_lossy()
+        ));
+    }
+
+    let store_json = match fs::read_to_string(store_path(&app)?) {
+        Ok(t) => t,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(err) => return Err(format!("读会话清单失败：{err}")),
+    };
+    let mut store = SessionStore::from_json(&store_json).map_err(|e| e.to_string())?;
+    let (added, skipped) = import_xshell_dir(&mut store, &source)?;
+    let json = store.to_json();
+    if added > 0 {
+        let p = store_path(&app)?;
+        if let Some(parent) = p.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("建目录失败：{e}"))?;
+        }
+        let tmp = p.with_extension("json.tmp");
+        fs::write(&tmp, json.as_bytes()).map_err(|e| format!("写临时文件失败：{e}"))?;
+        fs::rename(&tmp, &p).map_err(|e| format!("替换清单文件失败：{e}"))?;
+    }
+    Ok(ImportReport {
+        json,
+        added,
+        skipped,
+        source: source.to_string_lossy().to_string(),
+    })
+}
+
+/// 遍历一个 Xshell 会话目录（含子目录，用户常按分组建子文件夹），合并进清单。
+/// 返回（新增条数，跳过总数：解析不出必需项的会话 + 与已有记录重复的）。
+fn import_xshell_dir(
+    store: &mut SessionStore,
+    dir: &std::path::Path,
+) -> Result<(usize, usize), String> {
+    let mut incoming = SessionStore::new();
+    let mut skipped = 0usize;
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(cur) = stack.pop() {
+        let entries = fs::read_dir(&cur)
+            .map_err(|e| format!("读目录 {} 失败：{e}", cur.to_string_lossy()))?;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let is_xsh = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| e.eq_ignore_ascii_case("xsh"));
+            if !is_xsh {
+                continue;
+            }
+            let stem = path.file_stem().and_then(|s| s.to_str());
+            match fs::read_to_string(&path) {
+                Ok(text) => match portio_core::parse_xshell_session(&text, stem) {
+                    Some(rec) => {
+                        // 单条坏记录不连累整批
+                        if incoming.upsert(rec).is_err() {
+                            skipped += 1;
+                        }
+                    }
+                    None => skipped += 1,
+                },
+                Err(_) => skipped += 1,
+            }
+        }
+    }
+    let (added, dup) = store.merge(incoming);
+    Ok((added, skipped + dup))
+}
+
+/// 把一份 ssh config 合并进已有清单（不落盘）。返回（新增条数，跳过总数）。
 /// 抽成独立函数是为了能脱离 Tauri 直接测：解析、合并、跳过的规则都在这里，
 /// 命令层只剩"找路径 / 读 / 写"三件事。
 fn import_into_store(
@@ -209,5 +306,43 @@ Host *
             .unwrap_err();
         assert!(err.contains("读不到"), "错误要指出是哪份文件：{err}");
         assert!(store.records.is_empty());
+    }
+
+    #[test]
+    fn xshell_dir_imports_valid_and_skips_bad_ones() {
+        let dir = std::env::temp_dir().join(format!(
+            "portio_xsh_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(dir.join("生产")).unwrap();
+        fs::write(
+            dir.join("推一台.xsh"),
+            "[CONNECTION]\nProtocol=S\nHost=10.9.9.9\nPort=2200\n[CONNECTION:AUTHENTICATION]\nUserName=ops\n",
+        )
+        .unwrap();
+        // 分组子目录里的会话也要收进来，并用文件名当备注名
+        fs::write(
+            dir.join("生产").join("db-01.xsh"),
+            "[CONNECTION]\nProtocol=S\nHost=10.9.9.10\n[CONNECTION:AUTHENTICATION]\nUserName=dba\nUserKey=\"C:\\k\\id\"\n",
+        )
+        .unwrap();
+        // RDP 会话：没有 SSH 意义，应当跳过
+        fs::write(
+            dir.join("远程桌面.xsh"),
+            "[CONNECTION]\nProtocol=RDP\nHost=10.9.9.11\n[CONNECTION:AUTHENTICATION]\nUserName=x\n",
+        )
+        .unwrap();
+        let mut store = SessionStore::new();
+        let (added, skipped) = import_xshell_dir(&mut store, &dir).unwrap();
+        assert_eq!(added, 2, "两台 SSH 主机");
+        assert_eq!(skipped, 1, "RDP 会话跳过");
+        let db = store.records.iter().find(|r| r.host == "10.9.9.10").unwrap();
+        assert_eq!(db.auth, "key");
+        assert_eq!(db.name.as_deref(), Some("db-01"), "文件名当备注名");
+        fs::remove_dir_all(&dir).ok();
     }
 }

@@ -141,3 +141,11 @@
 - 验证：`check_design_tokens.py` → `OK 界面文件没有硬编码色值`；`node --check ui/app.js` 通过；无头 2× 截图 `_sep_rest.png`（五条结构线齐全）、`_sep_hover.png`（渐变高亮 + 外发光，与参考图一致）、`_sep_dark2.png`（深色同款）；打包 exit=0，`check_versions.py` OK v1.0.2-Alpha8。
 - 未验证：真实窗口里 hover 手感与拖拽跟手度（无头无法 hover/拖拽，用 `ui/_probe.html` 注入 `opacity:1` 模拟拖拽态截屏，截完已删除该临时文件）。
 - 下一步：S6 第二单元 Xshell `.xsh` / WinSCP `.ini` 导入；终端画布是否随规范收圆仍待用户拍板（已记 backlog）。
+## 2026-11-18 · v1.0.2-Alpha9 · S6 第三单元：Xshell 会话导入
+
+- 新增 `crates/core/src/xshell.rs`：`parse_xshell_session(text, fallback_name)` 解析 `.xsh`（INI 结构）。取 `Host` / `Port` / `Protocol` / `UserName` / `UserKey`（→ `auth=key`）/ `Name`；键名大小写不敏感、值可带引号、`;` 与 `#` 整行注释跳过；`Protocol` 非 `S`（RDP/Serial）或主机、账号缺任一 → 返回 `None`（跳过）。密码字段完全不读。5 条单测。
+- 外壳 `session_store.rs` 新增 `sessions_import_xshell(app, dir?)`：`dir` 为空时走 `%APPDATA%\NetSarang\Xshell\Sessions`，目录不存在直接报错；读旧清单 → 合并 → 有新增才原子写回；返回 `ImportReport{json,added,skipped,source}`。可单测的 `import_xshell_dir` 用栈式遍历含子目录（用户常按分组建文件夹），只收 `.xsh`，坏记录单独计数。1 条单测（临时目录：2 台 SSH＋1 个 RDP＋1 个子目录会话，断言 added=2 / skipped=1 / 子目录会话用文件名 `db-01` 当备注名）。
+- `lib.rs` 注册 `sessions_import_xshell`；`ui/index.html` 会话栏加第二个虚线按钮「导入 Xshell 会话」；`ui/app.js` 加对应 handler（照 ssh config 那条写，成功/无新增/失败三种 toast 文案）。
+- 验证：`cargo test -p portio-core` 34 passed（含 xshell 5 条）；`cargo test -p portio-app` 4 passed（含 xshell 目录 1 条）；`cargo check` 全绿；`node --check ui/app.js` exit 0；`check_design_tokens.py` → OK（新按钮沿用 `.sess-import`，未引入新色值）；无头 2× 截图 `_s6_xshell.png`（浅色）确认两个导入按钮同时在会话栏且样式一致、`<title>` 仍是 `Portio`（无 `ERR:`）。
+- 未验证：真实 Xshell 会话目录（本机未装 Xshell，`%APPDATA%\NetSarang\Xshell\Sessions` 不存在）；桌面版点击按钮后的 IPC 往返与 toast；带密码字段的 `.xsh` 真样本（只用构造样例覆盖）。
+- 下一步：S6 收尾单元 WinSCP `.ini` 导入；之后 S7 会话分组 / S8 设置项。

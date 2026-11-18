@@ -913,6 +913,25 @@ document.getElementById("sess-search").addEventListener("keydown", (e) => {
 });
 
 // 从 ~/.ssh/config 导入：后端解析完直接给出合并后的整份清单
+document.getElementById("btn-import-xshell").addEventListener("click", async () => {
+  if (!bridge) return toast("导入需要在桌面版里用");
+  try {
+    const res = await bridge.invoke("sessions_import_xshell", { dir: null });
+    const parsed = JSON.parse(String(res.json ?? "{}"));
+    sessionStore.records = Array.isArray(parsed.records) ? parsed.records : [];
+    renderSessions();
+    const added = Number(res.added ?? 0);
+    const skipped = Number(res.skipped ?? 0);
+    if (added > 0) {
+      toast(`从 Xshell 导入 ${added} 台主机${skipped ? `，跳过 ${skipped} 项` : ""}`);
+    } else {
+      toast(skipped ? `没有新主机（跳过 ${skipped} 项）` : "Xshell 会话目录里没有可导入的主机");
+    }
+  } catch (err) {
+    toast(`导入失败：${explainError("sessions_import_xshell", String(err))}`);
+  }
+});
+
 document.getElementById("btn-import-ssh").addEventListener("click", async () => {
   if (!bridge) return toast("导入需要在桌面版里用");
   try {
