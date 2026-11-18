@@ -1,5 +1,6 @@
 use tauri::{Manager, Window};
 
+mod session_store;
 mod sessions;
 
 fn map_err(err: tauri::Error) -> String {
@@ -55,6 +56,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             window_control,
             window_state,
+            session_store::sessions_read,
+            session_store::sessions_write,
+            session_store::sessions_path,
             sessions::ssh_connect,
             sessions::ssh_input,
             sessions::ssh_resize,
@@ -79,3 +83,4 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("Portio 启动失败");
 }
+

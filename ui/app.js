@@ -558,29 +558,67 @@ function openConnect(prefill = null) {
 }
 
 // ---------- 会话记忆 ----------
-// 只存"怎么连"，不存密码：密码留在内存里用完即弃，私钥记路径不记内容。
-const SESS_KEY = "portio.sessions";
-function readSessions() {
-  try {
-    const arr = JSON.parse(localStorage.getItem(SESS_KEY) ?? "[]");
-    return Array.isArray(arr) ? arr.filter((s) => s && s.host && s.user) : [];
-  } catch (e) {
-    return [];
-  }
-}
+// 真相在应用数据目录的 sessions.json（后端负责读写），内存里这份只是镜像。
+// 只存"怎么连"，不存密码：密码用完即弃，私钥记路径不记内容。
+const SESS_LEGACY = "portio.sessions"; // 早期版本写在 localStorage 里，只用于一次性迁移
+let sessionStore = { version: 1, records: [] };
+
 function sessionKey(s) {
   return `${s.user}@${s.host}:${s.port ?? 22}`;
 }
+function readSessions() {
+  return sessionStore.records;
+}
+function persistSessions() {
+  if (!bridge) return;
+  bridge
+    .invoke("sessions_write", { json: JSON.stringify(sessionStore) })
+    .catch((err) => toast(`会话清单没存住：${explainError("sessions_write", String(err))}`));
+}
 function saveSession(rec) {
   const key = sessionKey(rec);
-  const next = readSessions().filter((s) => sessionKey(s) !== key);
-  next.unshift({ ...rec, last: Date.now() }); // 最近用过的排最前
-  localStorage.setItem(SESS_KEY, JSON.stringify(next.slice(0, 40)));
+  const next = sessionStore.records.filter((s) => sessionKey(s) !== key);
+  sessionStore.records = [{ ...rec, last: Date.now() }, ...next].slice(0, 40);
+  persistSessions();
   renderSessions();
 }
 function removeSession(key) {
-  localStorage.setItem(SESS_KEY, JSON.stringify(readSessions().filter((s) => sessionKey(s) !== key)));
+  sessionStore.records = sessionStore.records.filter((s) => sessionKey(s) !== key);
+  persistSessions();
   renderSessions();
+}
+// 启动时从磁盘拉一次；老版本留在 localStorage 里的记录顺手迁过来
+function loadSessions() {
+  if (!bridge) return renderSessions();
+  bridge
+    .invoke("sessions_read", {})
+    .then((raw) => {
+      const text = String(raw ?? "").trim();
+      let parsed = { version: 1, records: [] };
+      if (text) {
+        const obj = JSON.parse(text);
+        parsed = Array.isArray(obj) ? { version: 1, records: obj } : obj;
+      }
+      if (Array.isArray(parsed.records)) sessionStore.records = parsed.records;
+      const legacy = localStorage.getItem(SESS_LEGACY);
+      if (sessionStore.records.length === 0 && legacy) {
+        try {
+          const arr = JSON.parse(legacy);
+          if (Array.isArray(arr) && arr.length) {
+            sessionStore.records = arr;
+            persistSessions();
+          }
+        } catch (e) {
+          /* 老数据坏了就丢了，不阻塞启动 */
+        }
+        localStorage.removeItem(SESS_LEGACY);
+      }
+      renderSessions();
+    })
+    .catch((err) => {
+      toast(`会话清单读不出来：${explainError("sessions_read", String(err))}`);
+      renderSessions();
+    });
 }
 function renderSessions() {
   const sidebar = document.querySelector(".sidebar");
@@ -697,12 +735,12 @@ document.getElementById("btn-connect").addEventListener("click", async () => {
   });
 });
 
-renderSessions();
-
-// 带 #sess-demo 时塞两条示例记录，用来核对会话栏排版（只写进当前临时 profile）
+// 会话清单以前端内存镜像为准，启动时从磁盘拉一次
 if (location.hash === "#sess-demo") {
   saveSession({ host: "web-01.example.com", port: 22, user: "deploy", auth: "key", keyfile: "~/.ssh/id_ed25519" });
   saveSession({ host: "10.0.8.12", port: 2222, user: "root", auth: "password" });
+} else {
+  loadSessions();
 }
 
 // ---------- 后端事件 ----------

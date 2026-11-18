@@ -4,9 +4,11 @@
 //! 任何"该怎么连"的实现都归 `portio-ssh`，任何"怎么显示"都归 `portio-app`。
 
 mod session;
+mod store;
 mod tabs;
 
 pub use session::{GroupId, HostId, Session, SessionGroup, SessionId, SessionKind};
+pub use store::{SessionRecord, SessionStore, MAX_RECORDS};
 pub use tabs::{DEFAULT_MAX_TABS, Tab, TabId, TabSet};
 
 /// 核心层的错误。刻意不用 `anyhow`：调用方要能分辨错误种类。
@@ -20,4 +22,6 @@ pub enum CoreError {
     NotFound(SessionId),
     #[error("标签数已达上限（{0}），先关掉一个再开")]
     TooManyTabs(usize),
+    #[error("{0}")]
+    BadSession(String),
 }

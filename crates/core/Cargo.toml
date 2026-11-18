@@ -8,4 +8,5 @@ description = "Portio 的领域模型：会话、分组、传输任务。不依�
 
 [dependencies]
 serde = { workspace = true }
+serde_json = "1"
 thiserror = { workspace = true }
