@@ -3070,3 +3070,152 @@ if (location.hash.startsWith("#find-test")) {
     run();
   })();
 }
+// ---------- 无头自检：#density-test（密度两档：标准 / 紧凑） ----------
+// 设置里能切"标准"与"紧凑"两档，差别只在 --row（28 / 24）：面板标题条、文件栏、文件行、
+// 传输行都跟着变高。这里量的是"切完高度一定对、位置一点也不许动"：
+//   ① 每档 --row 读出来的值与档位对得上（28 / 24）；
+//   ② 八处行高元素（会话栏标题、终端标题条、文件标题条、两个文件栏、一条文件行、传输标题条、一条传输行）
+//      高度都严丝合缝等于 --row；
+//   ③ 同一个元素在标准与紧凑之间差的正好是 4px（不多不少）——差多了说明某处用了别的数；
+//   ④ 切档只许改高度，左右位置与宽度一点都不许动（横向错位是这类 bug 最常见的样子）；
+//   ⑤ 切完窗口不横向溢出、导入菜单不溢出会话栏；
+//   ⑥ 设置里的分段控件跟着走，两档来回切都能回到标准。
+// 需要人手动塞一条文件行与一条传输行进来量，量完再拿掉。
+if (location.hash === "#density-test") {
+  (function densityTest() {
+    document.body.classList.add("dragging", "dragging-x"); // 关过渡，只量终态
+    const bad = [];
+    const seen = {};
+    const prev = root.dataset.density ?? "standard";
+
+    // 无头下文件列表只有一行提示、传输队列是空的，先塞两条真行进来
+    const injected = [];
+    function injectRow(host, cls, html) {
+      if (!host) return null;
+      const row = document.createElement("div");
+      row.className = cls;
+      row.innerHTML = html;
+      host.insertBefore(row, host.firstChild);
+      injected.push(row);
+      return row;
+    }
+    const remoteRow = injectRow(
+      document.getElementById("remote-list"),
+      "fp-row has-perm",
+      '<span class="ico">▸</span><span class="nm">etc</span><span class="pm">drwxr-xr-x</span>' +
+        '<span class="sz">—</span><span class="tm">2026-11-19 10:24</span>',
+    );
+    const localRow = injectRow(
+      document.getElementById("local-list"),
+      "fp-row",
+      '<span class="ico">·</span><span class="nm">notes.md</span><span class="sz">1.2 KB</span>' +
+        '<span class="tm">2026-11-19 10:24</span>',
+    );
+    const trHost = document.querySelector(".drawer-body");
+    const trRow = injectRow(
+      trHost,
+      "tr",
+      '<span class="ico">↑</span><span class="nm">bundle.zip</span>' +
+        '<span class="meta">42% · 1.2 MB/s</span>',
+    );
+
+    const landmarks = [
+      ["sessHead", () => document.querySelector(".sidebar h2")],
+      ["termHead", () => document.querySelector(".pane.term .pane-head")],
+      ["filesHead", () => document.querySelector(".pane.files .pane-head")],
+      ["remoteBar", () => document.querySelector('.fp-block[data-side="remote"] .fp-bar')],
+      ["localBar", () => document.querySelector('.fp-block[data-side="local"] .fp-bar')],
+      ["remoteRow", () => remoteRow],
+      ["localRow", () => localRow],
+      ["drawerHead", () => document.getElementById("drawer-head")],
+      ["trRow", () => trRow],
+    ];
+
+    function measure(density) {
+      applyDensity(density);
+      void document.body.offsetHeight; // 强制重排，量终态
+      const rowRaw = getComputedStyle(root).getPropertyValue("--row").trim();
+      const rowPx = Math.round(parseFloat(rowRaw) * 2) / 2;
+      const out = { row: rowPx, raw: rowRaw, items: {} };
+      for (const [key, pick] of landmarks) {
+        const el = pick();
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        out.items[key] = {
+          h: Math.round(r.height * 2) / 2,
+          left: Math.round(r.left),
+          w: Math.round(r.width),
+        };
+      }
+      return out;
+    }
+
+    function finish() {
+      // 收拾现场：拿掉塞进去的两条、还原密度与 body 类
+      for (const row of injected) row.remove();
+      applyDensity(prev);
+      document.body.classList.remove("dragging", "dragging-x");
+      seen.back = { density: root.dataset.density, row: Math.round(parseFloat(getComputedStyle(root).getPropertyValue("--row")) || 0) };
+      if (seen.back.density !== prev) bad.push(`切回原档位后是 ${seen.back.density}，应为 ${prev}`);
+      const title = bad.length
+        ? `DENSITY-SELFTEST-FAIL ${JSON.stringify(bad)} ${JSON.stringify(seen)}`
+        : `DENSITY-SELFTEST-OK ${JSON.stringify(seen)}`;
+      document.title = title;
+    }
+
+    try {
+      const std = measure("standard");
+      const cmp = measure("compact");
+      seen.standard = std;
+      seen.compact = cmp;
+      seen.delta = { row: Math.round((std.row - cmp.row) * 2) / 2 };
+
+      if (std.row !== 28) bad.push(`标准档 --row 是 ${std.row}px，应为 28px`);
+      if (cmp.row !== 24) bad.push(`紧凑档 --row 是 ${cmp.row}px，应为 24px`);
+      if (seen.delta.row !== 4) bad.push(`两档只该差 4px，实际差 ${seen.delta.row}px`);
+
+      const keys = Object.keys(std.items);
+      if (keys.length < landmarks.length) {
+        bad.push(`只找到了 ${keys.length} 处行高元素，应有 ${landmarks.length} 处（${JSON.stringify(keys)}）`);
+      }
+      for (const key of keys) {
+        const a = std.items[key];
+        const b = cmp.items[key];
+        if (!b) {
+          bad.push(`${key} 在紧凑档量不到`);
+          continue;
+        }
+        if (Math.abs(a.h - std.row) > 0.6) bad.push(`${key} 标准档高 ${a.h}px，应等于 --row ${std.row}px`);
+        if (Math.abs(b.h - cmp.row) > 0.6) bad.push(`${key} 紧凑档高 ${b.h}px，应等于 --row ${cmp.row}px`);
+        if (Math.abs((a.h - b.h) - 4) > 0.6) bad.push(`${key} 两档高度差 ${Math.round((a.h - b.h) * 2) / 2}px，应正好 4px`);
+        // 切档只许改高度：横向一动就说明有东西重排了
+        if (Math.abs(a.left - b.left) > 1) bad.push(`${key} 切档后左右动了 ${a.left} → ${b.left}`);
+        if (Math.abs(a.w - b.w) > 1) bad.push(`${key} 切档后宽度变了 ${a.w} → ${b.w}`);
+      }
+
+      // 段落控件得跟着走（设置面板打开状态下才量得到，无头里它一直在 DOM 里）
+      for (const d of ["standard", "compact"]) {
+        applyDensity(d);
+        const on = document.querySelector('#seg-density button.on');
+        if (!on) bad.push(`${d} 档下设置里的密度控件没有选中项`);
+        else if (on.dataset.v !== d) bad.push(`${d} 档下选中的是 ${on.dataset.v}`);
+      }
+
+      // 切完不许横向溢出
+      applyDensity("compact");
+      void document.body.offsetHeight;
+      const de = document.documentElement;
+      seen.compactOverflow = de.scrollWidth - window.innerWidth;
+      if (seen.compactOverflow > 1) bad.push(`紧凑档下窗口横向溢出 ${seen.compactOverflow}px`);
+      const actions = document.getElementById("sess-actions");
+      if (actions) {
+        const over = actions.scrollWidth - actions.clientWidth;
+        seen.actionsOverflow = over;
+        if (over > 1) bad.push(`紧凑档下导入那排横向溢出 ${over}px`);
+      }
+    } catch (err) {
+      bad.push(`量密度的过程抛了异常：${err && err.message ? err.message : err}`);
+    }
+    finish();
+  })();
+}
