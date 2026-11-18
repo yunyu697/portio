@@ -2467,3 +2467,41 @@ if (location.hash.includes("fold-test")) {
     ? `FOLD-SELFTEST-OK ${JSON.stringify(rows)}`
     : `FOLD-SELFTEST-FAIL ${JSON.stringify(rows)}`;
 }
+
+// #ctx-test：九处面板右键菜单的回归门禁。
+// 判两件事：①每个面板都得把浏览器默认菜单拦下来（defaultPrevented 为真）；
+// ②每个面板开出来的是"自己那份"菜单——条目文字逐条比对，防止某处被邻居的菜单抢走。
+// 动态文案（折叠/展开、收起/展开、最大化/还原）两种写法都算过。
+if (location.hash.includes("ctx-test")) {
+  const cases = [
+    { name: "会话栏", el: sidebarEl, items: ["新建连接", "导入会话", "收起会话栏"], alt: ["新建连接", "导入会话", "收起会话栏"] },
+    { name: "标签条", el: document.getElementById("tabs"), items: ["新建连接", "关闭当前标签"], alt: ["新建连接", "关闭当前标签"] },
+    { name: "文件面板标题条", el: filesPaneEl.querySelector(".pane-head"), items: ["折叠文件面板", "刷新两侧目录"], alt: ["展开文件面板", "刷新两侧目录"] },
+    { name: "文件面板·远端", el: filesPaneEl.querySelector('[data-side="remote"]'), items: ["刷新远端目录", "新建目录", "回到上一级"], alt: ["刷新远端目录", "新建目录", "回到上一级"] },
+    { name: "文件面板·本地", el: filesPaneEl.querySelector('[data-side="local"]'), items: ["刷新本地目录", "回到上一级"], alt: ["刷新本地目录", "回到上一级"] },
+    { name: "终端标题条", el: document.querySelector(".pane.term .pane-head"), items: ["查找", "清屏", "折叠文件面板"], alt: ["查找", "清屏", "展开文件面板"] },
+    { name: "传输抽屉", el: drawerEl, items: ["收起传输队列"], alt: ["展开传输队列"] },
+    { name: "状态栏", el: statusEl, items: ["复制诊断信息", "打开运行日志"], alt: ["复制诊断信息", "打开运行日志"] },
+    { name: "标题栏", el: titlebarEl, items: ["最小化", "最大化", "关闭 Portio"], alt: ["最小化", "还原窗口", "关闭 Portio"] },
+  ];
+  const bad = [];
+  for (const c of cases) {
+    ctxMenu.classList.remove("open");
+    ctxMenu.innerHTML = "";
+    const ev = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 200, clientY: 200 });
+    c.el.dispatchEvent(ev);
+    const labels = [...ctxMenu.querySelectorAll(".ctx-item > span:first-child")].map((n) => n.textContent);
+    const namesOk =
+      labels.length === c.items.length &&
+      c.items.every((want, i) => labels[i] === want || labels[i] === c.alt[i]);
+    const ok = ev.defaultPrevented && ctxMenu.classList.contains("open") && namesOk;
+    if (!ok) {
+      bad.push({ name: c.name, prevented: ev.defaultPrevented, open: ctxMenu.classList.contains("open"), labels });
+    }
+  }
+  ctxMenu.classList.remove("open");
+  ctxMenu.innerHTML = "";
+  document.title = bad.length === 0
+    ? `CTX-SELFTEST-OK ${cases.length}`
+    : `CTX-SELFTEST-FAIL ${JSON.stringify(bad)}`;
+}

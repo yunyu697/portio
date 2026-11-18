@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / SKIP。
 
-对应 docs/rc-checklist.md §1 的 A1–A11。以前这些步骤散在日志里，每轮都要手打一遍命令，
+对应 docs/rc-checklist.md §1 的 A1–A12。以前这些步骤散在日志里，每轮都要手打一遍命令，
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
 
 用法：
@@ -239,6 +239,7 @@ def main(argv: list[str]) -> int:
         ("A9", "#fold-test = FOLD-SELFTEST-OK", True),
         ("A10", "portio-app.exe 子系统 = GUI", True),
         ("A11", "NSIS 安装包体积与文件名", True),
+        ("A12", "#ctx-test = CTX-SELFTEST-OK 9（九处面板右键菜单）", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -286,8 +287,10 @@ def main(argv: list[str]) -> int:
             status, detail = a_page(chrome, profile, "#fold-test", "FOLD-SELFTEST-OK")
         elif code == "A10":
             status, detail = a10_pe_subsystem()
-        else:
+        elif code == "A11":
             status, detail = a11_bundle()
+        else:
+            status, detail = a_page(chrome, profile, "#ctx-test", "CTX-SELFTEST-OK 9")
         results.append((code, label, status, detail))
         print(f"[{status}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
 
