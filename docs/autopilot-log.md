@@ -96,3 +96,13 @@
 - 验证：PE OptionalHeader Subsystem = 2（GUI）；进程树无 conhost / cmd 子进程，仅主窗口 `Portio`；`_tb4_theme-dark.png` / `_tb4_theme-light.png` 4× 截图各只显示一枚图标且与另三枚同轴；`_real_alpha2.png` 实机桌面截图；1.0.2-Alpha2 `/S` 安装成功，`_iconhook.log` 11:04:21，安装版本读回 1.0.2-Alpha2；`cargo test -p portio-core -p portio-ssh` 通过。
 - 未验证：真实 SSH/SFTP 能力仍缺测试主机与凭据。
 - 下一步：S7 终端字号 / 主题运行时联动自检（改字号作用到已开标签、切主题同步 xterm 配色），随后转 S6 导入器。
+
+## 2026-11-18 · v1.0.2-Alpha4 · 浅色主题标记去深底 + 分隔线/把手重做 + 克制动效
+
+- 浅色主题下标题栏品牌标记原本贴的是 J7-dark 位图（深色底板）→ 改成内联 SVG，颜色走 `--mark-body/--mark-line/--mark-accent` 三个主题令牌：深色主题深底＋亮青，浅色主题浅底＋深青描线，18px 下再无"深色方块"。
+- 分隔线：新增 `--line-strong`（dark `#333e4d` / light `#bcc9d5`），落到标题栏下沿、会话栏右边界、面板标题下沿、传输抽屉上沿与状态栏上沿；浅色下结构不再糊在白底里。
+- 面板把手：`.gutter-v/.gutter-h` 重做——平时透明，hover 浮出 3px 胶囊，拖拽时胶囊变长变实并去色带；折叠态把手改用 `--line-strong`。`dragWith()` 现在给把手加 `.dragging`，`body.dragging` 期间关掉栅格过渡保证跟手。
+- 动效：`.main`/`.stage` 走 `grid-template-columns/rows` 240ms 过渡；`.ctx` 自触点缩放张开；`.modal` 淡入＋`.sheet` 上浮；切标签 `.term-pane.on` 淡入；`prefers-reduced-motion` 下全部退化。
+- 验证：`node --check ui/app.js` 通过；Chrome 无头 2× 截 `_p1_light.png` / `_p1_dark.png`，浅色下标记为浅底描线、无深色底板，两套主题结构分隔线均可见；`check_versions.py` OK v1.0.2-Alpha4；提交 `093e4c4`。
+- 未验证：把手 hover / 拖拽胶囊与各处动效只按代码路径核对，未做实机拖拽录屏；真实 SSH/SFTP 端到端仍缺测试主机与凭据。
+- 下一步：S7 终端字号/主题运行时联动自检；随后 S6 会话导入器（git 导入 ssh config）。
