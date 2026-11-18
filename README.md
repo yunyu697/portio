@@ -4,49 +4,126 @@
 
 > 名字取 **port + io**：port 是 SSH 端口，也是数据的进出口——命令往下走，文件往上走。
 
-## 状态
+## 这是什么
 
-| 版本 | 范围 | Gate |
+左边是会话清单，中间是终端，右边是远端 / 本地两栏文件。连上主机后终端能直接敲，
+文件栏能看能传——不用在 `ssh` 和另外的 SFTP 客户端之间来回切。
+
+- **终端**：xterm.js 渲染，russh 走协议；PTY 尺寸跟着窗口走
+- **文件**：SFTP 双栏，目录与文件双击即进出，拖拽上传
+- **会话**：写进本机清单，一次填好下次双击就连
+- **迁移**：能把 `~/.ssh/config`、Xshell 的 `.xsh`、WinSCP 的 `WinSCP.ini` 里的主机一次带进来
+- **外观**：深色 / 浅色 / 跟系统三态，密度与字号可调
+
+## 安装（Windows）
+
+拿到的文件名形如 `Portio_<版本>_x64-setup.exe`，双击装完即可，桌面和开始菜单都有快捷方式。
+首次运行需要系统装有 **WebView2 Runtime**（Win11 自带；Win10 若缺，安装包会引导安装）。
+
+## 怎么连一台机器
+
+三种入口，随便挑一种顺手的：
+
+1. **新建连接**——点会话栏顶上的绿色按钮，填主机 / 端口 / 用户名，密码或私钥二选一。
+2. **快速连接**——会话栏那行 `user@host:port`，写完按回车（或点右侧 ↵）直接跳到连接面板，
+   地址填好了，只剩密码。同一台机器以前连过的话，端口和认证方式会按上次的记录带出来。
+3. **双击会话**——列表里双击密钥认证的主机会直接重连；密码类会停在密码框等你输入。
+
+> 密码**不保存**，用完即弃。清单里只存"怎么连"：主机、端口、用户、认证方式、私钥路径。
+
+### 主机指纹
+
+首次连接会把服务器指纹记进 `known_hosts`；以后再连时若指纹变了，Portio 会**直接停手**
+并打印新旧指纹，让你自己判断是不是服务器重装过。这条不会为了让连接"跑通"而放松。
+
+## 从别的工具搬过来
+
+会话栏有三个虚线按钮：
+
+| 按钮 | 读哪里 | 说明 |
 |---|---|---|
-| v0.1 能连能敲 | Tauri 外壳、SSH 连接池、终端仿真、会话树 | 2027-01-17 |
-| v0.2 会话管理与迁移 | 会话 CRUD、分组、Xshell/WinSCP 导入 | 2027-02-28（首个公开版） |
-| v0.3 文件双栏 | SFTP、传输队列、断点续传 | 2027-04-25 |
-| v0.4 打磨发布 | 主题、签名、自动更新、文档 | 2027-06-06 |
+| 导入 `~/.ssh/config` | `%USERPROFILE%\.ssh\config` | 通配符块与 `Match` 块会跳过并计数；`IdentityFile` 记为密钥认证 |
+| 导入 Xshell 会话 | `%APPDATA%\NetSarang\Xshell\Sessions` | 递归收子目录，一个 `.xsh` 一台主机；RDP / Serial 跳过 |
+| 导入 WinSCP 站点 | `%APPDATA%\WinSCP.ini` → `%LOCALAPPDATA%\WinSCP.ini` → `文档\WinSCP.ini` | 取第一份存在的；FTP / WebDAV / S3 跳过，只收 SSH 系列站点 |
 
-当前进度：**v0.0.1-skeleton**，只有骨架，没有真实 SSH 与 SFTP。
+导入是**合并**：同端点只留一条，重复的不覆盖你改过的备注名。三个来源的密码字段都不读
+（Xshell 与 WinSCP 的密码是各自加密的，读了也用不上）。
 
-## 本地跑起来
+## 会话分组
+
+会话行右键 →「分到分组…」，填个组名（比如 `生产` / `测试`），列表就按组收拢。
+分组标题点一下能折叠，折叠时只留标题和条数；组标题右键还能「解散这个分组」。
+没有分组的会话落在「未分组」里；一条分组都没有时，列表仍按「最近使用 / 更早」排。
+
+右键菜单在其它模块也有一份：终端里能复制/粘贴/清屏、标签上能重命名/关闭、
+文件行能下载/上传/删除/重命名。要什么都在右键里找。
+
+## 界面设定
+
+右上角三个图标：主题（深色 / 浅色 / 跟系统）、快捷键一览、设置。
+
+设置里能调**界面密度**（标准 / 紧凑）、**终端字号**（11–18）、**终端滚动缓冲**（2000 / 8000 / 20000 行）。
+全都记在本地，下次打开还是你调的样子。
+
+## 快捷键
+
+| 键 | 作用 |
+|---|---|
+| `Ctrl` + `T` | 新建连接 |
+| `Ctrl` + `W` | 关闭当前标签 |
+| `Ctrl` + `/` | 打开快捷键一览（`Esc` 关闭） |
+| `Ctrl` + `Alt` + `B` | 收起 / 展开左侧会话栏 |
+| `Ctrl` + `Alt` + `H` | 窗口全屏 |
+| `F5` | 刷新终端显示与尺寸 |
+| 选中文本 | 选中即复制 |
+| `Ctrl` + `V` | 粘贴 |
+
+## 当前进度
+
+按既定排期走的是四版节奏：
+
+| 版本 | 范围 |
+|---|---|
+| v0.1 能连能敲 | 外壳、SSH、终端、会话树 |
+| v0.2 会话管理与迁移（首个公开版） | 会话 CRUD、分组、Xshell / WinSCP 导入、快速连接、设置项 |
+| v0.3 文件双栏 | SFTP、传输队列、断点续传 |
+| v0.4 打磨发布 | 主题全量、签名、自动更新、文档站 |
+
+版本号形如 `v1.0.3-Alpha2`：每完成一个交付单元 Alpha 进一位，满 10 进 patch 回 Alpha1。
+逐版更新内容见 [CHANGELOG.md](CHANGELOG.md)。
+
+## 开发
 
 ```bash
-# 前置：Rust stable（MSVC 工具链）、Node 22 LTS、WebView2 Runtime
-npm install          # 装 @tauri-apps/cli
-npm run dev          # 开发模式起窗口
+# 前置：Rust stable（MSVC 工具链）、Node 22 LTS、WebView2 Runtime、NSIS
+npm install                     # @tauri-apps/cli
+npm run dev                     # 开发模式起窗口
 cargo test --workspace
+node --check ui/app.js          # 前端语法门禁
+python scripts/check_design_tokens.py   # 界面不许出现硬编码色值
 ```
 
-若 `cargo` 提示找不到命令，把 `%USERPROFILE%\.cargo\bin` 加进 PATH 后重开终端。
+出本地安装包：
 
-## 结构
-
-```
-crates/
-  app/     Tauri 外壳：窗口、菜单、与前端通信（唯一允许依赖 tauri 的 crate）
-  core/    领域模型：会话、分组、传输队列。不依赖 Tauri，可单独测试
-  ssh/     协议层：SSH / SFTP 抽象。实现从 S2 开始
-ui/        前端（原生 HTML/CSS/JS，无构建步骤；设计令牌见 docs/design-tokens.md）
-docs/      设计基线与决策记录
+```bash
+npx @tauri-apps/cli build --debug --bundles nsis
+# 产物在 target/debug/bundle/nsis/Portio_<版本>_x64-setup.exe
 ```
 
-**分层规则**：`core` 与 `ssh` 不认识 Windows、不认识 Tauri；`app` 不认识协议细节。越界就是返工。
+**内存占位**：三 crate 分层 —— `core`（领域模型，不认识 Tauri）、`ssh`（协议抽象）、
+`app`（Tauri 外壳，唯一允许依赖 tauri 的 crate）。界面是原生 HTML/CSS/JS，无构建步骤。
 
 ## 约定
 
-Conventional Commits（`feat` / `fix` / `chore` / `docs` / `test` / `ci` / `refactor`）。分支用 `<type>/<短描述>`，例如 `feat/session-tree`。`main` 只收 PR。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+Conventional Commits（`feat` / `fix` / `chore` / `docs` / `test` / `ci` / `refactor`），
+提交正文写清验证方式。界面改动先读 [docs/design-spec.md](docs/design-spec.md)。
+分支用 `<type>/<短描述>`，`main` 只收 PR。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 版本号
 
-格式 `vMAJOR.MINOR.PATCH`，预发布 `-alphaN` / `-RCN`；MINOR 与 PATCH 封顶 10，满 10 向高位进位。
-规则与对照表见 [docs/versioning.md](docs/versioning.md)，用 `python scripts/version.py next ...` 推算，别心算。
+格式 `vMAJOR.MINOR.PATCH`，预发布 `-AlphaN` / `-RCN`；MINOR 与 PATCH 封顶 10，满 10 向高位进位。
+规则与对照表见 [docs/versioning.md](docs/versioning.md)，用 `python scripts/set_version.py` 写、
+`python scripts/check_versions.py` 校验，别手改四处版本字段。
 
 ## 许可
 

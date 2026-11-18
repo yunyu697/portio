@@ -174,3 +174,11 @@
 - 验证：`node --check ui/app.js` exit 0（第一次跑出 `Identifier 'FOLD_KEY' has already been declared`，改名 GFOLD_KEY 后通过）；`check_design_tokens.py` OK；无头 2× 截图 `_s7_groups.png`（1180×690 深色：测试组折叠只剩标题+条数 1、生产组展开两行 dba@db-01.prod:2222 与 deploy@web-01.prod key、未分组一行 root@10.0.8.12）；`#groups-demo` dump-dom `<title>` 仍是 `Portio`。
 - 未验证：真实右键菜单点击、弹层输入与回车（无头不能交互）；分组在真实窗口下的折叠动画手感；分组数据在软件升级后是否沿用旧 localStorage（未实测）。
 - 下一步：S7 收尾——发布物料（README / 更新说明 / 截图），之后进 S8（SFTP 通道复用已有 SSH 连接）。
+## 2026-11-18 · v1.0.3-Alpha3 · S7 收尾：发布物料（README）
+
+- `README.md` 整体重写为用户视角：这是什么 / Windows 安装（含 WebView2 前提）/ 三种连接入口（新建、快速连接、双击会话）/ 主机指纹策略（变了就停手，不为跑通降标准）/ 三种迁移导入各自的读取路径与跳过规则 / 会话分组用法 / 界面设定（密度、字号、滚动缓冲）/ 快捷键表 / 四版进度与版本号规则 / 开发与出包命令。
+- 去掉过期描述「当前进度 v0.0.1-skeleton」；修正「排期」的坏链接（排期文档在仓库外，改成不链接的表述）。
+- 顺手把快捷键浮层里 `Ctrl+W` 的旧说明（"多标签在后续版本接入"）改成"关闭当前标签（最后一个不关）"——多标签早在 Alpha 阶段就接了，说明没跟上。
+- 验证：README 里每条说法都对着代码核过（`Ctrl+T/W//`、`Ctrl+Alt+B/H`、`F5` 的实现在 `ui/app.js` 392–412 与 1300 行附近；三个导入路径与 `session_store.rs` 里的候选顺序一致；`node --check ui/app.js` exit 0；`check_design_tokens.py` OK；无头 dump-dom `#theme-light` 的 `<title>` 仍 `Portio`，无 `ERR:`）。
+- 未验证：文档里的安装/首次连接步骤没有在"干净机器 + 真实 SSH 服务器"上走一遍（仍受「无测试服务器」限制）。
+- 下一步：S8 —— SFTP 通道复用已有 SSH 连接（同一连接开文件通道，不二次鉴权）。
