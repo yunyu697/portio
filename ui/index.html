@@ -301,7 +301,7 @@
         <rect x="11.2" y="16.1" width="4.2" height="1.5" rx=".75" fill="var(--mark-accent)" opacity=".5"/>
         <rect x="15.4" y="11.3" width="3.6" height="1.4" rx=".7" fill="var(--mark-accent)"/>
       </svg>
-      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.2-Alpha6</span>
+      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.2-Alpha7</span>
     </div>
     <div class="tabs" id="tabs"></div>
     <button class="tbtn icon-only" id="btn-theme" aria-label="切换主题" title="切换主题：深色 / 浅色（跟随系统在设置里选）">
@@ -488,8 +488,10 @@
 
 <div class="ctx" id="ctx-menu" role="menu" aria-label="右键菜单"></div>
 
+<!-- 窗口是 visible:false 建的，由 app.js 在首屏画完后调 window_ready 才显示，
+     所以用户看到的第一帧就是画好的界面，不会先闪一块空窗口。 -->
 <script src="vendor/xterm.js"></script>
-<script src="vendor/addon-fit.js"></script>
+<script src="vendor/addon-fit.js" defer></script>
 <script src="app.js" defer></script>
 </body>
 </html>

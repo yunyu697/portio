@@ -1,27 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Portio",
-  "version": "1.0.2-Alpha6",
+  "version": "1.0.2-Alpha7",
   "identifier": "io.portio.desktop",
   "build": {
     "frontendDist": "../../ui"
   },
   "app": {
-    "windows": [
-      {
-        "label": "main",
-        "title": "Portio",
-        "width": 1180,
-        "height": 690,
-        "minWidth": 1024,
-        "minHeight": 620,
-        "center": true,
-        "decorations": false,
-        "theme": "Dark",
-        "backgroundColor": "#0D1014",
-        "visible": true
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     },
@@ -45,7 +31,10 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser",
-        "languages": ["SimpChinese", "English"],
+        "languages": [
+          "SimpChinese",
+          "English"
+        ],
         "displayLanguageSelector": false
       }
     },

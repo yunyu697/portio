@@ -159,6 +159,9 @@ function applyTheme(pref) {
   root.dataset.theme = resolveTheme(pref);
   eachTerm((t) => { t.options.theme = terminalTheme(); });
   syncSegs();
+  // 把实际生效的主题告诉外壳：下次启动窗口底色直接按它建，就不会先闪一下深色。
+  // 浏览器里直接打开 ui/index.html 时没有 bridge，静默跳过。
+  if (bridge) bridge.invoke("ui_theme_set", { theme: root.dataset.theme }).catch(() => {});
 }
 function applyDensity(density) {
   root.dataset.density = density;
@@ -426,6 +429,21 @@ if (sidebarFolded) applyFold(true);
 applySplit(Math.min(PREF.split.max, Math.max(PREF.split.min, readNum(PREF.split.key, 0.5))));
 applyDrawer(readNum(PREF.drawer.key, 172));
 window.addEventListener("resize", positionGutters);
+
+// ---------- 尽快把窗口放出来 ----------
+// 窗口在 tauri.conf.json 里是 visible:false：主题和尺寸都恢复好之后再 show，
+// 用户看到的第一帧就是画好的界面，不会先闪一块空底色。
+// 放在终端初始化之前调用——xterm 那一段最费时间，没必要等它。
+function revealWindow() {
+  if (!bridge || revealWindow.done) return;
+  revealWindow.done = true;
+  bridge.invoke("window_ready", {}).catch(() => {
+    /* 显示失败也别把界面卡住，用户还能从任务栏点出来 */
+  });
+}
+requestAnimationFrame(() => requestAnimationFrame(revealWindow));
+// 兜底：万一前面有异常把 rAF 链断了，1.2 秒后无论如何也把窗口放出来
+setTimeout(revealWindow, 1200);
 
 // 状态栏时钟，避免状态栏全是死文本
 const clock = document.getElementById("clock");
