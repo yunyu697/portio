@@ -560,3 +560,41 @@ S12 的第一件：终端能找了。第二个交付（分屏）还没动。
 - 无头里 rAF/过渡不推进（轨迹停在起点值），核验页一律关过渡只量终态，因此**过渡动画本身**没被观测到。
 
 **下一步**：S12 第三件（每格独立字号/配色），或按排期取「工作区标签组 / 标签重命名」。
+
+---
+
+## 2026-11-18 · v1.0.4-Alpha8 · S12「复制粘贴习惯对齐」
+
+**本轮做了什么**
+1. 按键 → 剪贴板动作抽成纯函数 `clipboardAction(mods, hasSelection)`（`"copy"` / `"paste"` / `null` = 不拦照发）：
+   - 复制：`Ctrl+Shift+C`、`Ctrl+Insert`、**有选中时的 `Ctrl+C`**（Windows Terminal 习惯：有选中就复制，没选中照发 `^C`，
+     不会出现"想复制却把命令打断了"）；
+   - 粘贴：`Ctrl+V`、`Ctrl+Shift+V`、`Shift+Insert`（Xshell / PuTTY 习惯全覆盖）；
+   - `Alt` 参与的组合一律 `null`，不抢 `Ctrl+Alt+H/B/F`；`Ctrl+Shift+D/E/W` 也不受影响。
+2. 顺手修掉一个顺序隐患：`attachCustomKeyEventHandler` 原来挂在 `const cell` **之前**，handler 里要用 `cell`，
+   属于潜在 TDZ；现在挪到 `t.open(el)` 与 `cell` 建好之后。
+3. `copySelection(cell)` 统一复制路径：无选中 → toast「没有选中内容」；有选中 → 写剪贴板、`clearSelection()`、
+   toast 字符数；失败 → 指出剪贴板权限。右键菜单的「复制选中」改成调它，不再自己写一遍。
+4. 右键菜单「复制选中 / 粘贴」补键位 hint（选中 `Ctrl+Shift+C`、未选中「无选中」、粘贴 `Ctrl+V`）。
+5. `pasteInto` 多行提醒：去掉尾随换行后超过 2 行 → toast「已粘贴 N 行：多行会一次性送下去，看清楚再回车」（只提示不阻断）。
+6. 修掉**不实的文案**：快捷键一览里的「选中即复制」从来没实现过（全代码无 `onSelectionChange`），
+   改成「拖选只是高亮，复制要点 `Ctrl+Shift+C` 或右键『复制选中』」；「Ctrl+C 中断」改成「有选中时复制、没选中时中断」。
+7. `#ctx-demo` 的终端目标从 `.term-pane`（隐藏容器，派发后打不出菜单）改成 `.term-cell`，右键菜单截图从此可用。
+
+**验证证据**
+- `node --check ui/app.js` 通过；`check_ui_scale.py`、`check_design_tokens.py` 均 `OK`。
+- 无头 `#clip-test` 标题 **`CLIP-SELFTEST-OK 10`**（10 条断言：三种复制键位、两种 `Ctrl+C` 分支、三种粘贴键位、
+  分屏 / 关标签 / `Ctrl+Alt+F` 不被抢）；STDERR 0 行，无 `ERR`。
+- 回归门禁：`#split-test` 仍为 `SELFTEST-OK`；普通页标题 `Portio`（无 JS 报错）。
+- 截图 `_clip_ctx.png`（1180×690@2x）：终端右键菜单项顺序 = 复制选中(无选中) / 粘贴 Ctrl+V / 全选 Ctrl+A / 分隔 /
+  清屏 Ctrl+L / 清空滚动缓冲 / 分隔 / 竖分一格 / 横分一格 / 关闭这一格，与规范 #13 钉的顺序一致。
+- `cargo test -p portio-core -p portio-app -p portio-ssh` 全绿（本轮无 Rust 改动）；`check_versions.py` → `OK v1.0.4-Alpha8`。
+
+**未验证项**
+- 真实键盘事件进 xterm、真实系统剪贴板读写（复制/粘贴实际效果）未点检——机器持续锁屏，只能做纯函数级自检；
+  实机键盘与剪贴板的这条链路仍是 `未验证`。
+- `Ctrl+C` 有选中即复制这条在真实 SSH 会话里是否会误伤"想中断但刚好有选中"的用法，需要用人手感确认。
+- 多行粘贴的提示只在真实粘贴时出现，无头下未观测。
+
+**下一步**：S13 里能自己收口的「崩溃上报本地采集」（panic hook + 前端 onerror 落盘到 `logs\portio.log`，
+设置面板给「打开日志目录 / 复制诊断」）——远端上报端点需用户给；或按排期取 S14「文档站点」最小版（README 落地页）。

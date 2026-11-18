@@ -843,14 +843,28 @@ function makeCell(tab, sid = null) {
   });
   const fit = new FitAddon.FitAddon();
   t.loadAddon(fit);
-  // Ctrl+F 归查找条：先拦住，别让 ^F 被当成输入发给远端
-  t.attachCustomKeyEventHandler((ev) => {
-    if (ev.type === "keydown" && ev.ctrlKey && !ev.altKey && ev.key.toLowerCase() === "f") return false;
-    return true;
-  });
   t.open(el);
   const cell = { id: cellId, el, term: t, fit, sid, tab };
   tab.cells.push(cell);
+  // Ctrl+F 归查找条；复制 / 粘贴按键统一走 clipboardAction（纯函数，见文件末尾，供 #clip-test 自检）。
+  // 注意：这个 handler 依赖 cell，必须等 cell 建好再挂。
+  t.attachCustomKeyEventHandler((ev) => {
+    if (ev.type !== "keydown") return true;
+    if (ev.ctrlKey && !ev.altKey && ev.key.toLowerCase() === "f") return false;
+    const act = clipboardAction(
+      { ctrl: ev.ctrlKey, shift: ev.shiftKey, alt: ev.altKey, key: ev.key },
+      t.hasSelection()
+    );
+    if (act === "copy") {
+      copySelection(cell);
+      return false;
+    }
+    if (act === "paste") {
+      pasteInto(cell);
+      return false;
+    }
+    return true;
+  });
   // 回调绑定到自己的格子，避免后台格子的输入发到别的会话
   t.onData((data) => {
     if (cell.sid !== null) call("ssh_input", { id: cell.sid, data });
@@ -869,11 +883,11 @@ function makeCell(tab, sid = null) {
     showCtx(ev.clientX, ev.clientY, [
       {
         label: "复制选中",
-        hint: picked ? `${picked.length} 字符` : "无选中",
+        hint: picked ? "Ctrl+Shift+C" : "无选中",
         disabled: !picked,
-        run: () => navigator.clipboard.writeText(picked).then(() => toast("选中内容已复制")),
+        run: () => copySelection(cell),
       },
-      { label: "粘贴", run: () => pasteInto(cell) },
+      { label: "粘贴", hint: "Ctrl+V", run: () => pasteInto(cell) },
       { label: "全选", hint: "Ctrl+A", run: () => t.selectAll() },
       { sep: true },
       { label: "清屏", hint: "Ctrl+L", run: () => sendRaw(cell, "\f") },
@@ -1042,6 +1056,33 @@ function sendRaw(cell, data) {
   else cell.term.write(data.replace("\f", ""));
 }
 
+// 键盘 → 剪贴板动作的映射。纯函数，`#clip-test` 直接用它做自检，不靠模拟键盘事件。
+// 返回 "copy" / "paste" / null（null = 不拦，按键照常发给远端）
+function clipboardAction(mods, hasSelection) {
+  if (mods.alt) return null; // Ctrl+Alt+X 留给应用快捷键（全屏 / 折叠面板等）
+  const k = String(mods.key || "").toLowerCase();
+  if (mods.ctrl && mods.shift && k === "c") return "copy"; // Xshell / PuTTY 的显式复制
+  if (mods.ctrl && !mods.shift && k === "insert") return "copy";
+  // Ctrl+C：有选中才当复制（Windows Terminal 的习惯）；没选中就照常发 ^C，别让中断失效
+  if (mods.ctrl && !mods.shift && k === "c") return hasSelection ? "copy" : null;
+  if (mods.ctrl && k === "v") return "paste"; // Ctrl+V 与 Ctrl+Shift+V 都是粘贴
+  if (mods.shift && !mods.ctrl && k === "insert") return "paste";
+  return null;
+}
+
+// 复制当前格选中的文字
+async function copySelection(cell) {
+  const text = cell.term.getSelection();
+  if (!text) return toast("没有选中内容：先用鼠标拖选一段");
+  try {
+    await navigator.clipboard.writeText(text);
+    cell.term.clearSelection();
+    toast(`已复制 ${text.length} 字符`);
+  } catch {
+    toast("复制失败：剪贴板不可用");
+  }
+}
+
 async function pasteInto(cell) {
   try {
     const text = await navigator.clipboard.readText();
@@ -1049,6 +1090,9 @@ async function pasteInto(cell) {
     if (cell.sid !== null) call("ssh_input", { id: cell.sid, data: text });
     else cell.term.write(text);
     cell.term.focus();
+    // 多行粘贴会一次执行完，给一句提示，但不阻断（命令行里本来就是这么用的）
+    const lines = text.replace(/[\r\n]+$/, "").split(/\r?\n/).length;
+    if (lines > 2) toast(`已粘贴 ${lines} 行：多行会一次性送下去，看清楚再回车`);
   } catch {
     toast("剪贴板读不出来，检查系统的剪贴板权限");
   }
@@ -2144,7 +2188,7 @@ if (location.hash.includes("ctx-demo")) {
     "local"
   );
   const which = location.hash.includes("term")
-    ? ".term-pane"
+    ? ".term-cell"
     : location.hash.includes("tab")
       ? ".tab"
       : location.hash.includes("file")
@@ -2157,4 +2201,26 @@ if (location.hash.includes("ctx-demo")) {
       new MouseEvent("contextmenu", { bubbles: true, clientX: r.left + 60, clientY: r.top + r.height })
     );
   }
+}
+
+// #clip-test：复制粘贴按键映射的状态机自检，结果写进 <title>，和 #split-test 一样当回归门禁。
+// 只测纯函数 clipboardAction，不依赖真实键盘 / 剪贴板。
+if (location.hash.includes("clip-test")) {
+  const cases = [
+    [{ ctrl: true, shift: true, key: "C" }, false, "copy"], // Ctrl+Shift+C 无选中也走复制（随后提示没选中）
+    [{ ctrl: true, shift: false, key: "Insert" }, false, "copy"], // Ctrl+Insert（Xshell 习惯）
+    [{ ctrl: true, shift: false, key: "c" }, true, "copy"], // Ctrl+C 有选中 → 复制
+    [{ ctrl: true, shift: false, key: "c" }, false, null], // Ctrl+C 无选中 → 照发 ^C
+    [{ ctrl: true, shift: false, key: "v" }, false, "paste"], // Ctrl+V
+    [{ ctrl: true, shift: true, key: "V" }, false, "paste"], // Ctrl+Shift+V
+    [{ ctrl: false, shift: true, key: "Insert" }, false, "paste"], // Shift+Insert（PuTTY 习惯）
+    [{ ctrl: true, shift: true, key: "d" }, false, null], // 分屏键不被剪贴板抢走
+    [{ ctrl: true, shift: false, key: "w" }, false, null], // 关标签键不被抢
+    [{ ctrl: true, alt: true, shift: false, key: "f" }, false, null], // Ctrl+Alt+F 留给折叠面板
+  ];
+  const bad = cases.filter(([m, sel, want]) => clipboardAction(m, sel) !== want);
+  const ok = bad.length === 0;
+  document.title = ok
+    ? `CLIP-SELFTEST-OK ${cases.length}`
+    : `CLIP-SELFTEST-FAIL ${bad.length}/${cases.length}`;
 }
