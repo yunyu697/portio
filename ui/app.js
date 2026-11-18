@@ -15,6 +15,23 @@ window.addEventListener("error", (e) => {
 // withGlobalTauri 打开后 window.__TAURI__.core.invoke 可用；纯浏览器预览时降级为 null。
 const bridge = window.__TAURI__?.core ?? null;
 
+// ---------- 运行日志 ----------
+// 前端异常 / Promise 未处理拒绝都写进本机日志（Rust 侧 diag_log 落盘），只写本机、不出网。
+// 没有 Tauri 桥（纯浏览器预览）时直接不记，不要因为记日志再抛一次错。
+function diagLog(level, source, message) {
+  if (!bridge) return;
+  try {
+    bridge.invoke("diag_log", { level, source, message: String(message).slice(0, 4000) }).catch(() => {});
+  } catch {}
+}
+window.addEventListener("error", (e) =>
+  diagLog("error", "ui", `${e.message || e.error} @ ${e.filename || "?"}:${e.lineno || 0}:${e.colno || 0}`)
+);
+window.addEventListener("unhandledrejection", (e) => {
+  const r = e.reason;
+  diagLog("error", "ui-promise", (r && (r.stack || r.message)) || String(r));
+});
+
 // 把 Rust 侧的原始错误翻成人话：说清"发生了什么 + 下一步怎么做"。
 // 匹配不上的一律保留原文，宁可粗糙也不隐藏细节。
 function explainError(cmd, err) {
@@ -294,7 +311,10 @@ function toggleSettings(open) {
   const want = open ?? !settingsModal.classList.contains("open");
   if (want) syncSegs();
   settingsModal.classList.toggle("open", want);
-  if (want) renderHosts();
+  if (want) {
+    renderHosts();
+    refreshLogInfo();
+  }
 }
 if (location.hash === "#settings") toggleSettings(true);
 document.getElementById("btn-settings").addEventListener("click", () => toggleSettings());
@@ -322,6 +342,43 @@ document.getElementById("hosts-list").addEventListener("click", async (e) => {
   const gone = await call("hosts_forget", { host: btn.dataset.host, port });
   toast(gone ? `已删除 ${btn.dataset.host}:${port} 的记录` : "这条记录已经不在了");
   renderHosts();
+});
+
+// ---------- 运行日志区块 ----------
+// 打开设置时读一次路径与体积。浏览器预览（无 Tauri 桥）时如实说明看不到日志，不假装。
+async function refreshLogInfo() {
+  const pathEl = document.getElementById("log-path");
+  const bytesEl = document.getElementById("log-bytes");
+  const info = await call("diag_info");
+  if (!info) {
+    pathEl.textContent = "浏览器预览没有本机日志";
+    pathEl.title = "";
+    bytesEl.textContent = "—";
+    return;
+  }
+  pathEl.textContent = info.path;
+  pathEl.title = info.path;
+  bytesEl.textContent = info.bytes ? `${fmtSize(info.bytes)}` : "还没写过东西";
+}
+
+document.getElementById("btn-log-open").addEventListener("click", async () => {
+  const ok = await call("diag_reveal");
+  if (ok === null || ok === undefined) return; // 失败原因 call 里已经 toast 过
+  toast("已在文件管理器里定位日志文件");
+});
+
+document.getElementById("btn-log-copy").addEventListener("click", async () => {
+  const info = await call("diag_info");
+  const tail = await call("diag_tail", { lines: 20 });
+  if (!info) return;
+  const ver = document.querySelector(".titlebar .brand .ver")?.textContent || "?";
+  const head = [
+    `Portio ${ver}`,
+    `日志：${info.path}（${info.bytes} 字节）`,
+    `屏幕：${screen.width}×${screen.height} @${window.devicePixelRatio}x · 窗口 ${innerWidth}×${innerHeight}`,
+    `系统：${navigator.userAgent}`,
+  ].join("\n");
+  copyText(`${head}\n\n最近日志：\n${tail || "(空)"}`);
 });
 
 // ---------- 可拖拽尺寸：三处，都持久化 ----------

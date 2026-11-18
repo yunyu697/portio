@@ -255,13 +255,15 @@
   /* ---------- 连接对话框 ---------- */
   .modal{position:fixed;inset:0;display:none;place-items:center;background:var(--overlay);z-index:80}
   .modal.open{display:grid}
+  /* 卡高不超视口：头部/底部钉住，只有正文滚（内容多了不能把「完成」挤出窗口，也不能顶到窗口外） */
   .sheet{width:420px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-12);
-         box-shadow:var(--shadow-3);overflow:hidden}
+         box-shadow:var(--shadow-3);overflow:hidden;
+         display:flex;flex-direction:column;max-height:calc(100vh - 32px)}
   .sheet header{display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);
                 font-weight:600}
   .sheet header .sub{margin-left:auto;font-weight:400;color:var(--text-3);font-size:var(--fs-11);
                      font-family:var(--mono)}
-  .sheet .body{display:grid;gap:12px;padding:16px}
+  .sheet .body{display:grid;gap:12px;padding:16px;overflow:auto;min-height:0}
   .field{display:grid;gap:4px}
   /* [hidden] 必须压过 .field 的 display:grid，否则私钥模式下密码框还留在面板上 */
   .field[hidden]{display:none}
@@ -409,6 +411,11 @@
   .set .hz-del:hover{color:var(--danger);background:var(--surface-3)}
   .set .hosts-empty{padding:var(--sp-3);border:1px dashed var(--line);border-radius:var(--r-6);
     color:var(--text-3);font-size:var(--fs-12);text-align:center}
+  /* 运行日志：路径一行（不许折行撑高），两个动作钮在同一行、挤窄就整钮换行 */
+  .set .logpath{margin:0;font-family:var(--mono);font-size:var(--fs-11);color:var(--text-3);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .set .acts{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
+  .set .acts .btn{flex:0 0 auto}
   .set .hint{color:var(--text-3);font-size:var(--fs-11);line-height:1.5}
   .seg{display:flex;border:1px solid var(--line);border-radius:var(--r-6);overflow:hidden;justify-self:start}
   .seg button{appearance:none;background:transparent;border:0;color:var(--text-2);font:inherit;
@@ -471,7 +478,7 @@
         <rect x="11.2" y="16.1" width="4.2" height="1.5" rx=".75" fill="var(--mark-accent)" opacity=".5"/>
         <rect x="15.4" y="11.3" width="3.6" height="1.4" rx=".7" fill="var(--mark-accent)"/>
       </svg>
-      <b data-tauri-drag-region>Portio</b><span class="ver" data-tauri-drag-region>1.0.4-Alpha8</span>
+      <b data-tauri-drag-region>Portio</b><span class="ver" data-tauri-drag-region>1.0.4-Alpha9</span>
     </div>
     <!-- 标签条本身就是标题栏里最大的一片空白，之前没挂 drag 区域，
          于是整条中间地段都点不动窗口。挂上后：空白处可拖、可双击最大化，标签项照常点击。 -->
@@ -683,6 +690,15 @@
           <label>已知主机 <b id="hosts-count">—</b></label>
           <div class="hosts" id="hosts-list"></div>
           <p class="hint">指纹变了会拦下连接。删掉一条只是让这台主机下次重新走首次信任，不是关掉校验。</p>
+        </div>
+        <div class="field">
+          <label>运行日志 <b id="log-bytes">—</b></label>
+          <p class="logpath" id="log-path" title="">—</p>
+          <div class="acts">
+            <button class="btn" id="btn-log-open">打开日志位置</button>
+            <button class="btn" id="btn-log-copy">复制诊断信息</button>
+          </div>
+          <p class="hint">崩了、卡住、连不上，都在这里留痕。日志只写本机，不出网；满 1 MB 自动轮转，只留一份旧的。</p>
         </div>
       </div>
       <footer>

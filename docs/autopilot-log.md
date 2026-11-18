@@ -598,3 +598,54 @@ S12 的第一件：终端能找了。第二个交付（分屏）还没动。
 
 **下一步**：S13 里能自己收口的「崩溃上报本地采集」（panic hook + 前端 onerror 落盘到 `logs\portio.log`，
 设置面板给「打开日志目录 / 复制诊断」）——远端上报端点需用户给；或按排期取 S14「文档站点」最小版（README 落地页）。
+
+---
+
+## 2026-11-18 · v1.0.4-Alpha9 · S13「崩溃上报本地采集」
+
+**本轮做了什么**
+1. 新 `crates/app/src/diag.rs`：本机运行日志。一条占一行（`2026-11-18T15:49:16Z [INFO] [app] …`），
+   换行在写入前折成 `⏎`，单条按**字符**截到 4000（不是字节，中文不会半截），满 1 MiB 轮转成 `portio.log.1`
+   （只留一份备份）。级别只收 INFO / WARN / ERROR，其它一律按 ERROR 记。时间戳自己按 Howard Hinnant 历法算
+   UTC ISO8601，不为了打日志引 chrono。
+2. Rust panic 钩子：`install_panic_hook` 先落一行 `[ERROR] [rust-panic] … @ 文件:行:列`，再走原来的钩子
+   （保留默认报错行为，不静默吞）。`setup` 第一件事就是装钩子，后面任何地方（含 tokio 任务）panic 都能留痕。
+3. 四个命令：`diag_log`（前端上报）、`diag_info`（路径 + 字节数）、`diag_tail`（最多 200 行）、
+   `diag_reveal`（Windows `explorer /select,`、macOS `open -R`、Linux `xdg-open`）。写日志失败一律咽掉——
+   记录日志本身不该把应用带崩，并用一个 `AtomicBool` 闸门防钩子里递归写。
+4. 前端：`window error` 与 `unhandledrejection` → `diag_log`（无 Tauri 桥时直接跳过，不因记日志再抛一次）。
+5. 设置面板新增「运行日志」区块：等宽路径一行省略（全路径进 `title`）、实时体积、「打开日志位置」
+   「复制诊断信息」（版本 + 系统 + 屏幕/窗口尺寸 + 最近 20 行）。打开设置时读一次。
+6. **顺手修一笔旧账**：设置面内容变长后，1024×620 下「完成」按钮被挤出视口。改 `.sheet` 为
+   `display:flex;flex-direction:column;max-height:calc(100vh - 32px)` + `.sheet .body{overflow:auto;min-height:0}`，
+   头部与底部钉住、只滚正文。
+
+**验证证据**
+- `cargo test -p portio-app` → **14 passed**（新增 8 条 diag 用例：ISO8601 三个已知日期、级别归桶、
+  来源清洗、单行化、按字符截断、行格式、备份名、**真实落盘 + 撑爆阈值触发轮转**）；三个 crate 合计
+  `6 / 47 / 3 / 17 / 1` 一类的既有用例全绿（`portio-app` 14、`portio-core` 47、`portio-ssh` 17 等）。
+- **实机启动验证**：`target\debug\portio-app.exe` 跑 6 秒后，
+  `%LOCALAPPDATA%\io.portio.desktop\logs\portio.log` 出现 158 字节一行：
+  `2026-11-18T15:49:16Z [INFO] [app] Portio 1.0.4-Alpha9 启动 · windows x86_64 · 日志 …\portio.log`
+  —— 说明钩子安装、路径解析、落盘在真实进程里都对（不是只有单元测试过）。随后 `Stop-Process` 收掉。
+- 无头：`#settings` 标题 `Portio`（无 JS 报错）、STDERR 0 行；`#clip-test` 仍 `CLIP-SELFTEST-OK 10`；
+  `log-path` 兜底文案正确（`浏览器预览没有本机日志`）、两个按钮都在。
+- 截图 `_log_wide.png`（1180×690@2x）与 `_log_narrow.png`（1024×620@2x）：新区块在位；窄窗下卡不越界、
+  「完成」按钮可见可点、正文可滚。
+- `node --check ui\app.js` 0；两个守卫脚本 `OK`；`check_versions.py` → `OK v1.0.4-Alpha9`。
+
+**规范**
+- §10 新增 #39「设置面板 · 运行日志区块」（路径单行省略 + 动作行可换行 + 日志格式约束）。
+- 改写 #24「模态」：补「卡高 ≤ `100vh − 32`、头部与底部钉住、只有正文滚」——这条以前根本没写，
+  才允许设置面板一路长到窗口外，属于规范缺口，不是单个页面写错。
+
+**未验证项**
+- 真实崩溃（Rust panic / 前端异常）没有真触发过：只验证了「落盘 + 轮转」逻辑与启动那条日志；
+  panic 钩子路径实机 `未验证`。
+- 「打开日志位置」「复制诊断信息」两个按钮在真实窗口里的行为（资源管理器定位、剪贴板内容）未点检——
+  机器锁屏，无头环境没有 Tauri 桥。
+- 远端上报未做（无端点，需用户给服务地址与出网许可）。
+
+**下一步**：S13 剩余两项都要用户拍板（代码签名证书、自动更新分发端点），先跳过；转 S14「文档站点最小版」
+——把 `README.md` 扩成一页可离线打开的说明站（安装 / 首次连接 / 已知主机与指纹 / 快捷键 / 故障排查指向运行日志），
+静态 HTML 放 `docs/site/`，仍不带任何网络依赖。

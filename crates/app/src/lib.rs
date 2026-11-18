@@ -2,6 +2,7 @@ use tauri::{Manager, Window};
 use tauri::utils::config::Color;
 
 mod credentials;
+mod diag;
 mod session_store;
 mod sessions;
 
@@ -104,6 +105,10 @@ pub fn run() {
             window_state,
             window_ready,
             ui_theme_set,
+            diag::diag_log,
+            diag::diag_info,
+            diag::diag_tail,
+            diag::diag_reveal,
             credentials::cred_get,
             credentials::cred_set,
             credentials::cred_forget,
@@ -132,6 +137,22 @@ pub fn run() {
             sessions::local_rename
         ])
         .setup(|app| {
+            // 崩溃采集先装钩子：后面任何地方 panic（含 setup 自己、tokio 任务）都能落一行日志。
+            diag::install_panic_hook(app.handle().clone());
+            diag::write_entry(
+                app.handle(),
+                "info",
+                "app",
+                &format!(
+                    "Portio {} 启动 · {} {} · 日志 {}",
+                    env!("CARGO_PKG_VERSION"),
+                    std::env::consts::OS,
+                    std::env::consts::ARCH,
+                    diag::log_file(app.handle())
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|e| e)
+                ),
+            );
             // 窗口不再由 tauri.conf.json 静态建：底色要按用户上次的主题来定，
             // 否则浅色主题的用户每次启动都会先看到一块深色空窗口（就是"黑屏一下"）。
             let theme = read_ui_theme(app.handle());
