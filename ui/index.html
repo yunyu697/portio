@@ -199,6 +199,12 @@
     color:var(--text);font-size:var(--fs-12);outline:none}
   .sess-search::placeholder{color:var(--text-3)}
   .sess-search:focus{border-color:var(--accent)}
+  /* 导入：弱化成一个"次要动作"，不跟"新建连接"抢视觉重心 */
+  .sess-import{display:block;width:calc(100% - 24px);margin:4px 12px 2px;height:26px;
+             background:transparent;color:var(--text-3);border:1px dashed var(--line-strong);
+             border-radius:var(--r-6);font-size:var(--fs-12);cursor:pointer;
+             transition:color var(--dur) var(--ease),border-color var(--dur) var(--ease)}
+  .sess-import:hover{color:var(--accent);border-color:var(--accent)}
   .sess-empty{padding:20px 16px;color:var(--text-3);font-size:var(--fs-12)}
   /* 右键菜单：所有模块共用一套，位置在鼠标点，越界自动内收 */
   .ctx{position:fixed;z-index:40;min-width:184px;padding:4px;background:var(--surface-2);
@@ -295,7 +301,7 @@
         <rect x="11.2" y="16.1" width="4.2" height="1.5" rx=".75" fill="var(--mark-accent)" opacity=".5"/>
         <rect x="15.4" y="11.3" width="3.6" height="1.4" rx=".7" fill="var(--mark-accent)"/>
       </svg>
-      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.2-Alpha5</span>
+      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.2-Alpha6</span>
     </div>
     <div class="tabs" id="tabs"></div>
     <button class="tbtn icon-only" id="btn-theme" aria-label="切换主题" title="切换主题：深色 / 浅色（跟随系统在设置里选）">
@@ -324,6 +330,7 @@
       <button class="btn primary new-session" id="btn-new">新建连接</button>
       <input class="sess-search" id="sess-search" type="search" spellcheck="false"
              placeholder="搜主机 / 用户 / 备注" aria-label="搜索会话">
+      <button class="sess-import" id="btn-import-ssh" title="从 ~/.ssh/config 导入主机">导入 ~/.ssh/config</button>
       <div class="empty">
         还没有会话。<br>
         按 <kbd>Ctrl</kbd>+<kbd>T</kbd> 新建，或点上面的按钮。<br>

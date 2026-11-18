@@ -51,3 +51,163 @@ pub fn sessions_write(app: tauri::AppHandle, json: String) -> Result<String, Str
 pub fn sessions_path(app: tauri::AppHandle) -> Result<String, String> {
     Ok(store_path(&app)?.to_string_lossy().to_string())
 }
+
+/// 从 OpenSSH 客户端配置导入主机。
+///
+/// 解析规则全在 `portio_core::parse_ssh_config`，这里只负责"找文件 → 读文本 → 合并 → 落盘"。
+/// 返回合并后的完整清单 JSON 与计数，前端直接拿去替换内存里的那份。
+#[derive(serde::Serialize)]
+pub struct ImportReport {
+    pub json: String,
+    /// 本次新导入 / 更新的条数。
+    pub added: usize,
+    /// 配置里被跳过的块数（通配符块、缺用户名、与已有记录重复）。
+    pub skipped: usize,
+    /// 实际读的是哪份文件，出错时给用户看。
+    pub source: String,
+}
+
+#[tauri::command]
+pub fn sessions_import_ssh_config(
+    app: tauri::AppHandle,
+    path: Option<String>,
+) -> Result<ImportReport, String> {
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|e| format!("拿不到用户目录：{e}"))?;
+    let source = match path.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
+        Some(p) => std::path::PathBuf::from(p),
+        None => home.join(".ssh").join("config"),
+    };
+    // 清单本身也要能读：坏文件不该被导入悄悄覆盖成空表
+    let store_json = match fs::read_to_string(store_path(&app)?) {
+        Ok(t) => t,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(err) => return Err(format!("读会话清单失败：{err}")),
+    };
+    let mut store = SessionStore::from_json(&store_json).map_err(|e| e.to_string())?;
+    let (added, skipped_extra) = import_into_store(&mut store, &source, &home)?;
+    let json = store.to_json();
+    // 只有真的变化了才写盘，免得每次点导入都改文件时间
+    if added > 0 {
+        let p = store_path(&app)?;
+        if let Some(parent) = p.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("建目录失败：{e}"))?;
+        }
+        let tmp = p.with_extension("json.tmp");
+        fs::write(&tmp, json.as_bytes()).map_err(|e| format!("写临时文件失败：{e}"))?;
+        fs::rename(&tmp, &p).map_err(|e| format!("替换清单文件失败：{e}"))?;
+    }
+    Ok(ImportReport {
+        json,
+        added,
+        skipped: skipped_extra,
+        source: source.to_string_lossy().to_string(),
+    })
+}
+
+/// 把一份 ssh config 合并进已有清单（不落盘）。返回（新增条数，跳过总数）。
+///
+/// 抽成独立函数是为了能脱离 Tauri 直接测：解析、合并、跳过的规则都在这里，
+/// 命令层只剩"找路径 / 读 / 写"三件事。
+fn import_into_store(
+    store: &mut SessionStore,
+    source: &std::path::Path,
+    home: &std::path::Path,
+) -> Result<(usize, usize), String> {
+    let text = fs::read_to_string(source).map_err(|e| {
+        format!(
+            "读不到 {}：{e}（确认文件存在，或手工指定另一份配置）",
+            source.to_string_lossy()
+        )
+    })?;
+    let outcome = portio_core::parse_ssh_config(&text, None, Some(&home.to_string_lossy()));
+    let mut incoming = SessionStore::new();
+    for rec in outcome.records {
+        // 单条坏记录跳过，不连累整批
+        let _ = incoming.upsert(rec);
+    }
+    let (added, dup) = store.merge(incoming);
+    Ok((added, outcome.skipped + dup))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    fn temp_config(text: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!(
+            "portio_import_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let cfg = dir.join("config");
+        let mut f = fs::File::create(&cfg).unwrap();
+        f.write_all(text.as_bytes()).unwrap();
+        (dir.clone(), cfg)
+    }
+
+    #[test]
+    fn import_merges_and_reports_counts() {
+        let (dir, cfg) = temp_config(
+            "\
+Host web-01
+  HostName 10.1.1.1
+  User deploy
+  IdentityFile ~/.ssh/id_ed25519
+
+Host db-01
+  HostName 10.1.1.2
+  User deploy
+
+Host *
+  User nobody
+",
+        );
+        let mut store = SessionStore::new();
+        let (added, skipped) = import_into_store(&mut store, &cfg, &dir).unwrap();
+        assert_eq!(added, 2);
+        assert_eq!(skipped, 1, "通配符块跳过");
+        assert_eq!(store.records.len(), 2);
+        let web = store
+            .records
+            .iter()
+            .find(|r| r.host == "10.1.1.1")
+            .expect("web-01 应该在清单里");
+        assert_eq!(web.auth, "key");
+        assert_eq!(web.port, 22);
+        let home = dir.to_string_lossy().to_string();
+        assert!(web
+            .keyfile
+            .as_deref()
+            .unwrap()
+            .starts_with(&home), "~ 应展开到传入的 home");
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn reimport_is_idempotent() {
+        let (dir, cfg) = temp_config("Host a\n  HostName 1.2.3.4\n  User u\n");
+        let mut store = SessionStore::new();
+        assert_eq!(import_into_store(&mut store, &cfg, &dir).unwrap(), (1, 0));
+        // 第二次：同键覆盖、不算新增
+        assert_eq!(import_into_store(&mut store, &cfg, &dir).unwrap(), (1, 0));
+        assert_eq!(store.records.len(), 1, "重复导入不叠加记录");
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn missing_file_is_an_error_not_empty_import() {
+        let mut store = SessionStore::new();
+        let err = import_into_store(&mut store, std::path::Path::new("Z:\\nope\\config"), std::path::Path::new("C:\\"))
+            .unwrap_err();
+        assert!(err.contains("读不到"), "错误要指出是哪份文件：{err}");
+        assert!(store.records.is_empty());
+    }
+}

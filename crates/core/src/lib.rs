@@ -4,10 +4,12 @@
 //! 任何"该怎么连"的实现都归 `portio-ssh`，任何"怎么显示"都归 `portio-app`。
 
 mod session;
+mod sshconfig;
 mod store;
 mod tabs;
 
 pub use session::{GroupId, HostId, Session, SessionGroup, SessionId, SessionKind};
+pub use sshconfig::{parse_ssh_config, ImportOutcome};
 pub use store::{SessionRecord, SessionStore, MAX_RECORDS};
 pub use tabs::{DEFAULT_MAX_TABS, Tab, TabId, TabSet};
 
