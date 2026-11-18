@@ -466,21 +466,26 @@ let tabSeq = 0;
 // term / fitAddon 已在文件顶部声明（那里要避免 TDZ），这里只做"指向当前标签"
 let sessionId = null;
 
+// 终端配色也来自 tokens.css：这里只读令牌，不再写死色值（改配色去改令牌，别改这里）
+function cssToken(name) {
+  const v = getComputedStyle(root).getPropertyValue(name).trim();
+  return v;
+}
 function terminalTheme() {
-  const dark = root.dataset.theme === "dark";
-  return dark
-    ? {
-        background: "#090c10", foreground: "#dfe5ec", cursor: "#2fb39a",
-        selectionBackground: "#28403b", black: "#1a2029", red: "#d2655f",
-        green: "#2fb39a", yellow: "#c99a4e", blue: "#6fa8dc", magenta: "#a98bd0",
-        cyan: "#4fb6c7", white: "#dfe5ec",
-      }
-    : {
-        background: "#ffffff", foreground: "#1d242c", cursor: "#12897a",
-        selectionBackground: "#cfe8e3", black: "#242c36", red: "#b8453f",
-        green: "#12897a", yellow: "#96702c", blue: "#2f6ea5", magenta: "#7a5cb0",
-        cyan: "#2c8fa0", white: "#ffffff",
-      };
+  return {
+    background: cssToken("--term-bg"),
+    foreground: cssToken("--term-fg"),
+    cursor: cssToken("--term-cursor"),
+    selectionBackground: cssToken("--term-selection"),
+    black: cssToken("--ansi-black"),
+    red: cssToken("--ansi-red"),
+    green: cssToken("--ansi-green"),
+    yellow: cssToken("--ansi-yellow"),
+    blue: cssToken("--ansi-blue"),
+    magenta: cssToken("--ansi-magenta"),
+    cyan: cssToken("--ansi-cyan"),
+    white: cssToken("--ansi-white"),
+  };
 }
 
 function fitQuietly() {

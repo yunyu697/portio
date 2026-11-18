@@ -49,7 +49,7 @@
   *::-webkit-scrollbar-corner{background:transparent}
   .win-ctl{display:flex;height:100%}
   .win-ctl .tbtn{width:44px}
-  .win-ctl #btn-close:hover{background:var(--danger);color:#fff}
+  .win-ctl #btn-close:hover{background:var(--danger);color:var(--on-danger)}
 
   /* ---------- 主体 ---------- */
   .main{display:grid;grid-template-columns:var(--sidebar) 1fr;overflow:hidden;min-height:0;position:relative}
@@ -66,17 +66,26 @@
      平时完全透明（不留一条高亮色带），鼠标移上来才浮出一小段胶囊，拖拽时胶囊变长变实——
      提示"这里能拖"，又不改写布局本身的观感。 */
   .gutter-v{position:absolute;top:0;bottom:0;width:9px;cursor:col-resize;z-index:6;background:none}
-  .gutter-v::after{content:"";position:absolute;left:50%;top:50%;width:3px;height:34px;
-    transform:translate(-50%,-50%) scaleY(.6);border-radius:999px;background:var(--accent);
-    opacity:0;transition:opacity var(--dur) var(--ease),transform var(--dur-2) var(--ease-out)}
-  .gutter-v:hover::after{opacity:.45;transform:translate(-50%,-50%) scaleY(1)}
-  .gutter-v.dragging::after{opacity:.95;height:72px;transform:translate(-50%,-50%) scaleY(1)}
+  /* 静止态留一条 1px 的结构线：面板之间得看得出哪里是分界，
+     鼠标移上来再换成强调色的胶囊提示"这里能拖"。 */
+  .gutter-v::before{content:"";position:absolute;top:0;bottom:0;left:3px;width:1px;
+    background:var(--line-strong);transition:background var(--dur) var(--ease),opacity var(--dur) var(--ease)}
+  .gutter-v:hover::before,.gutter-v.dragging::before{background:var(--accent)}
+  .gutter-v::after{content:"";position:absolute;left:2px;top:0;bottom:0;width:2px;
+    background:linear-gradient(180deg,transparent 0%,var(--accent) 22%,var(--accent) 78%,transparent 100%);
+    opacity:0;transition:opacity var(--dur) var(--ease),width var(--dur) var(--ease),box-shadow var(--dur) var(--ease)}
+  .gutter-v:hover::before{opacity:0}
+  .gutter-v:hover::after{opacity:.75}
+  .gutter-v.dragging::before{opacity:0}
+  .gutter-v.dragging::after{opacity:1;width:3px;box-shadow:0 0 10px var(--accent)}
   /* 折叠态：会话栏整块收走，只留一条把手，鼠标移上去才浮出箭头。
      注意列数要变成单列——写成 "0 1fr" 时剩下的唯一子元素会落进那个 0 宽的第一列，整屏空白。 */
   .main.collapsed{grid-template-columns:1fr}
   .main.collapsed .sidebar{display:none}
   .main.collapsed #gutter-v{width:10px;cursor:pointer;background:transparent;
     box-shadow:inset -1px 0 0 var(--line-strong)}
+  .main.collapsed #gutter-v::before{display:none}
+  .main.collapsed #gutter-v::after{display:none}
   .main.collapsed #gutter-v::after{content:"›";position:absolute;top:50%;left:50%;width:auto;height:auto;
     transform:translate(-50%,-50%);font-size:12px;line-height:1;color:var(--text-3);background:none;
     border-radius:0;opacity:.55;transition:opacity .12s,color .12s}
@@ -99,11 +108,16 @@
   .hint{color:var(--text-3);font-family:var(--ui);font-size:var(--fs-12)}
 
   .gutter-h{position:absolute;left:0;right:0;height:9px;cursor:row-resize;z-index:6;background:none}
-  .gutter-h::after{content:"";position:absolute;left:50%;top:50%;width:34px;height:3px;
-    transform:translate(-50%,-50%) scaleX(.6);border-radius:999px;background:var(--accent);
-    opacity:0;transition:opacity var(--dur) var(--ease),transform var(--dur-2) var(--ease-out)}
-  .gutter-h:hover::after{opacity:.45;transform:translate(-50%,-50%) scaleX(1)}
-  .gutter-h.dragging::after{opacity:.95;width:72px;transform:translate(-50%,-50%) scaleX(1)}
+  .gutter-h::before{content:"";position:absolute;left:0;right:0;top:3px;height:1px;
+    background:var(--line-strong);transition:background var(--dur) var(--ease)}
+  .gutter-h:hover::before,.gutter-h.dragging::before{background:var(--accent)}
+  .gutter-h::after{content:"";position:absolute;top:2px;left:0;right:0;height:2px;
+    background:linear-gradient(90deg,transparent 0%,var(--accent) 22%,var(--accent) 78%,transparent 100%);
+    opacity:0;transition:opacity var(--dur) var(--ease),height var(--dur) var(--ease),box-shadow var(--dur) var(--ease)}
+  .gutter-h:hover::before{opacity:0}
+  .gutter-h:hover::after{opacity:.75}
+  .gutter-h.dragging::before{opacity:0}
+  .gutter-h.dragging::after{opacity:1;height:3px;box-shadow:0 0 10px var(--accent)}
 
   .drawer{display:flex;flex-direction:column;background:var(--surface-2);border-top:1px solid var(--line-strong);
           min-height:0;overflow:hidden;border-radius:var(--r-8) var(--r-8) 0 0}
@@ -169,10 +183,10 @@
   .tr .ico{color:var(--text-3);text-align:center}
 
   /* ---------- 连接对话框 ---------- */
-  .modal{position:fixed;inset:0;display:none;place-items:center;background:rgba(4,6,8,.62);z-index:80}
+  .modal{position:fixed;inset:0;display:none;place-items:center;background:var(--overlay);z-index:80}
   .modal.open{display:grid}
   .sheet{width:420px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-12);
-         box-shadow:0 24px 64px rgba(0,0,0,.5);overflow:hidden}
+         box-shadow:var(--shadow-3);overflow:hidden}
   .sheet header{display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);
                 font-weight:600}
   .sheet header .sub{margin-left:auto;font-weight:400;color:var(--text-3);font-size:var(--fs-11);
@@ -190,7 +204,7 @@
   .btn{background:var(--surface-3);border:1px solid var(--line);color:var(--text-2);padding:7px 14px;
        border-radius:var(--r-4);cursor:pointer;font-size:var(--fs-12)}
   .btn:hover{color:var(--text)}
-  .btn.primary{background:var(--accent);border-color:var(--accent);color:#04100e;font-weight:600}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
   .btn.primary:hover{filter:brightness(1.06)}
   .btn:disabled{opacity:.55;cursor:default}
   .new-session{width:calc(100% - 24px);margin:10px 12px 0;height:30px}
@@ -208,7 +222,7 @@
   .sess-empty{padding:20px 16px;color:var(--text-3);font-size:var(--fs-12)}
   /* 右键菜单：所有模块共用一套，位置在鼠标点，越界自动内收 */
   .ctx{position:fixed;z-index:40;min-width:184px;padding:4px;background:var(--surface-2);
-    border:1px solid var(--line);border-radius:var(--r-6);box-shadow:0 14px 32px rgba(0,0,0,.45);
+    border:1px solid var(--line);border-radius:var(--r-6);box-shadow:var(--shadow-2);
     display:none}
   .ctx.open{display:block}
   .ctx-item{display:flex;align-items:center;gap:10px;height:26px;padding:0 8px;
@@ -217,7 +231,7 @@
   .ctx-item.dis{color:var(--text-3);cursor:default}
   .ctx-item.dis:hover{background:transparent}
   .ctx-item .hint{margin-left:auto;color:var(--text-3);font-size:var(--fs-11)}
-  .ctx-sep{height:1px;margin:4px 6px;background:rgba(255,255,255,.10)}
+  .ctx-sep{height:1px;margin:4px 6px;background:var(--ctx-sep)}
   .sess-group{margin:14px 12px 4px;color:var(--text-3);font-size:var(--fs-11);
     letter-spacing:.04em}
   .sess-row{display:flex;align-items:center;gap:8px;margin:4px 12px 0;padding:0 8px;height:30px;
@@ -253,7 +267,7 @@
          gap:8px;z-index:99;pointer-events:none}
   .toast div{background:var(--surface-3);border:1px solid var(--line);border-left:2px solid var(--accent);
              color:var(--text-2);padding:8px 12px;border-radius:var(--r-4);font-size:var(--fs-12);
-             box-shadow:0 6px 20px rgba(0,0,0,.35);animation:in .16s cubic-bezier(.2,.7,.2,1)}
+             box-shadow:var(--shadow-1);animation:in var(--dur) var(--ease)}
   @keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
   /* ---------- 动效：只做"因果明显"的那几处 ---------- */
@@ -301,7 +315,7 @@
         <rect x="11.2" y="16.1" width="4.2" height="1.5" rx=".75" fill="var(--mark-accent)" opacity=".5"/>
         <rect x="15.4" y="11.3" width="3.6" height="1.4" rx=".7" fill="var(--mark-accent)"/>
       </svg>
-      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.2-Alpha7</span>
+      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.2-Alpha8</span>
     </div>
     <div class="tabs" id="tabs"></div>
     <button class="tbtn icon-only" id="btn-theme" aria-label="切换主题" title="切换主题：深色 / 浅色（跟随系统在设置里选）">

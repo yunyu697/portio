@@ -15,6 +15,19 @@
   --ui:"HarmonyOS Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
   /* 标题栏标记（内联 SVG）专用色：深色主题用深底＋亮青描线 */
   --mark-body:#16323a; --mark-line:#3f7a84; --mark-accent:#2fd8c2;
+  /* 终端配色也走令牌：ANSI 调色板不再写死在 app.js 里（见 docs/design-spec.md 第 2 节） */
+  --term-fg:#dfe5ec; --term-cursor:#2fb39a; --term-selection:#28403b;
+  --ansi-black:#1a2029; --ansi-red:#d2655f; --ansi-green:#2fb39a; --ansi-yellow:#c99a4e;
+  --ansi-blue:#6fa8dc; --ansi-magenta:#a98bd0; --ansi-cyan:#4fb6c7; --ansi-white:#dfe5ec;
+  /* 铺在强调色/危险色上的文字色 */
+  --on-accent:#04100e; --on-danger:#ffffff;
+  /* 遮罩与投影：只留三档，别再造第四种 */
+  --overlay:rgba(4,6,8,.62);
+  --shadow-1:0 6px 20px rgba(0,0,0,.35);
+  --shadow-2:0 14px 32px rgba(0,0,0,.45);
+  --shadow-3:0 24px 64px rgba(0,0,0,.5);
+  /* 右键菜单内的分组线（菜单自身是深底，两套主题都用亮线） */
+  --ctx-sep:rgba(255,255,255,.10);
   --ease:cubic-bezier(.2,.7,.2,1); --ease-out:cubic-bezier(.16,1,.3,1);
   --dur:160ms; --dur-2:240ms;
 }
@@ -26,6 +39,15 @@ html[data-theme="light"]{
   --accent:#12897a; --term-bg:#ffffff;
   /* 浅色下标记不能再用深底板：改成浅色窗体＋深青描线 */
   --mark-body:#eaf3f5; --mark-line:#7fa5ad; --mark-accent:#12897a;
+  --term-fg:#1d242c; --term-cursor:#12897a; --term-selection:#cfe8e3;
+  --ansi-black:#242c36; --ansi-red:#b8453f; --ansi-green:#12897a; --ansi-yellow:#96702c;
+  --ansi-blue:#2f6ea5; --ansi-magenta:#7a5cb0; --ansi-cyan:#2c8fa0; --ansi-white:#ffffff;
+  --on-accent:#ffffff; --on-danger:#ffffff;
+  --overlay:rgba(4,6,8,.35);
+  --shadow-1:0 6px 18px rgba(13,16,20,.10);
+  --shadow-2:0 14px 30px rgba(13,16,20,.14);
+  --shadow-3:0 24px 56px rgba(13,16,20,.18);
+  --ctx-sep:rgba(13,16,20,.10);
 }
 
 html[data-density="compact"]{ --row:24px; }
