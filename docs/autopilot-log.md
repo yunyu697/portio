@@ -157,3 +157,11 @@
 - 验证：`cargo test -p portio-core` 39 passed（winscp 5 条）；`cargo test -p portio-app` 5 passed（winscp 1 条：1 个 SSH＋1 个 FTP → added=1 / skipped=1）；`node --check ui/app.js` 0；`check_design_tokens.py` OK；无头 2× 截图 `_s6_winscp.png` 三个导入按钮同排、样式一致；`#theme-dark` dump-dom 的 `<title>` 仍 `Portio`（无 `ERR:`）。
 - 未验证：真实 `WinSCP.ini`（本机未装 WinSCP，三条候选路径都无文件）；桌面版点击按钮的 IPC 与 toast；「30 条真实会话」这条 S6 完成定义仍缺样本。
 - 下一步：S7 会话分组（按项目分组、组内折叠）与 S8 设置项；下一步版本按规则进到 1.0.3-Alpha1。
+## 2026-11-18 · v1.0.3-Alpha1 · S7 第一单元：快速连接
+
+- 新增会话栏「快速连接」一行（`#quick-input` + `#btn-quick`）：输入 `user@host:port` 回车或点 ↵ 即打开连接面板并预填。`parseQuickSpec(text, records)` 处理 `ssh://` 前缀、尾随路径、`lastIndexOf("@")` 拆用户、`[::1]:2222` 方括号 IPv6、缺端口按 22；同主机旧记录当模板带出端口 / 认证方式 / 私钥路径，密码仍现填、不进任何存储。
+- 顺手修老 Bug：`.field{display:grid}` 压过 `[hidden]`，导致选「私钥文件」时密码框仍显示；补 `.field[hidden]{display:none}`。
+- 前端版本号随 `set_version.py` 变成 1.0.3-Alpha1（Alpha10 满位进 patch 回 Alpha1，符合既定规则）。
+- 验证：`node --check ui/app.js` exit 0；`check_design_tokens.py` → OK（快速连接行只用既有令牌）；无头 2× 截图 `_s7_quick2.png`（1180×690 深色：输入框里 `deploy@10.0.8.12:2222`，面板预填主机 10.0.8.12 / 端口 2222 / 用户 deploy / 私钥文件 / `~/.ssh/id_ed25519`，密码框已不显示）、`_s7_light.png`（浅色：快速连接行正常）；`#quick-demo` 的 dump-dom 无 `ERR:`。
+- 未验证：真实回车 → 面板 → 连接的全链路（本机无 SSH 服务器，连接仍属已知阻塞）；真实窗口里的焦点落位。
+- 下一步：S7 剩余——发布物料（v0.2 gate 材料）与模板补强；之后进 S8（SFTP 通道复用已有 SSH 连接）。

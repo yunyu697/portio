@@ -729,6 +729,7 @@ function openConnect(prefill = null) {
     el("f-user").value = prefill.user ?? "";
     el("f-auth").value = prefill.auth === "key" ? "key" : "password";
     el("f-key").value = prefill.keyfile ?? "";
+    el("f-password").value = "";
     el("field-key").hidden = prefill.auth !== "key";
     el("field-password").hidden = prefill.auth === "key";
   } else {
@@ -1031,6 +1032,64 @@ async function connectWith(spec) {
   }
 }
 
+// ---------- 快速连接 ----------
+// 一行 "user@host:port"（也认 ssh:// 前缀和 [v6] 写法）解析成连接参数，
+// 然后打开面板预填 —— 密码仍然现填，不落任何库。同主机有旧记录就把端口/认证方式当模板。
+function parseQuickSpec(text, records = []) {
+  let v = String(text ?? "").trim().replace(/^ssh:\/\//i, "");
+  const slash = v.indexOf("/");
+  if (slash > 0) v = v.slice(0, slash);
+  if (!v) return null;
+  let user = "";
+  let rest = v;
+  const at = v.lastIndexOf("@");
+  if (at >= 0) {
+    user = v.slice(0, at).trim();
+    rest = v.slice(at + 1).trim();
+  }
+  let host = rest;
+  let port = 22;
+  const bracketed = rest.match(/^\[([^\]]+)\](?::(\d+))?$/);
+  if (bracketed) {
+    host = bracketed[1];
+    if (bracketed[2]) port = Number(bracketed[2]);
+  } else if (rest.includes(":")) {
+    const [h, p] = rest.split(":");
+    host = h;
+    if (/^\d+$/.test(p ?? "")) port = Number(p);
+  }
+  host = host.trim();
+  if (!host) return null;
+  const tpl = records.find((r) => r.host === host && (!user || r.user === user))
+    ?? records.find((r) => r.host === host);
+  if (!user && tpl?.user) user = tpl.user;
+  if (port === 22 && tpl?.port) port = Number(tpl.port) || 22;
+  if (!user) user = localStorage.getItem("portio.user") ?? "";
+  return {
+    host,
+    port: port || 22,
+    user,
+    auth: tpl?.auth === "key" ? "key" : "password",
+    keyfile: tpl?.keyfile ?? "",
+  };
+}
+
+function quickConnect() {
+  const input = document.getElementById("quick-input");
+  const spec = parseQuickSpec(input.value, sessionStore.records);
+  if (!spec) return toast("先写一台主机，例如 deploy@10.0.8.12:2222");
+  openConnect(spec);
+  if (spec.user) localStorage.setItem("portio.user", spec.user);
+}
+
+document.getElementById("btn-quick").addEventListener("click", quickConnect);
+document.getElementById("quick-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    quickConnect();
+  }
+});
+
 document.getElementById("btn-connect").addEventListener("click", async () => {
   const user = document.getElementById("f-user").value.trim();
   if (user) localStorage.setItem("portio.user", user);
@@ -1043,6 +1102,13 @@ document.getElementById("btn-connect").addEventListener("click", async () => {
     keyfile: document.getElementById("f-key").value,
   });
 });
+
+// 快速连接的核验入口：填好一行再打开面板，看解析结果对不对
+if (location.hash.startsWith("#quick-demo")) {
+  saveSession({ host: "10.0.8.12", port: 2222, user: "deploy", auth: "key", keyfile: "~/.ssh/id_ed25519" });
+  document.getElementById("quick-input").value = "deploy@10.0.8.12:2222";
+  quickConnect();
+}
 
 // 会话清单以前端内存镜像为准，启动时从磁盘拉一次
 if (location.hash.startsWith("#sess-demo") || location.hash.includes("ctx-demo")) {
