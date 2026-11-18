@@ -253,13 +253,21 @@
   .row{display:grid;grid-template-columns:1fr 96px;gap:12px}
   .sheet footer{display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;
                 border-top:1px solid var(--line);background:var(--surface-2)}
-  .btn{background:var(--surface-3);border:1px solid var(--line);color:var(--text-2);padding:8px 12px;
+  /* 按钮内文字一律几何居中：用 flex 居中，不靠上下 padding 凑基线。
+     之前是等距 padding 配 line-height:normal，行盒比内容区高，字被顶下去一档。 */
+  .btn{display:inline-flex;align-items:center;justify-content:center;
+       background:var(--surface-3);border:1px solid var(--line);color:var(--text-2);
+       padding:0 12px;min-height:var(--ctl-2);line-height:1.2;
        border-radius:var(--r-4);cursor:pointer;font-size:var(--fs-12)}
   .btn:hover{color:var(--text)}
   .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
   .btn.primary:hover{filter:brightness(1.06)}
   .btn:disabled{opacity:.55;cursor:default}
-  .new-session{width:calc(100% - 24px);margin:12px 12px 0;height:var(--ctl-2)}
+  /* 会话栏动作行：主按钮与导入下拉同排，挤不下自动换行（各占满一行）。
+     两者同高 --ctl-2，主按钮按 2:1 分宽，层级不靠颜色也能读出来。 */
+  .sess-actions{position:relative;display:flex;flex-wrap:wrap;gap:var(--sp-2);margin:12px 12px 0}
+  .sess-actions .new-session{flex:2 1 112px;width:auto;margin:0;height:var(--ctl-2)}
+  .sess-actions .sess-import{position:static;flex:1 1 112px;margin:0}
   .sess-search{display:block;width:calc(100% - 24px);margin:4px 12px 4px;height:var(--ctl);
     padding:0 8px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-4);
     color:var(--text);font-size:var(--fs-12);outline:none}
@@ -279,7 +287,7 @@
   /* 导入：三个来源收进一个下拉，不再各占一行挤掉会话列表的位置。
      触发器是普通次要按钮，菜单复用右键菜单那套材质（surface-3 + shadow-2）。 */
   .sess-import{position:relative;margin:4px 12px 4px}
-  .sess-import .trigger{display:flex;align-items:center;gap:8px;width:100%;height:var(--ctl);
+  .sess-import .trigger{display:flex;align-items:center;gap:8px;width:100%;height:var(--ctl-2);
              padding:0 8px;background:var(--surface-2);color:var(--text-2);
              border:1px solid var(--line);border-radius:var(--r-6);font-size:var(--fs-12);
              cursor:pointer;transition:color var(--dur) var(--ease),border-color var(--dur) var(--ease)}
@@ -289,8 +297,12 @@
              stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
   .sess-import .trigger .chev{margin-left:auto;width:16px;height:16px;
              transition:transform var(--dur-2) var(--ease)}
+  /* 触发器里的文字也压到单行盒，跟图标、chevron 一起在 30 高的盒子里居中 */
+  .sess-import .trigger span{line-height:1}
   .sess-import .trigger[aria-expanded="true"] .chev{transform:rotate(180deg)}
-  .sess-import .menu{position:absolute;left:0;right:0;top:calc(var(--ctl) + 4px);z-index:30;
+  /* 菜单以整条动作行为锚点（.sess-actions 是定位父级），不管触发器多窄都铺满一行；
+     动作行换行时菜单跟着落到两行之下，不会只贴着下半行。 */
+  .sess-import .menu{position:absolute;left:0;right:0;top:calc(100% + var(--sp-1));z-index:30;
              display:grid;gap:2px;padding:4px;background:var(--surface-3);
              border:1px solid var(--line);border-radius:var(--r-8);box-shadow:var(--shadow-2)}
   .sess-import .menu[hidden]{display:none}
@@ -299,8 +311,10 @@
              font-size:var(--fs-12);text-align:left;cursor:pointer;white-space:nowrap;
              transition:background var(--dur) var(--ease),color var(--dur) var(--ease)}
   .sess-import .item:hover{background:var(--surface-2);color:var(--text)}
+  /* 来源路径是补充信息：动作行窄到放不下时优先让它省略，别把整行撑出菜单边框 */
   .sess-import .item .path{color:var(--text-3);font-family:var(--mono);font-size:var(--fs-11);
-             margin-left:auto;padding-left:8px}
+             margin-left:auto;padding-left:8px;flex:0 1 auto;min-width:0;
+             overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .sess-empty{padding:24px 16px;color:var(--text-3);font-size:var(--fs-12)}
   /* 右键菜单：所有模块共用一套，位置在鼠标点，越界自动内收 */
   .ctx{position:fixed;z-index:40;min-width:184px;padding:4px;background:var(--surface-2);
@@ -419,7 +433,7 @@
         <rect x="11.2" y="16.1" width="4.2" height="1.5" rx=".75" fill="var(--mark-accent)" opacity=".5"/>
         <rect x="15.4" y="11.3" width="3.6" height="1.4" rx=".7" fill="var(--mark-accent)"/>
       </svg>
-      <b data-tauri-drag-region>Portio</b><span class="ver" data-tauri-drag-region>1.0.4-Alpha4</span>
+      <b data-tauri-drag-region>Portio</b><span class="ver" data-tauri-drag-region>1.0.4-Alpha5</span>
     </div>
     <!-- 标签条本身就是标题栏里最大的一片空白，之前没挂 drag 区域，
          于是整条中间地段都点不动窗口。挂上后：空白处可拖、可双击最大化，标签项照常点击。 -->
@@ -447,7 +461,22 @@
   <div class="main" id="main">
     <aside class="sidebar">
       <h2>会话 <span class="count" id="session-count">0</span></h2>
-      <button class="btn primary new-session" id="btn-new">新建连接</button>
+      <div class="sess-actions" id="sess-actions">
+        <button class="btn primary new-session" id="btn-new">新建连接</button>
+        <div class="sess-import" id="sess-import">
+          <button class="trigger" id="btn-import" aria-haspopup="menu" aria-expanded="false"
+                  title="从 SSH 配置或其它客户端导入会话">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.6v10.8M8.4 10.8l3.6 3.6 3.6-3.6M4.4 16.2v2.4h15.2v-2.4"/></svg>
+            <span>导入会话</span>
+            <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.2l6 6 6-6"/></svg>
+          </button>
+          <div class="menu" id="import-menu" role="menu" hidden>
+            <button class="item" role="menuitem" id="btn-import-ssh">从 SSH 配置<span class="path">~/.ssh/config</span></button>
+            <button class="item" role="menuitem" id="btn-import-xshell">从 Xshell<span class="path">Sessions</span></button>
+            <button class="item" role="menuitem" id="btn-import-winscp">从 WinSCP<span class="path">WinSCP.ini</span></button>
+          </div>
+        </div>
+      </div>
       <div class="sess-quick">
         <input id="quick-input" spellcheck="false" autocomplete="off"
                placeholder="user@host:port  回车直连" aria-label="快速连接">
@@ -455,19 +484,6 @@
       </div>
       <input class="sess-search" id="sess-search" type="search" spellcheck="false"
              placeholder="搜主机 / 用户 / 备注" aria-label="搜索会话">
-      <div class="sess-import" id="sess-import">
-        <button class="trigger" id="btn-import" aria-haspopup="menu" aria-expanded="false"
-                title="从 SSH 配置或其它客户端导入会话">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.6v10.8M8.4 10.8l3.6 3.6 3.6-3.6M4.4 16.2v2.4h15.2v-2.4"/></svg>
-          <span>导入会话</span>
-          <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.2l6 6 6-6"/></svg>
-        </button>
-        <div class="menu" id="import-menu" role="menu" hidden>
-          <button class="item" role="menuitem" id="btn-import-ssh">从 SSH 配置<span class="path">~/.ssh/config</span></button>
-          <button class="item" role="menuitem" id="btn-import-xshell">从 Xshell<span class="path">Sessions</span></button>
-          <button class="item" role="menuitem" id="btn-import-winscp">从 WinSCP<span class="path">WinSCP.ini</span></button>
-        </div>
-      </div>
       <div class="empty">
         还没有会话。<br>
         按 <kbd>Ctrl</kbd>+<kbd>T</kbd> 新建，或点上面的按钮。<br>

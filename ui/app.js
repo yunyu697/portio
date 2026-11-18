@@ -1069,7 +1069,7 @@ function renderSessions() {
     if (!hint) {
       hint = document.createElement("div");
       hint.className = "sess-empty";
-      document.getElementById("btn-new").after(hint);
+      document.getElementById("sess-actions").after(hint);
     }
     hint.textContent = `没有匹配「${q}」的会话`;
   } else if (hint) {

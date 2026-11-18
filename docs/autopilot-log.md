@@ -434,3 +434,43 @@ S12 的第一件：终端能找了。第二个交付（分屏）还没动。
 - 机器仍锁屏，实机窗口点检未做。
 
 **下一步**：S12 第二件——终端分屏（Ctrl+Shift+D 竖切 / Ctrl+Shift+E 横切，各自一套 xterm 实例与 fit，标签粒度不变）。
+## 2026-11-18 · v1.0.4-Alpha5 · 会话栏动作行重排 + 按钮文字居中（用户反馈）
+
+用户这轮点了两处，都是"看着不对但说不出哪里"的细节，正好都是规范没覆盖到的空白——所以顺手把规范也补了。
+
+**先量再改。** 用 `Range.getBoundingClientRect()` 把文字盒和按钮盒各量一次：`新建连接` 水平偏差 `dx=0.0`、
+垂直 `dy=+4.0`。水平本来就居中，问题是**垂直偏下 4px**：`height:30` + `padding:8px 0` + `line-height:normal`
+的行盒（14.4）比内容区（12）高，溢出部分把字顶了下去。改成 `display:inline-flex` +
+`align-items:center` + `justify-content:center` + `padding:0 12` + `min-height:--ctl-2` 后，
+复测 `dx=-0.0` / `dy=-0.2`。
+
+**动作行。** 把 `.sess-actions` 引入会话栏：`display:flex` + `flex-wrap` + `gap:--sp-2`，主按钮
+`flex:2 1 112`、导入下拉 `flex:1 1 112`，两者 `--ctl-2` 同高。量了三种宽度：
+- 264（默认）：同排，117.3 / 114.7，tops 都是 78.0；
+- 420（拖宽）：同排，221.3 / 166.7（2:1 生效）；
+- 200（拖窄）：换行，tops 78.0 / 116.0，各 176（满内宽）。
+导入菜单从"以触发器为定位父级"改成"以整条动作行为父级"：之前触发器只有 114 宽，菜单跟着只有 114，
+三项菜单里带 `~/.ssh/config` 的那条会被截；现在菜单宽度 = 动作行宽（240 @ 264），换行后也仍铺满。
+另给 `.item .path` 加了 `min-width:0` + 省略号，超窄菜单里路径先让位。
+
+**连带修的一处。** `renderSessions` 里"搜不到"的空态是 `btn-new.after(hint)`，动作行合并后这个节点会
+插进 flex 行里把按钮挤歪；改成 `sess-actions.after(hint)`。
+
+**验证证据**
+- 量测（临时页注入断言，跑完即删）：`new dx=-0.0 dy=-0.2`、`import dx=-0.3 dy=0.0`；
+  `sameRow=true`；`menu=240.0@12.0` 与 `actingW=240.0@12.0` 一致；`wrapped=true w=176/176`；`wide sameRow=true 221.3/166.7`。
+- 守卫：`check_ui_scale.py` OK、`check_design_tokens.py` OK（中途 `check_ui_scale` 报过一次
+  "高度写了裸 px [4.0]"——是我 CSS 注释里写了"4px"，脚本连注释一起扫，改成文字描述后通过）。
+- `node --check ui/app.js` 通过。
+- 视觉四张：`_a5_actions.png`（浅色同排）、`_a5_actions_dark.png`（深色同排）、
+  `_a5_actions_open.png`（菜单展开，铺满动作行）、`_a5_actions_narrow2.png`（200 宽换行 + 菜单）；
+  另补 `_a5_modal.png` / `_a5_modal_dark.png` 确认连接面板底部按钮没被 `.btn` 改动带塌。
+- 四态 `--dump-dom` 标题均 `Portio`，无 `ERR:`。
+
+**未验证**
+- 实机窗口内的 hover / 拖动改宽（会话栏拖到 200 只用手改 CSS 模拟过，没拖过真把手）；
+  机器仍锁屏，实机点检未做。
+- 窄到 200 时会话栏里的空态文案折成三行（"按 Ctrl+T 新建，或点上面的按钮"被断开），可读但不算漂亮，
+  真需要再收（先记着，不在这轮扩）。
+
+**下一步**：S12 第二件——终端分屏。
