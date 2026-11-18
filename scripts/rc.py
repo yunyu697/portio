@@ -193,12 +193,13 @@ def a_narrow(chrome: str | None, profile: str) -> tuple[str, str]:
     return PASS, " / ".join(details)
 
 
-def a_page(chrome: str | None, profile: str, frag: str, expect: str) -> tuple[str, str]:
+def a_page(chrome: str | None, profile: str, frag: str, expect: str,
+           window: str | None = None) -> tuple[str, str]:
     """expect 是标题必须以之开头的字符串；默认页允许标题里带别的，只要不出现 ERR:。"""
     if not chrome:
         return SKIP, "找不到 Chrome（设 PORTIO_CHROME）"
     url = (UI / "index.html").as_uri() + frag
-    code, title = chrome_title(chrome, url, profile)
+    code, title = chrome_title(chrome, url, profile, window)
     if code != 0:
         return FAIL, f"Chrome 退出码 {code}"
     if "ERR:" in title:
@@ -263,6 +264,7 @@ def main(argv: list[str]) -> int:
         ("A12", "#ctx-test = CTX-SELFTEST-OK 9（九处面板右键菜单）", True),
         ("A13", "#narrow-test 两档窄窗（1024 / 900）几何", True),
         ("A14", "#theme-test = THEME-SELFTEST-OK（深浅两套几何一致 + 令牌对比度）", True),
+        ("A15", "#find-test = FIND-SELFTEST-OK（900 宽下查找计数/坐标/环回/无命中/几何）", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -316,8 +318,10 @@ def main(argv: list[str]) -> int:
             status, detail = a_page(chrome, profile, "#ctx-test", "CTX-SELFTEST-OK 9")
         elif code == "A13":
             status, detail = a_narrow(chrome, profile)
-        else:
+        elif code == "A14":
             status, detail = a_page(chrome, profile, "#theme-test", "THEME-SELFTEST-OK")
+        else:
+            status, detail = a_page(chrome, profile, "#find-test", "FIND-SELFTEST-OK", "900,620")
         results.append((code, label, status, detail))
         print(f"[{status}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
 

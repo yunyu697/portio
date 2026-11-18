@@ -2734,3 +2734,148 @@ if (location.hash.includes("theme-test")) {
     ? `THEME-SELFTEST-OK ${JSON.stringify(rows)}`
     : `THEME-SELFTEST-FAIL ${JSON.stringify(bad)} ${JSON.stringify(rows)}`;
 }
+
+// ---------- #find-test：查找门禁（M9） ----------
+// 查找这件事出错会很安静：计数多了少了、跳过去高亮的不是那一条、没命中却不变红，
+// 用户只会觉得"这搜索怎么不准"，说不出哪儿不对。所以把它拆成可数的几件事：
+// ① 计数与我自己重扫一遍 buffer 的结果一致 ② 每条命中的行列坐标确实落在查询词上
+// ③ 首跳落在第 1 条并选中它 ④ 环回序号算得对 ⑤ 无命中转红、恢复后摘红
+// ⑥ 查找条不越出终端面板、不压标题条 ⑦ 关掉后选区与序号都收拾干净。
+if (location.hash.startsWith("#find-test")) {
+  document.body.classList.add("dragging", "dragging-x"); // 关过渡，只量终态
+  const bad = [];
+  const seen = {};
+  const q = "Portio";
+
+  // 自己重扫一遍 buffer，不借 findScan——自己验自己没有意义
+  function recount(needle) {
+    const buf = term?.buffer.active;
+    if (!buf) return [];
+    const out = [];
+    const low = needle.toLowerCase();
+    for (let row = 0; row < buf.length; row += 1) {
+      const line = buf.getLine(row);
+      if (!line) continue;
+      const text = line.translateToString(true);
+      const hay = text.toLowerCase();
+      let at = hay.indexOf(low);
+      while (at !== -1) {
+        out.push({ row, col: at });
+        at = hay.indexOf(low, at + low.length);
+      }
+    }
+    return out;
+  }
+
+  function run() {
+    findToggle(true);
+    findInput.value = q;
+    findRefresh();
+
+    // ① 计数：自扫条数 vs 查找认为的条数 vs 面板上那行字
+    const mine = recount(q);
+    seen.hits = mine.length;
+    seen.label = findCount.textContent;
+    if (!mine.length) bad.push(`终端里扫不到 ${q}，用例前提没成立`);
+    if (mine.length !== findHits.all.length) {
+      bad.push(`条数不一致：自扫 ${mine.length} 条，查找认为 ${findHits.all.length} 条`);
+    }
+    if (findCount.textContent !== `1/${mine.length}`) {
+      bad.push(`计数文字是 ${findCount.textContent}，应为 1/${mine.length}`);
+    }
+
+    // ② 坐标：按 findScan 给的行列去 buffer 里取，取的必须正好是查询词
+    const offBy = [];
+    for (const h of findHits.all) {
+      const line = term.buffer.active.getLine(h.row);
+      const text = line ? line.translateToString(true) : "";
+      if (text.slice(h.col, h.col + q.length).toLowerCase() !== q.toLowerCase()) {
+        offBy.push({ row: h.row, col: h.col, got: text.slice(h.col, h.col + q.length) });
+      }
+    }
+    if (offBy.length) bad.push(`命中坐标取到的不是查询词：${JSON.stringify(offBy.slice(0, 3))}`);
+
+    // ③ 首跳落在第 1 条，并真的选中了它
+    findHits.at = -1;
+    findJump(1);
+    const sel = term.getSelection();
+    seen.sel = sel;
+    if (findHits.at !== 0) bad.push(`首跳应落在第 1 条，实际序号 ${findHits.at}`);
+    if (sel.toLowerCase() !== q.toLowerCase()) {
+      bad.push(`跳转后选中的是 ${JSON.stringify(sel)}，应等于 ${JSON.stringify(q)}`);
+    }
+
+    // ④ 环回：首跳 (-1,+1)→0、(-1,-1)→末条、末条再往后回 0、0 往前回到末条、没有命中返回 -1
+    const cases = [[5, -1, 1, 0], [5, -1, -1, 4], [5, 4, 1, 0], [5, 0, -1, 4], [0, 0, 1, -1]];
+    seen.step = cases.map(([n, a, d]) => findStep(n, a, d));
+    cases.forEach(([n, a, d, want]) => {
+      if (findStep(n, a, d) !== want) bad.push(`findStep(${n},${a},${d}) 得 ${findStep(n, a, d)}，应为 ${want}`);
+    });
+    // 真按一遍末条往后：要绕回第 1 条并选中它
+    findHits.at = findHits.all.length - 1;
+    findJump(1);
+    if (findHits.at !== 0) bad.push(`末条往后应绕回第 1 条，实际序号 ${findHits.at}`);
+    if (term.getSelection().toLowerCase() !== q.toLowerCase()) bad.push("绕回第 1 条后选中的不是查询词");
+
+    // ⑤ 无命中转红；把查询词改回来要能摘掉红色
+    findInput.value = "__portio_no_such_token__";
+    findRefresh();
+    seen.nohit = findCount.textContent;
+    if (findCount.textContent !== "0/0") bad.push(`无命中时计数应 0/0，实际 ${findCount.textContent}`);
+    if (!findCount.classList.contains("bad")) bad.push("无命中时计数没转红（缺 .bad）");
+    if (findHits.all.length) bad.push("无命中时不该有命中条目");
+    findInput.value = q;
+    findRefresh();
+    if (findCount.classList.contains("bad")) bad.push("改回有命中的词后红色没摘掉");
+
+    // ⑥ 查找条在终端面板里：不越左右缘、不压标题条、别窄到看不清
+    const pane = document.querySelector(".pane.term").getBoundingClientRect();
+    const head = document.querySelector(".pane.term .pane-head").getBoundingClientRect();
+    const bar = findBar.getBoundingClientRect();
+    seen.geom = {
+      w: Math.round(bar.width),
+      gapRight: Math.round(pane.right - bar.right),
+      gapHead: Math.round(bar.top - head.bottom),
+    };
+    if (bar.right > pane.right + 1) bad.push(`查找条右侧越出终端面板 ${Math.round(bar.right - pane.right)}px`);
+    if (bar.left < pane.left - 1) bad.push(`查找条左侧越出终端面板 ${Math.round(pane.left - bar.left)}px`);
+    if (bar.top < head.bottom - 1) bad.push(`查找条压住了标题条 ${Math.round(head.bottom - bar.top)}px`);
+    if (seen.geom.w < 160) bad.push(`查找条只有 ${seen.geom.w}px 宽，输入框会被挤没`);
+
+    // ⑦ 关掉：open 态撤掉、终端不留高亮、序号复位
+    findToggle(false);
+    if (findBar.classList.contains("open")) bad.push("关掉后查找条还是 open 态");
+    if (term.getSelection()) bad.push("关掉后终端还留着高亮");
+    if (findHits.at !== -1) bad.push(`关掉后命中序号没复位（现在 ${findHits.at}）`);
+
+    // 收拾现场：让这个页在真浏览器里打开也回到正常态
+    findInput.value = "";
+    findHits.q = "";
+    findHits.all = [];
+    findHits.at = -1;
+    findPaint();
+    document.body.classList.remove("dragging", "dragging-x");
+  }
+
+  // 终端的 banner 是异步写进 buffer 的，等它真落了再开始量（最多等 3 秒）
+  // 先自己补一行：一行里塞 4 个大小写不同的查询词，这样"一行多处命中"与"多条环回"才真的被走一遍；
+  // 末尾再放两个不带尾字母的 "Porti"，用来验"少扫一个字"这种退化会不会被计数抓到
+  term?.write("\r\nPortio / portio / PORTIO —— 三处大小写，另加 Portio 收尾，另有 Porti、Porti 两个半截词\r\n");
+  const want = 5;
+  let tries = 0;
+  (function wait() {
+    if (!term) ensureTerminal();
+    const got = recount(q).length;
+    if (got < want && tries < 60) {
+      tries += 1;
+      setTimeout(wait, 50);
+      return;
+    }
+    if (!got) bad.push(`等了 3 秒终端 buffer 里还没有 ${q}`);
+    else if (got !== want) bad.push(`用例素材条数不对：应 ${want} 处，实际 ${got} 处`);
+    run();
+    document.title = bad.length === 0
+      ? `FIND-SELFTEST-OK ${JSON.stringify(seen)}`
+      : `FIND-SELFTEST-FAIL ${JSON.stringify(bad)} ${JSON.stringify(seen)}`;
+  })();
+}
