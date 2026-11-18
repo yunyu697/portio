@@ -1032,8 +1032,28 @@ document.getElementById("f-group").addEventListener("keydown", (e) => {
   }
 });
 
-// 从 ~/.ssh/config 导入：后端解析完直接给出合并后的整份清单
+// 导入来源收进一个下拉：一处入口，三个来源在里面选，不再各占一行挤掉会话列表。
+const importWrap = document.getElementById("sess-import");
+const importBtn = document.getElementById("btn-import");
+const importMenu = document.getElementById("import-menu");
+function setImportOpen(open) {
+  importMenu.hidden = !open;
+  importBtn.setAttribute("aria-expanded", open ? "true" : "false");
+}
+importBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  setImportOpen(importMenu.hidden);
+});
+// 点别处、按 Esc 都收起；菜单里选中一项后也立刻收起，别等下次点击
+document.addEventListener("click", (e) => {
+  if (!importWrap.contains(e.target)) setImportOpen(false);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !importMenu.hidden) setImportOpen(false);
+});
+
 document.getElementById("btn-import-winscp").addEventListener("click", async () => {
+  setImportOpen(false);
   if (!bridge) return toast("导入需要在桌面版里用");
   try {
     const res = await bridge.invoke("sessions_import_winscp", { path: null });
@@ -1053,6 +1073,7 @@ document.getElementById("btn-import-winscp").addEventListener("click", async () 
 });
 
 document.getElementById("btn-import-xshell").addEventListener("click", async () => {
+  setImportOpen(false);
   if (!bridge) return toast("导入需要在桌面版里用");
   try {
     const res = await bridge.invoke("sessions_import_xshell", { dir: null });
@@ -1072,6 +1093,7 @@ document.getElementById("btn-import-xshell").addEventListener("click", async () 
 });
 
 document.getElementById("btn-import-ssh").addEventListener("click", async () => {
+  setImportOpen(false);
   if (!bridge) return toast("导入需要在桌面版里用");
   try {
     const res = await bridge.invoke("sessions_import_ssh_config", { path: null });

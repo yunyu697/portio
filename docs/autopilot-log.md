@@ -223,3 +223,25 @@
 - 终端画布是否随规范收圆：仍待用户拍板（`docs/backlog.md`）。
 
 **下一步**：S8 —— SFTP 通道复用已有 SSH 连接（同一连接开文件通道，不二次鉴权）；同时把本轮出的 NSIS 包交付。
+## 2026-11-18 · v1.0.3-Alpha6 · 导入收进下拉 + 标题栏拖动区放宽
+
+**用户要求**（原话）：导入的界面改成下拉，"不要留几个常驻的在那里占位置"；标题栏拖动区域太小，"拖动窗口很难"。
+
+- **导入下拉**：会话栏里原来的三枚常驻虚线按钮（`~/.ssh/config` / Xshell / WinSCP）各占 26px 高＋上下各 4px 外边距，合计挤掉约 100px 的列表高度。现在收成一个 `#btn-import` 触发器（下载图标 + 「导入会话」+ chevron）＋ `#import-menu` 三项菜单，每项右侧用 `--mono` 标出来源（`~/.ssh/config` / `Sessions` / `WinSCP.ini`）。三个菜单项的 id 沿用 `btn-import-ssh` / `btn-import-xshell` / `btn-import-winscp`，原导入逻辑一行未改。
+- 交互：点触发器开合（`aria-expanded` 同步）；点页面别处、按 Esc、以及选完任一项后都收起（三个导入 handler 开头各加一行 `setImportOpen(false)`）。
+- **标题栏拖动区**：原来只有 `.brand` 与品牌文字挂 `data-tauri-drag-region`，而 `.tabs` 是 `flex:1` 占满整条中间，却没有拖动标记——于是标题栏最宽的一段点下去没反应，只剩左边几十像素能拖。现在 `.tabs`（标签条背景）、版本号 `span` 都挂上拖动区；标签项与图标按钮是子元素、没有标记，点击行为不受影响。双击空白由 Tauri 处理为最大化。
+- 顺手修 `scripts/set_version.py`：版本号 span 加上 `data-tauri-drag-region` 后原正则 `<span class="ver">[^<]*</span>` 不再匹配，进位脚本会静默失败（本轮第一次跑就报了「没找到版本字段」）。正则改成 `<span class="ver"([^>]*)>[^<]*</span>` 并回填属性，属性顺序不会再被吃掉。
+- 设计规范同步：§10 矩阵第 2 行（标题栏）补拖动区条款，第 9 行从「导入按钮（虚线 3 枚）」改写为「导入下拉（一处入口 + 三来源）」，写清触发器与菜单的材质和收起规则。
+
+**验证证据**
+- `python scripts/check_ui_scale.py` → OK；`python scripts/check_design_tokens.py` → OK；`node --check ui/app.js` → exit 0。
+- 无头截图（1180×690 @2x）：`_a6_import_closed.png`（收起态：一行 `导入会话`，列表高度回补）、`_a6_open2.png`（浅色展开：菜单三项带来源路径、触发器转强调色边框、chevron 朝上）、`_a6_open2_dark.png`（深色展开同一形态）。
+- 排查记录（避免下轮重踩）：展开态最初把 `background` 一起写进 `transition` 并在展开时换成 `--surface-3`，无头实测浅色下触发器被算成深色 `rgb(26,32,41)`（菜单里同一个令牌却是浅色），肉眼就是一整条黑。改成「展开态只换边框与图标颜色、背景不动，过渡列表里去掉 `background` 简写」后恢复正常。定论：**不要把 `background` 简写放进 transition 再配 var() 令牌做状态切换**。
+- `set_version.py` 修好后 `python scripts/set_version.py 1.0.3-Alpha6` 输出「已写入：ui/index.html」，`check_versions.py` → `OK v1.0.3-Alpha6`。
+- 临时文件 `ui/_imp.html`、`ui/_p2.html` 用完已删（`.gitignore` 不覆盖 html，必须删）。
+
+**未验证**
+- 标题栏拖动与双击最大化只做到「拖动区标记已覆盖整条空白」这一层，真实拖拽手感需在实机窗口里由用户确认（无头环境无法拖动窗口）。
+- 已知阻塞不变：真实 SSH/SFTP 端到端、PTY、tmux 无测试服务器。
+
+**下一步**：出 Alpha6 安装包并交付；之后进 S8 —— SFTP 通道复用已有 SSH 连接。
