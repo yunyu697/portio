@@ -76,3 +76,14 @@
 - 验证：Alpha10 `/S` 安装 → log `10:48:32` → explorer 重启 `10:45:42→10:48:33` → `_desktop_big.png` 与 3× 裁切 `_desktop_big_row.png` 显示体量已与 SQX/Creo 齐平。
 - 未验证：浅色壁纸下右半浅色面板的对比度（是否加描边仍未拍板）；交互式（带界面）安装时钩子的 explorer 重启是否会打断安装进度显示。
 - 下一步：S7 终端字号/主题运行时联动自检；`docs/backlog.md` 待建；`sftp_rename` 仍是缺口（右键菜单暂无重命名）。
+
+## 2026-11-18 · v1.0.2-Alpha1 · 重命名补齐（远端 + 本地）
+
+- 缺口来源：上一轮右键菜单没有"重命名"，因为后端只有 `Sftp::rename` 没暴露成命令。这轮补齐。
+- `sftp_rename(id, from, to)`：直接复用 `Sftp::rename`。注释写明它是"移动+改名"合一，当前只用于同目录改名，跨目录移动留给以后的文件面板。
+- `local_rename(from, to)`：`std::fs::rename`，错误带回中文前缀。
+- 远端 / 本地文件右键菜单各加"重命名"，prompt 预填当前名；名字未改或取消直接返回；撞名交给服务端报错，前端不吞。
+- 版本：按"满 10 进 patch"规则，1.0.1-Alpha10 → 1.0.2-Alpha1。
+- 验证：`node --check` 通过；`cargo check -p portio-app` 通过；`cargo test -p portio-core -p portio-ssh` 通过；`_ctx_rename_local.png` 显示菜单含"重命名"；1.0.2-Alpha1 `/S` 安装成功，`_iconhook.log` 记 10:54:50，安装版本读回 1.0.2-Alpha1。
+- 未验证：真实 SFTP 改名（无测试主机与凭据），仅协议层 + 编译层验证。
+- 下一步：S7 终端字号 / 主题运行时联动自检；`docs/backlog.md` 仍待建。
