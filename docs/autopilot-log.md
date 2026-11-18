@@ -265,3 +265,26 @@
 - 真实主机上的 readdir 是否真的带 `permissions` 字段（OpenSSH sftp-server 通常带，russh 的 `meta.permissions` 为 `Option`，拿不到就退化 `—`）。无测试服务器，只能登记。
 
 **下一步**：S9 中文名目录专项（本机造中文目录 + 回环验证），之后 S10 断点续传。
+## 2026-11-18 · v1.0.3-Alpha8 · S9：中文名与特殊字符路径回归
+
+S9 剩的最后一个卡点是「中文文件名」。真实 SFTP 侧要有服务器才能验，先把它拆成能验的部分：本地目录列举 + 路径拼接。
+
+- `crates/app/src/sessions.rs`：`local_list` 里的读目录逻辑抽成 `list_local_dir(&Path)`，命令只负责选路径。抽出来是为了能单测，行为一字未改。
+- 新增测试 `local_list_keeps_chinese_and_special_names`：在系统临时目录里造 `文档 汇总` / `报表#2026` / `配置&参考.yaml` / `会话记录 中文.txt`，断言
+  1) 名字原样返回（含空格、`#`、`&`）；2) 目录排在文件前、同类按名字小写序；3) 目录 `size` 为 0、文件是真实大小；4) 本地行 `perm` 全是 `—`；5) `path` 结尾也是原样中文。
+  跑完自删临时目录。
+- `crates/ssh/src/sftp.rs` 补 `join_keeps_chinese_names`：中文名字进 `join` / `parent_of`，确认远端拼接只认 `/`，不会把中文或空格吃掉。
+- 顺带核对前后端拼路径的实际用法（不改代码）：下载用 `winJoin(localPath, name)`、上传与建目录用 `posixJoin(remotePath, name)`，本地 `\`、远端 `/` 没有串用。
+
+**环境异常（本轮特别记录）**
+- 机器已锁屏（截到的首帧是锁屏界面，时间 17:18），**实机窗口截屏与界面点检本轮做不了**，因此本轮只做不依赖 GUI 的部分；启动过的实例已 `Stop-Process` 收掉。若后续轮次仍锁屏，继续挑代码层 / 无头层能收口的单元，不要反复去点 GUI。
+
+**验证证据**
+- `cargo test -p portio-app -p portio-ssh`：portio-app 6 passed（新增中文名测试在内）、portio-ssh 9 passed（新增中文拼接）、target 集成测试 1 passed，全绿。
+- 本轮无 UI 改动，未跑截图；两个守卫脚本不涉及。
+
+**未验证**
+- 真实主机上的中文名上传 / 下载、中文名远端目录进出（无服务器）。
+- 实机界面在中文目录下的观感（锁屏，未截屏）。
+
+**下一步**：S10 断点续传（传输队列已有逐块进度，缺的是断开后从断点续传）。

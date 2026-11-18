@@ -249,8 +249,14 @@ pub fn local_list(path: Option<String>) -> Result<(String, Vec<FileItem>), Strin
         Some(p) if !p.trim().is_empty() => PathBuf::from(p),
         _ => dirs_home(),
     };
+    let items = list_local_dir(&dir)?;
+    Ok((dir.to_string_lossy().to_string(), items))
+}
+
+/// 把一个本地目录读成文件行。抽出来是为了能单测中文名 / 空格 / 特殊字符不被改写。
+fn list_local_dir(dir: &std::path::Path) -> Result<Vec<FileItem>, String> {
     let mut items = Vec::new();
-    let rd = std::fs::read_dir(&dir).map_err(|e| format!("读本地目录失败：{e}"))?;
+    let rd = std::fs::read_dir(dir).map_err(|e| format!("读本地目录失败：{e}"))?;
     for entry in rd.flatten() {
         let meta = match entry.metadata() {
             Ok(m) => m,
@@ -279,7 +285,7 @@ pub fn local_list(path: Option<String>) -> Result<(String, Vec<FileItem>), Strin
             .cmp(&a.is_dir)
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
-    Ok((dir.to_string_lossy().to_string(), items))
+    Ok(items)
 }
 
 fn dirs_home() -> PathBuf {
@@ -396,4 +402,38 @@ pub async fn sftp_rename(
 #[tauri::command]
 pub fn local_rename(from: String, to: String) -> Result<(), String> {
     std::fs::rename(&from, &to).map_err(|e| format!("重命名本地文件失败：{e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 中文名 / 空格 / 特殊字符的目录，读出来后名字必须一字不差，且目录在前。
+    #[test]
+    fn local_list_keeps_chinese_and_special_names() {
+        let dir = std::env::temp_dir().join("portio_中文测试_单元");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("文档 汇总")).unwrap();
+        std::fs::create_dir_all(dir.join("报表#2026")).unwrap();
+        std::fs::write(dir.join("配置&参考.yaml"), b"a: 1").unwrap();
+        std::fs::write(dir.join("会话记录 中文.txt"), b"hello").unwrap();
+
+        let items = list_local_dir(&dir).unwrap();
+        let names: Vec<&str> = items.iter().map(|i| i.name.as_str()).collect();
+
+        // 目录在前、同类按名字（小写）排
+        assert_eq!(
+            names,
+            vec!["报表#2026", "文档 汇总", "会话记录 中文.txt", "配置&参考.yaml"]
+        );
+        // 目录不显示大小、文件显示真实大小
+        assert_eq!(items[0].size, 0);
+        assert!(items[2].is_dir == false && items[2].size == 5);
+        // 本地栏没有 POSIX 位，固定占位
+        assert!(items.iter().all(|i| i.perm == "—"));
+        // 路径里同样是原样的中文
+        assert!(items[2].path.ends_with("会话记录 中文.txt"));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }

@@ -271,6 +271,15 @@ mod tests {
     }
 
     #[test]
+    fn join_keeps_chinese_names() {
+        // 远端路径拼接只认 `/`，名字里的中文、空格、# 一律原样带过去
+        assert_eq!(join("/home/用户", "文档 汇总"), "/home/用户/文档 汇总");
+        assert_eq!(join("/srv", "报表#2026"), "/srv/报表#2026");
+        assert_eq!(parent_of("/home/用户/文档 汇总"), "/home/用户");
+        assert_eq!(parent_of("/用户"), "/");
+    }
+
+    #[test]
     fn parent_stops_at_root() {
         assert_eq!(parent_of("/var/log"), "/var");
         assert_eq!(parent_of("/var"), "/");
