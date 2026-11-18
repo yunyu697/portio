@@ -5,12 +5,14 @@
 
 pub mod client;
 pub mod known_hosts;
+pub mod resume;
 pub mod sftp;
 
 use portio_core::HostId;
 
 pub use client::{options, PtySize, ShellCommand, ShellEvent, SshSession};
 pub use known_hosts::{HostKeyVerdict, KnownHosts};
+pub use resume::{part_path, resume_offset};
 pub use sftp::{join, parent_of, perm_string, RemoteEntry, Sftp};
 
 /// 连接参数。

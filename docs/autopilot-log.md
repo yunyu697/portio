@@ -288,3 +288,24 @@ S9 剩的最后一个卡点是「中文文件名」。真实 SFTP 侧要有服�
 - 实机界面在中文目录下的观感（锁屏，未截屏）。
 
 **下一步**：S10 断点续传（传输队列已有逐块进度，缺的是断开后从断点续传）。
+## 2026-11-18 · v1.0.3-Alpha9 · S10：下载断点续传
+
+S10 的完成定义是「断网后恢复继续传，进度与速率准确」。本轮先收下载方向——它是半截文件最容易留下的地方。
+
+- `crates/ssh/src/resume.rs`（新）：`part_path(local)` 与 `resume_offset(part_len, remote_size)` 两个纯函数，把"临时文件叫什么、从哪续"从传输主流程里拆出来，这样不用连服务器就能测。
+- 半截文件名从 `local.with_extension("portio-part")` 改成 `原名 + ".portio-part"`。旧写法对 `备份.tar.gz` 会产出 `备份.tar.portio-part`，扩展名被吃掉，用户根本对不上号；带中文/`#` 的名字也一样不该被改写。
+- 续与不续的判定（写死在测试里）：`part_len == 0` 从头；`part_len < remote_size` 续；`part_len >= remote_size` 从头（等于时说明上次其实传完了没改名，续下去会一直卡在 0 字节）；`remote_size == 0`（metadata 没给大小）不敢续，从头。
+- `download`：先读半截文件长度 → 算偏移 → 能续就 `OpenOptions.append` 打半截文件 + 远端 `seek(SeekFrom::Start(offset))`；不能续且半截文件存在 → 删掉它，重新 `create`。进度起始值直接给 `start`，进度条不会先跳 0 再涨。
+- `crates/ssh/src/lib.rs` 导出 `part_path`、`resume_offset`。
+
+**验证证据**
+- `cargo test -p portio-app -p portio-ssh` 全绿：portio-app 6 passed；portio-ssh **12 passed**（新增 3 条：`part_path_keeps_full_name`、`resume_only_when_part_is_smaller`、`appending_rest_rebuilds_whole_file`）；target 集成 1 passed。
+- 回环测试 `appending_rest_rebuilds_whole_file`：造 300 字节源，先把前 120 字节写成半截文件，算出偏移 120、追加剩余 200 字节，改名后逐字节比对与源一致——这就是"续传补完"的最小证据链。
+- 本轮无 UI 改动；机器仍锁屏（首帧是锁屏界面），实机窗口点检未做。
+
+**未验证**
+- 真实断网/断连后的恢复续传（无服务器，只能协议层与本地回环）。
+- 上传方向的断点续传未实现。
+- 半截文件在真实目录里的观感与清理策略（要不要给用户"清理未完成传输"入口）——记进 backlog，等下一轮或用户拍板。
+
+**下一步**：S10 第二半——上传断点续传（远端 `.portio-part` + 远端 stat 定偏移）。

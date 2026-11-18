@@ -3,11 +3,12 @@
 //! 和大文件打交道时最忌讳"整个读进内存"——这里一律按 32KB 分块流式搬运，
 //! 并每块回一次进度，界面才能在传输队列里画进度条。
 
+use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
 
 use russh_sftp::client::SftpSession;
 use russh_sftp::client::error::Error as SftpError;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 use crate::{SshError, SshSession};
 
@@ -114,7 +115,8 @@ impl Sftp {
         Ok(out)
     }
 
-    /// 远端 → 本地。先写同目录临时文件，传完再改名，避免中断留下半截文件。
+    /// 远端 → 本地。先写半截文件，传完再改名，避免中断留下半截文件冒充成品。
+    /// 中断后重下一次会从半截文件末尾接着传（见 `resume`），不用从头再来。
     pub async fn download(
         &self,
         remote: &str,
@@ -137,13 +139,33 @@ impl Sftp {
         if let Some(parent) = local.parent() {
             std::fs::create_dir_all(parent).map_err(|e| SshError::Protocol(e.to_string()))?;
         }
-        let tmp: PathBuf = local.with_extension("portio-part");
-        let mut out = tokio::fs::File::create(&tmp)
-            .await
-            .map_err(|e| SshError::Protocol(e.to_string()))?;
+        let tmp: PathBuf = crate::resume::part_path(local);
+        let part_len = tokio::fs::metadata(&tmp).await.map(|m| m.len()).unwrap_or(0);
+        let start = crate::resume::resume_offset(part_len, total);
+        if start == 0 && part_len > 0 {
+            // 半截文件已经不能续（远端变小或早就传满），留着只会误导下一次，直接丢掉
+            let _ = tokio::fs::remove_file(&tmp).await;
+        }
+        let mut out = if start > 0 {
+            tokio::fs::OpenOptions::new()
+                .append(true)
+                .open(&tmp)
+                .await
+                .map_err(|e| SshError::Protocol(e.to_string()))?
+        } else {
+            tokio::fs::File::create(&tmp)
+                .await
+                .map_err(|e| SshError::Protocol(e.to_string()))?
+        };
+        if start > 0 {
+            file.seek(SeekFrom::Start(start))
+                .await
+                .map_err(|e| SshError::Protocol(format!("远端定位到 {start} 失败：{e}")))?;
+        }
 
         let mut buf = vec![0u8; 32 * 1024];
-        let mut done = 0u64;
+        let mut done = start;
+        progress(done, total);
         loop {
             let n = file
                 .read(&mut buf)
