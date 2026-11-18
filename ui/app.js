@@ -615,8 +615,17 @@ function findScan(q) {
     if (!text) continue;
     const hay = text.toLowerCase();
     let at = hay.indexOf(needle);
+    if (at === -1) continue;
+    // translateToString 给的是"字符下标"，而 select() 要的是"格号"：宽字符占两格却只出一个字符，
+    // 一行里只要有中文，字符下标就会比格号小。只在真命中时才逐格建一次映射，平时不花这笔钱。
+    const cellOf = [];
+    for (let c = 0; c < line.length; c += 1) {
+      const cell = line.getCell(c);
+      const s = cell ? cell.getChars() : "";
+      for (let k = 0; k < s.length; k += 1) cellOf.push(c);
+    }
     while (at !== -1) {
-      all.push({ row, col: at });
+      all.push({ row, col: cellOf[at] ?? at });
       at = hay.indexOf(needle, at + needle.length);
     }
   }
@@ -2767,6 +2776,35 @@ if (location.hash.startsWith("#find-test")) {
     return out;
   }
 
+  // 逐格重扫：宽字符占两格却只出一个字符，所以"字符下标"和"格号"是两件事。
+  // 这个函数按格走、把每个字符记到它所在的格号上，命中给的是真格号——用来抓
+  // "把字符下标当格号，遇到中文就整体偏一位"这类退化。
+  function recountCells(needle) {
+    const buf = term?.buffer.active;
+    if (!buf) return [];
+    const out = [];
+    const low = needle.toLowerCase();
+    for (let row = 0; row < buf.length; row += 1) {
+      const line = buf.getLine(row);
+      if (!line) continue;
+      let chars = "";
+      const cellOf = [];
+      for (let c = 0; c < line.length; c += 1) {
+        const cell = line.getCell(c);
+        const s = cell ? cell.getChars() : "";
+        for (let k = 0; k < s.length; k += 1) cellOf.push(c);
+        chars += s;
+      }
+      const hay = chars.toLowerCase();
+      let at = hay.indexOf(low);
+      while (at !== -1) {
+        out.push({ row, col: cellOf[at] });
+        at = hay.indexOf(low, at + low.length);
+      }
+    }
+    return out;
+  }
+
   function run() {
     findToggle(true);
     findInput.value = q;
@@ -2784,16 +2822,16 @@ if (location.hash.startsWith("#find-test")) {
       bad.push(`计数文字是 ${findCount.textContent}，应为 1/${mine.length}`);
     }
 
-    // ② 坐标：按 findScan 给的行列去 buffer 里取，取的必须正好是查询词
+    // ② 坐标：逐条真的跳过去，看终端选出来的是不是查询词本身
+    //    （选区是按格取的，所以这条同时验了"列号是格号而不是字符下标"——中文行上会露馅）
     const offBy = [];
-    for (const h of findHits.all) {
-      const line = term.buffer.active.getLine(h.row);
-      const text = line ? line.translateToString(true) : "";
-      if (text.slice(h.col, h.col + q.length).toLowerCase() !== q.toLowerCase()) {
-        offBy.push({ row: h.row, col: h.col, got: text.slice(h.col, h.col + q.length) });
-      }
+    for (let i = 0; i < findHits.all.length; i += 1) {
+      findHits.at = i - 1;
+      findJump(1);
+      const got = term.getSelection();
+      if (got.toLowerCase() !== q.toLowerCase()) offBy.push({ i, row: findHits.all[i].row, got });
     }
-    if (offBy.length) bad.push(`命中坐标取到的不是查询词：${JSON.stringify(offBy.slice(0, 3))}`);
+    if (offBy.length) bad.push(`按命中跳过去，选出来的不是查询词：${JSON.stringify(offBy.slice(0, 3))}`);
 
     // ③ 首跳落在第 1 条，并真的选中了它
     findHits.at = -1;
@@ -2855,6 +2893,131 @@ if (location.hash.startsWith("#find-test")) {
     findHits.at = -1;
     findPaint();
     document.body.classList.remove("dragging", "dragging-x");
+
+    longPhase();
+  }
+
+  // ---------- ⑧ 长 buffer / 宽字符 / ANSI：写 120 行，每 10 行一处命中 ----------
+  // 这一段专治"只在短 banner 上看着对"：真实远端输出里有中文（宽字符占两格）、有颜色控制符、
+  // 而且早就滚进滚动缓冲了。命中落在这些行上，列号一偏就全偏。
+  const q2 = "Portio_long";
+  const longWant = 12;
+
+  function longPhase() {
+    let block = "";
+    for (let i = 1; i <= 120; i += 1) {
+      let body;
+      if (i % 10 === 0) {
+        const tag = `Portio_long_${String(i).padStart(3, "0")}`;
+        body = i % 20 === 0
+          ? `中文宽字符 ${tag} 尾巴`            // 宽字符在查询词前面，列号要跨过它们
+          : `\x1b[36m${tag}\x1b[0m 带色`;       // 查询词被 ANSI 颜色包着
+      } else if (i % 25 === 0) {
+        body = "半个词 Portio_lon 不算命中";      // 少个尾字母的诱饵：needle 截短时会多算
+      } else {
+        body = `第 ${i} 行普通输出`;
+      }
+      block += `${body}\r\n`;
+    }
+    term.write(block);
+
+    let t2 = 0;
+    (function waitLong() {
+      const got = recount(q2).length;
+      if (got < longWant && t2 < 80) {
+        t2 += 1;
+        setTimeout(waitLong, 50);
+        return;
+      }
+      checkLong(got);
+      finish();
+    })();
+  }
+
+  function checkLong(flushed) {
+    seen.long = { wrote: longWant, flushed };
+    if (flushed !== longWant) bad.push(`长 buffer 素材没写全：应 ${longWant} 处，实际 ${flushed} 处`);
+
+    findInput.value = q2;
+    findRefresh();
+    const all = findHits.all;
+    seen.long.hits = all.length;
+    seen.long.label = findCount.textContent;
+    if (all.length !== longWant) bad.push(`长 buffer 计数是 ${all.length}，应为 ${longWant}`);
+    if (findCount.textContent !== `1/${longWant}`) {
+      bad.push(`长 buffer 计数文字是 ${findCount.textContent}，应为 1/${longWant}`);
+    }
+
+    // 8a 逐格对：宽字符占两格只出一个字符，字符下标 ≠ 格号，两套扫法必须给出同一个格号
+    const cells = recountCells(q2);
+    if (cells.length !== all.length) {
+      bad.push(`逐格扫得 ${cells.length} 条，查找认为 ${all.length} 条`);
+    }
+    const off = [];
+    for (let i = 0; i < Math.min(cells.length, all.length); i += 1) {
+      if (cells[i].row !== all[i].row || cells[i].col !== all[i].col) {
+        off.push({ row: all[i].row, findCol: all[i].col, cellCol: cells[i].col });
+      }
+    }
+    if (off.length) {
+      bad.push(`列号对不上（把字符下标当成了格号？）：${JSON.stringify(off.slice(0, 3))}`);
+    }
+
+    // 8b 逐条跳过去，选区必须是查询词本身——中文行、带色行都走一遍
+    const selBad = [];
+    for (let i = 0; i < all.length; i += 1) {
+      findHits.at = i - 1;
+      findJump(1);
+      const got = term.getSelection();
+      if (got !== q2) selBad.push({ i, row: all[i].row, got });
+    }
+    if (selBad.length) bad.push(`长 buffer 里跳过去选到的不是查询词：${JSON.stringify(selBad.slice(0, 3))}`);
+
+    // 8c 中间那条要落在视野中间：scrollToLine 的落点就是"命中行 - 半屏"
+    const mid = Math.floor(term.rows / 2);
+    const buf = term.buffer.active;
+    findHits.at = 4;
+    findJump(1);
+    const hitMid = all[5];
+    const wantY = Math.min(Math.max(0, hitMid.row - mid), buf.baseY);
+    seen.long.center = { row: hitMid.row, viewportY: buf.viewportY, wantY, rows: term.rows, baseY: buf.baseY };
+    if (Math.abs(buf.viewportY - wantY) > 1) {
+      bad.push(`中间那条没滚到视野中间：viewportY ${buf.viewportY}，应 ${wantY}`);
+    }
+    if (hitMid.row < buf.viewportY || hitMid.row >= buf.viewportY + term.rows) {
+      bad.push(`中间那条不在可视区里：行 ${hitMid.row}、视野 ${buf.viewportY}–${buf.viewportY + term.rows}`);
+    }
+
+    // 8d 最后一条：贴底时允许被夹住，但必须真的可见，且确实滚到底
+    findHits.at = 0;
+    findJump(-1);
+    const hitLast = all[all.length - 1];
+    seen.long.last = { at: findHits.at, row: hitLast.row, viewportY: buf.viewportY, baseY: buf.baseY, rows: term.rows };
+    if (findHits.at !== all.length - 1) bad.push(`往前一步应落到末条，实际序号 ${findHits.at}`);
+    if (buf.viewportY !== buf.baseY) bad.push(`末条没把视野滚到底：${buf.viewportY} 而非 ${buf.baseY}`);
+    if (hitLast.row < buf.viewportY || hitLast.row >= buf.viewportY + term.rows) {
+      bad.push(`末条不在可视区里：行 ${hitLast.row}、视野 ${buf.viewportY}–${buf.viewportY + term.rows}`);
+    }
+
+    // 8e 滚进滚动缓冲的旧行还在：整段重扫一遍条数不能变少
+    const after = recountCells(q2).length;
+    seen.long.after = after;
+    if (after !== longWant) bad.push(`滚过之后命中条数掉了：${after}，应为 ${longWant}`);
+    if (buf.baseY <= 0) bad.push("写完 120 行都没产生滚动，长 buffer 前提不成立");
+
+    // 收拾现场
+    findInput.value = "";
+    findHits.q = "";
+    findHits.all = [];
+    findHits.at = -1;
+    findPaint();
+    if (term) term.clearSelection();
+  }
+
+  function finish() {
+    document.title = bad.length === 0
+      ? `FIND-SELFTEST-OK ${JSON.stringify(seen)}`
+      : `FIND-SELFTEST-FAIL ${JSON.stringify(bad)} ${JSON.stringify(seen)}`;
   }
 
   // 终端的 banner 是异步写进 buffer 的，等它真落了再开始量（最多等 3 秒）
@@ -2874,8 +3037,5 @@ if (location.hash.startsWith("#find-test")) {
     if (!got) bad.push(`等了 3 秒终端 buffer 里还没有 ${q}`);
     else if (got !== want) bad.push(`用例素材条数不对：应 ${want} 处，实际 ${got} 处`);
     run();
-    document.title = bad.length === 0
-      ? `FIND-SELFTEST-OK ${JSON.stringify(seen)}`
-      : `FIND-SELFTEST-FAIL ${JSON.stringify(bad)} ${JSON.stringify(seen)}`;
   })();
 }

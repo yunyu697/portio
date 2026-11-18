@@ -264,7 +264,7 @@ def main(argv: list[str]) -> int:
         ("A12", "#ctx-test = CTX-SELFTEST-OK 9（九处面板右键菜单）", True),
         ("A13", "#narrow-test 两档窄窗（1024 / 900）几何", True),
         ("A14", "#theme-test = THEME-SELFTEST-OK（深浅两套几何一致 + 令牌对比度）", True),
-        ("A15", "#find-test = FIND-SELFTEST-OK（900 宽下查找计数/坐标/环回/无命中/几何）", True),
+        ("A15", "#find-test = FIND-SELFTEST-OK（900 宽下查找：计数/坐标/环回/无命中/几何 + 120 行长 buffer、宽字符、ANSI、居中、贴底）", True),
     ]
     if args.list:
         for code, label, on in plan:
