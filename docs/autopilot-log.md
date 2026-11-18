@@ -122,3 +122,12 @@
 - 验证：`cargo test -p portio-core` 29 passed（新增 9 条）；`cargo test -p portio-app` 3 passed（合并计数 / 重复导入幂等 / 缺文件报错且不污染清单）；`cargo check -p portio-app` 通过；`node --check ui/app.js` 通过；无头 `dump-dom` 标题 `Portio`（无 `ERR:`）且存在 `#btn-import-ssh`；`_s6_import.png` 2× 截图确认按钮位置与虚线样式；打包 exit=0，`check_versions.py` OK v1.0.2-Alpha6。
 - 未验证：桌面版里点按钮的 IPC 往返与 toast 文案（无头环境不能 invoke）；本机没有 `~/.ssh/config`（只有 known_hosts），真实文件导入没跑；Xshell / WinSCP 自有格式未做。
 - 下一步：Xshell / WinSCP 会话文件导入，或先回 S7 补快速连接模板（`docs/backlog.md` 里已记按版本命名 ico 的发布物料改进）。
+## 2026-11-18 · v1.0.2-Alpha7 · 启动不再先黑一下
+
+- 根因：窗口在配置里 `visible: true`，webview 还没画出内容就先露出一块 `backgroundColor #0D1014` 的空窗；用户长期用浅色主题，所以那一下深色特别刺眼。
+- 改法：窗口改为 `setup` 里动态建（`WebviewWindowBuilder`），尺寸/最小尺寸/无边框/深色标题栏原样搬过去，并设 `visible(false)` + `.background_color()`；前端首屏画完后调新命令 `window_ready`（`show` + `set_focus`）。`tauri.conf.json` 的 `app.windows` 清空。
+- 底色跟随上次主题：新增命令 `ui_theme_set`，前端 `applyTheme()` 每次把实际生效主题写进 `%APPDATA%\io.portio.desktop\theme.txt`；启动时 `read_ui_theme` 读它决定窗口底色（浅 `#F4F7F9` / 深 `#0D1014`）。
+- 验证：`cargo check -p portio-app` 通过、`cargo test -p portio-app` 3 passed；实机两轮计时 1733ms / 1830ms 到窗口可见，可见前句柄已在但 `IsWindowVisible=false`；可见瞬间截屏 `_a7_v2_first.png` 即完整界面（标题栏/会话栏/导入按钮/终端都在），无空白或深色空窗帧；`theme.txt` 实测写入 `light`。
+- 试过又回退的两版（记录备查）：①在内联脚本里提前 reveal → 290ms 就显示，但窗口下半部还没画，截图里能看到桌面上的别的窗口，属"半成品"帧；②把 xterm 脚本改 `defer` 提前 reveal → 可见时间反而涨到 2423ms。最终选择"藏到画完再显示"。
+- 未验证：安装包安装后从桌面快捷方式启动的实际观感（只跑了 `target\debug\portio-app.exe`）；macOS / Linux 上的同等行为。
+- 下一步：S6 第二单元 Xshell `.xsh` / WinSCP `.ini` 导入，或 S7 快速连接模板。
