@@ -262,6 +262,7 @@ def main(argv: list[str]) -> int:
         ("A11", "NSIS 安装包体积与文件名", True),
         ("A12", "#ctx-test = CTX-SELFTEST-OK 9（九处面板右键菜单）", True),
         ("A13", "#narrow-test 两档窄窗（1024 / 900）几何", True),
+        ("A14", "#theme-test = THEME-SELFTEST-OK（深浅两套几何一致 + 令牌对比度）", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -313,8 +314,10 @@ def main(argv: list[str]) -> int:
             status, detail = a11_bundle()
         elif code == "A12":
             status, detail = a_page(chrome, profile, "#ctx-test", "CTX-SELFTEST-OK 9")
-        else:
+        elif code == "A13":
             status, detail = a_narrow(chrome, profile)
+        else:
+            status, detail = a_page(chrome, profile, "#theme-test", "THEME-SELFTEST-OK")
         results.append((code, label, status, detail))
         print(f"[{status}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
 

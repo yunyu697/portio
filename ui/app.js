@@ -2624,3 +2624,113 @@ if (location.hash.includes("narrow-test")) {
     ? `NARROW-SELFTEST-OK w=${W} ${JSON.stringify(rows)}`
     : `NARROW-SELFTEST-FAIL w=${W} ${JSON.stringify(bad)} ${JSON.stringify(rows)}`;
 }
+
+// #theme-test：主题门禁。深 / 浅两套主题各量一遍同一组分区，比左上角与宽高——
+// 主题只管颜色，几何一律不许动（用户报过"切完主题有组件错位"）。
+// 再把令牌的对比度算一遍，防止哪天为了好看把分隔线调成看不见、或者把弱化文字调成读不出。
+if (location.hash.includes("theme-test")) {
+  const rect = (el) => el.getBoundingClientRect();
+  const bad = [];
+  const rows = {};
+
+  // 令牌值是 #rrggbb 原样拿回来，换成线性亮度后按 WCAG 算对比度
+  const toRgb = (v) => {
+    const s = String(v || "").trim();
+    if (!s.startsWith("#")) return null;
+    const h = s.slice(1);
+    const f = h.length === 3 ? [...h].map((c) => c + c).join("") : h;
+    if (f.length !== 6) return null;
+    return [0, 2, 4].map((i) => parseInt(f.slice(i, i + 2), 16));
+  };
+  const lin = (c) => {
+    const x = c / 255;
+    return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+  };
+  const lum = (rgb) => 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2]);
+  const ratio = (a, b) => {
+    const la = lum(a), lb = lum(b);
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+  };
+
+  const col = (name) => {
+    const v = getComputedStyle(root).getPropertyValue(name);
+    const rgb = toRgb(v);
+    if (!rgb) bad.push(`令牌 ${name} 不是 #rrggbb 形态：${v || "空"}`);
+    return rgb;
+  };
+
+  const marks = () => {
+    const o = {};
+    const put = (key, el) => {
+      if (!el) { bad.push(`量不到 ${key}`); return; }
+      const r = rect(el);
+      o[key] = [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)];
+      if (r.width < 1 || r.height < 1) bad.push(`${key} 尺寸为 0`);
+    };
+    put("titlebar", document.querySelector(".titlebar"));
+    put("sidebar", sidebarEl);
+    put("tabs", document.getElementById("tabs"));
+    put("term", document.querySelector(".pane.term"));
+    put("termhead", document.querySelector(".pane.term .pane-head"));
+    put("files", document.querySelector(".pane.files"));
+    put("remote", document.querySelector('.fp-block[data-side="remote"]'));
+    put("local", document.querySelector('.fp-block[data-side="local"]'));
+    put("drawer", drawerEl);
+    put("statusbar", document.querySelector(".statusbar"));
+    put("themeBtn", document.getElementById("btn-theme"));
+    return o;
+  };
+
+  const prevPref = localStorage.getItem("portio.theme") || "dark";
+  const geom = {};
+  const tok = {};
+  for (const t of ["dark", "light"]) {
+    applyTheme(t);
+    void document.body.offsetHeight; // 强制一次重排：量终态，不量过渡中间
+    if (root.dataset.theme !== t) bad.push(`applyTheme("${t}") 之后 data-theme 是 ${root.dataset.theme}`);
+    geom[t] = marks();
+    tok[t] = {
+      surface: col("--surface"), bg: col("--bg"), line: col("--line"), strong: col("--line-strong"),
+      text: col("--text"), text2: col("--text-2"), text3: col("--text-3"),
+    };
+    const sun = rect(document.querySelector("#btn-theme .i-sun"));
+    const moon = rect(document.querySelector("#btn-theme .i-moon"));
+    rows[t] = { sun: Math.round(sun.width), moon: Math.round(moon.width), contrast: {} };
+    if (t === "light" && !(sun.width > 0 && moon.width === 0)) bad.push("浅色下主题按钮没换成太阳图标");
+    if (t === "dark" && !(moon.width > 0 && sun.width === 0)) bad.push("深色下主题按钮没换成月亮图标");
+  }
+
+  // ① 几何：每个分区的左上角与宽高，两套主题下必须一样（主题只该动颜色）
+  let worst = 0;
+  for (const key of Object.keys(geom.dark)) {
+    const a = geom.dark[key], b = geom.light[key];
+    if (!a || !b) continue;
+    const d = Math.max(...a.map((v, i) => Math.abs(v - b[i])));
+    worst = Math.max(worst, d);
+    if (d > 1) bad.push(`${key} 切主题后错位 ${d}px（深 ${a} / 浅 ${b}）`);
+  }
+  rows.landmarks = Object.keys(geom.dark).length;
+  rows.worstShift = worst;
+
+  // ② 对比度：分隔线要看得见但不抢戏；正文、次要、弱化三档各自有下限
+  const need = [
+    ["line", "surface", 1.25, "分隔线对面板底"],
+    ["line", "bg", 1.2, "分隔线对窗口底"],
+    ["strong", "surface", 1.5, "强分隔线对面板底"],
+    ["text", "surface", 10, "正文对面板底"],
+    ["text2", "surface", 4.5, "次要文字对面板底"],
+    ["text3", "surface", 2.9, "弱化文字对面板底"],
+  ];
+  for (const t of ["dark", "light"]) {
+    for (const [fgs, bgs, min, why] of need) {
+      const r = ratio(tok[t][fgs], tok[t][bgs]);
+      rows[t].contrast[`${fgs}/${bgs}`] = Number(r.toFixed(2));
+      if (r < min) bad.push(`${t} 主题${why}只有 ${r.toFixed(2)}，低于 ${min}`);
+    }
+  }
+
+  applyTheme(prevPref); // 量完把主题还原成用户原来那档
+  document.title = bad.length === 0
+    ? `THEME-SELFTEST-OK ${JSON.stringify(rows)}`
+    : `THEME-SELFTEST-FAIL ${JSON.stringify(bad)} ${JSON.stringify(rows)}`;
+}
