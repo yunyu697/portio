@@ -804,6 +804,53 @@ function loadSessions() {
       renderSessions();
     });
 }
+// ---------- 会话分组 ----------
+// 分组只是本机视图上的组织方式，跟着这台机器走，不写进 sessions.json（免得动数据格式）。
+// 折叠状态也记在本地，重启后还是你收起来的样子。
+const GROUPS_KEY = "portio.groups";
+const GFOLD_KEY = "portio.foldGroups";
+function readGroupsMap() {
+  try {
+    const o = JSON.parse(localStorage.getItem(GROUPS_KEY) || "{}");
+    return o && typeof o === "object" ? o : {};
+  } catch (e) {
+    return {};
+  }
+}
+function groupsOf(key) {
+  return String(readGroupsMap()[key] ?? "").trim();
+}
+function setGroups(key, tag) {
+  const m = readGroupsMap();
+  if (tag) m[key] = tag;
+  else delete m[key];
+  localStorage.setItem(GROUPS_KEY, JSON.stringify(m));
+}
+function foldedSet() {
+  try {
+    const a = JSON.parse(localStorage.getItem(GFOLD_KEY) || "[]");
+    return new Set(Array.isArray(a) ? a : []);
+  } catch (e) {
+    return new Set();
+  }
+}
+function isFolded(label) {
+  return foldedSet().has(label);
+}
+function toggleFold(label) {
+  const s = foldedSet();
+  if (s.has(label)) s.delete(label);
+  else s.add(label);
+  localStorage.setItem(GFOLD_KEY, JSON.stringify([...s]));
+  renderSessions();
+}
+function caret() {
+  const el = document.createElement("span");
+  el.className = "caret";
+  el.textContent = "▾";
+  return el;
+}
+
 function renderSessions() {
   const sidebar = document.querySelector(".sidebar");
   const all = readSessions();
@@ -836,21 +883,63 @@ function renderSessions() {
   } else if (hint) {
     hint.remove();
   }
-  // 有搜索词就平铺（用户要的是"哪些匹配"），没搜索词才分"最近使用 / 更早"
-  const groups = q
-    ? [{ label: "", items: list }]
-    : [
+  // 有搜索词就平铺（用户要的是"哪些匹配"）；没搜索词时先按用户分组，剩下的再分"最近使用 / 更早"
+  let groups;
+  if (q) {
+    groups = [{ label: "", items: list }];
+  } else {
+    const named = list.filter((s) => groupsOf(sessionKey(s)));
+    if (named.length) {
+      const tags = new Set(named.map((s) => groupsOf(sessionKey(s))));
+      groups = [...tags]
+        .sort((a, b) => a.localeCompare(b, "zh"))
+        .map((tag) => ({ label: tag, items: named.filter((s) => groupsOf(sessionKey(s)) === tag), tag }));
+      const rest = list.filter((s) => !groupsOf(sessionKey(s)));
+      if (rest.length) {
+        groups.push({ label: "未分组", items: rest, tag: "未分组" });
+      }
+    } else {
+      groups = [
         { label: "最近使用", items: recent },
         { label: "更早", items: older },
       ];
+    }
+  }
   let anchor = document.getElementById("sess-search");
   for (const g of groups) {
     if (g.label && g.items.length) {
+      const folded = isFolded(g.label);
       const head = document.createElement("div");
-      head.className = "sess-group";
-      head.textContent = g.label;
+      head.className = folded ? "sess-group folded" : "sess-group";
+      head.dataset.group = g.tag ?? g.label;
+      head.append(caret(), document.createTextNode(g.label));
+      const count = document.createElement("span");
+      count.className = "gcount";
+      count.textContent = String(g.items.length);
+      head.append(count);
+      head.title = folded ? "展开这组" : "收起这组";
+      head.addEventListener("click", () => toggleFold(g.label));
+      if (g.tag && g.label !== "未分组") {
+        head.addEventListener("contextmenu", (ev) => {
+          ev.preventDefault();
+          showCtx(ev.clientX, ev.clientY, [
+            { label: folded ? "展开" : "收起", run: () => toggleFold(g.label) },
+            { sep: true },
+            {
+              label: "解散这个分组",
+              hint: `${g.items.length} 台`,
+              run: () => {
+                for (const s of g.items) setGroups(sessionKey(s), "");
+                renderSessions();
+                toast(`「${g.label}」已解散，会话回到未分组`);
+              },
+            },
+          ]);
+        });
+      }
       anchor.after(head);
       anchor = head;
+      if (folded) continue;
     }
     for (const s of g.items) {
     const row = document.createElement("div");
@@ -892,6 +981,21 @@ function renderSessions() {
         },
         { label: "编辑连接参数", run: () => openConnect(s) },
         { sep: true },
+        { label: "分到分组…", hint: groupsOf(key) || "未分组", run: () => openGroupModal(s) },
+        ...[...new Set(all.map((x) => groupsOf(sessionKey(x))).filter(Boolean))]
+          .sort((a, b) => a.localeCompare(b, "zh"))
+          .slice(0, 3)
+          .map((tag) => ({
+            label: `→ ${tag}`,
+            run: () => {
+              setGroups(key, tag);
+              renderSessions();
+            },
+          })),
+        groupsOf(key)
+          ? { label: "移出分组", run: () => { setGroups(key, ""); renderSessions(); } }
+          : { sep: true },
+        { sep: true },
         { label: "复制地址", hint: `${s.user}@${s.host}:${s.port ?? 22}`, run: () => copyText(key) },
         { label: "复制 ssh 命令", run: () => copyText(`ssh ${s.user}@${s.host} -p ${s.port ?? 22}`) },
         { sep: true },
@@ -910,6 +1014,34 @@ document.getElementById("sess-search").addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     e.currentTarget.value = "";
     renderSessions();
+  }
+});
+
+// ---------- 分到分组 ----------
+let groupTarget = null;
+const groupModal = document.getElementById("group-modal");
+function openGroupModal(s) {
+  groupTarget = { key: sessionKey(s), label: s.name || `${s.user}@${s.host}` };
+  document.getElementById("group-target").textContent = groupTarget.label;
+  const input = document.getElementById("f-group");
+  input.value = groupsOf(groupTarget.key);
+  groupModal.classList.add("open");
+  input.focus();
+  input.select();
+}
+document.getElementById("btn-group-cancel").addEventListener("click", () =>
+  groupModal.classList.remove("open")
+);
+document.getElementById("btn-group-ok").addEventListener("click", () => {
+  const tag = document.getElementById("f-group").value.trim();
+  if (groupTarget) setGroups(groupTarget.key, tag);
+  groupModal.classList.remove("open");
+  renderSessions();
+});
+document.getElementById("f-group").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    document.getElementById("btn-group-ok").click();
   }
 });
 
@@ -1103,6 +1235,19 @@ document.getElementById("btn-connect").addEventListener("click", async () => {
   });
 });
 
+// 分组的核验入口：两台生产、一台测试（已折叠）、一台未分组
+if (location.hash.startsWith("#groups-demo")) {
+  saveSession({ host: "web-01.prod", port: 22, user: "deploy", auth: "key", keyfile: "~/.ssh/id_ed25519" });
+  saveSession({ host: "db-01.prod", port: 2222, user: "dba", auth: "password" });
+  saveSession({ host: "stage-01", port: 22, user: "qa", auth: "password" });
+  saveSession({ host: "10.0.8.12", port: 22, user: "root", auth: "password" });
+  setGroups("deploy@web-01.prod:22", "生产");
+  setGroups("dba@db-01.prod:2222", "生产");
+  setGroups("qa@stage-01:22", "测试");
+  localStorage.setItem(GFOLD_KEY, JSON.stringify(["测试"]));
+  renderSessions();
+}
+
 // 快速连接的核验入口：填好一行再打开面板，看解析结果对不对
 if (location.hash.startsWith("#quick-demo")) {
   saveSession({ host: "10.0.8.12", port: 2222, user: "deploy", auth: "key", keyfile: "~/.ssh/id_ed25519" });
@@ -1123,7 +1268,7 @@ if (location.hash.startsWith("#sess-demo") || location.hash.includes("ctx-demo")
     document.getElementById("sess-search").value = q;
     renderSessions();
   }
-} else {
+} else if (!location.hash.startsWith("#groups-demo")) {
   loadSessions();
 }
 

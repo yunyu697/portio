@@ -165,3 +165,12 @@
 - 验证：`node --check ui/app.js` exit 0；`check_design_tokens.py` → OK（快速连接行只用既有令牌）；无头 2× 截图 `_s7_quick2.png`（1180×690 深色：输入框里 `deploy@10.0.8.12:2222`，面板预填主机 10.0.8.12 / 端口 2222 / 用户 deploy / 私钥文件 / `~/.ssh/id_ed25519`，密码框已不显示）、`_s7_light.png`（浅色：快速连接行正常）；`#quick-demo` 的 dump-dom 无 `ERR:`。
 - 未验证：真实回车 → 面板 → 连接的全链路（本机无 SSH 服务器，连接仍属已知阻塞）；真实窗口里的焦点落位。
 - 下一步：S7 剩余——发布物料（v0.2 gate 材料）与模板补强；之后进 S8（SFTP 通道复用已有 SSH 连接）。
+## 2026-11-18 · v1.0.3-Alpha2 · 会话分组与折叠（补 S5 的 2.2）
+
+- `ui/app.js` 新增分组层：`GROUPS_KEY=portio.groups`（会话 key → 分组名）、`GFOLD_KEY=portio.foldGroups`（折叠中的组名数组，注意与既有的 `FOLD_KEY=portio.sidebarFolded` 重名，已改名）；`groupsOf / setGroups / isFolded / toggleFold / caret` 五个小函数。
+- `renderSessions` 分组逻辑改为：有搜索词仍平铺；无搜索词时先把带分组的会话按组名排（`localeCompare("zh")`）成组，剩下的进「未分组」；一条分组都没有时回落到原来的「最近使用 / 更早」。
+- 分组标题：caret ▾ / 折叠时 `rotate(-90deg)` 变 ▸；hover 或折叠时才露出条数（`gcount`）；点击折叠、右键「展开/收起」+「解散这个分组」（「未分组」不给解散项）。
+- 会话行右键新增：`分到分组…`（打开 `#group-modal` 小弹层，回车即确认）、最多 3 个已有分组的一键归类项、`移出分组`。
+- 验证：`node --check ui/app.js` exit 0（第一次跑出 `Identifier 'FOLD_KEY' has already been declared`，改名 GFOLD_KEY 后通过）；`check_design_tokens.py` OK；无头 2× 截图 `_s7_groups.png`（1180×690 深色：测试组折叠只剩标题+条数 1、生产组展开两行 dba@db-01.prod:2222 与 deploy@web-01.prod key、未分组一行 root@10.0.8.12）；`#groups-demo` dump-dom `<title>` 仍是 `Portio`。
+- 未验证：真实右键菜单点击、弹层输入与回车（无头不能交互）；分组在真实窗口下的折叠动画手感；分组数据在软件升级后是否沿用旧 localStorage（未实测）。
+- 下一步：S7 收尾——发布物料（README / 更新说明 / 截图），之后进 S8（SFTP 通道复用已有 SSH 连接）。

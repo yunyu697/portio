@@ -245,8 +245,17 @@
   .ctx-item.dis:hover{background:transparent}
   .ctx-item .hint{margin-left:auto;color:var(--text-3);font-size:var(--fs-11)}
   .ctx-sep{height:1px;margin:4px 6px;background:var(--ctx-sep)}
-  .sess-group{margin:14px 12px 4px;color:var(--text-3);font-size:var(--fs-11);
-    letter-spacing:.04em}
+  /* 分组标题：可折叠，caret 用 12ms 级的旋转，折叠时图标朝右 */
+  .sess-group{display:flex;align-items:center;gap:6px;margin:14px 12px 4px;color:var(--text-3);
+    font-size:var(--fs-11);letter-spacing:.04em;cursor:pointer;user-select:none;
+    transition:color var(--dur) var(--ease)}
+  .sess-group:hover{color:var(--text-2)}
+  .sess-group .caret{display:inline-block;width:9px;transition:transform var(--dur) var(--ease-out);
+    color:var(--text-3)}
+  .sess-group.folded .caret{transform:rotate(-90deg)}
+  .sess-group .gcount{margin-left:auto;color:var(--text-3);font-family:var(--mono);
+    font-size:var(--fs-11);opacity:0}
+  .sess-group:hover .gcount,.sess-group.folded .gcount{opacity:1}
   .sess-row{display:flex;align-items:center;gap:8px;margin:4px 12px 0;padding:0 8px;height:30px;
     border-radius:var(--r-4);color:var(--text-2);cursor:pointer;min-width:0}
   .sess-row:hover{background:var(--surface-2);color:var(--text)}
@@ -328,7 +337,7 @@
         <rect x="11.2" y="16.1" width="4.2" height="1.5" rx=".75" fill="var(--mark-accent)" opacity=".5"/>
         <rect x="15.4" y="11.3" width="3.6" height="1.4" rx=".7" fill="var(--mark-accent)"/>
       </svg>
-      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.3-Alpha1</span>
+      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.3-Alpha2</span>
     </div>
     <div class="tabs" id="tabs"></div>
     <button class="tbtn icon-only" id="btn-theme" aria-label="切换主题" title="切换主题：深色 / 浅色（跟随系统在设置里选）">
@@ -451,6 +460,20 @@
       <footer>
         <button class="btn" id="btn-cancel">取消</button>
         <button class="btn primary" id="btn-connect">连接</button>
+      </footer>
+    </div>
+  </div>
+
+  <div class="modal" id="group-modal">
+    <div class="sheet">
+      <header>分到分组 <span class="sub" id="group-target"></span></header>
+      <div class="body">
+        <div class="field"><label for="f-group">分组名</label>
+          <input id="f-group" maxlength="24" autocomplete="off" placeholder="例如 生产 / 测试"></div>
+      </div>
+      <footer>
+        <button class="btn" id="btn-group-cancel">取消</button>
+        <button class="btn primary" id="btn-group-ok">确定</button>
       </footer>
     </div>
   </div>
