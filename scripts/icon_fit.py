@@ -192,10 +192,18 @@ def write_ico(path, frames):
 
 
 def main():
+    global MARGIN
     ap = argparse.ArgumentParser()
     ap.add_argument("--inspect", metavar="PNG")
     ap.add_argument("--fix", nargs=2, metavar=("SRC", "OUTDIR"))
+    ap.add_argument(
+        "--margin",
+        type=float,
+        default=MARGIN,
+        help="四周留白比例，0 表示图形贴到画布边缘（Windows 邻居图标多是这个效果）",
+    )
     args = ap.parse_args()
+    MARGIN = args.margin
 
     if args.inspect:
         w, h, px = read_png(args.inspect)
@@ -221,10 +229,10 @@ def main():
 
     frames = []
     for size in (16, 24, 32, 48, 64, 128, 256):
-        pixels = fit_to_square(content, size)
+        pixels = fit_to_square(content, size, MARGIN)
         frames.append((size, pixels))
     for size in (32, 64, 128, 256, 512, 1024):
-        pixels = fit_to_square(content, size)
+        pixels = fit_to_square(content, size, MARGIN)
         name = "icon.png" if size == 1024 else (
             "32x32.png" if size == 32 else
             "128x128.png" if size == 128 else
@@ -241,7 +249,7 @@ def main():
 
     png_frames = []
     for size in (16, 24, 32, 48, 64, 128, 256):
-        pixels = fit_to_square(content, size)
+        pixels = fit_to_square(content, size, MARGIN)
         buf = Path(outdir / f".tmp-ico-{size}.png")
         write_png(buf, size, size, pixels)
         png_frames.append((size, buf.read_bytes()))
@@ -254,3 +262,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

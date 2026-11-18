@@ -17,3 +17,14 @@
 - 真实 SSH 登录会话：无可用测试服务器与凭据，密码/私钥认证、PTY 交互、窗口 resize、tmux/vim 全屏均未实机验证。
 - 真实 SFTP 上传下载：仅本地目录列举经实机验证；远端读写需等测试主机。
 - 远端到本地真正落地传输的文件完整性（大文件、中文名、断点）未验证。
+
+## 2026-11-18 · v1.0.1-Alpha2 · S6 前置：标题栏图标化 + 滚动条 + 会话栏折叠
+- 标题栏四个文字按钮（主题 / 密度 / 设置 / 快捷键）改为内联 SVG 图标，34px 宽，保留 aria-label 与 title，id 不变以免影响既有事件绑定。
+- 滚动条统一为主题色细条：6px 宽、thumb 取 --surface-3、hover 取 --text-3、track 透明；深浅主题共用。
+- 会话栏可完全折叠：Ctrl+Alt+B 切换，展开态双击分隔把手收起，折叠态单击把手展开；折叠后仅留 10px 把手，箭头默认 55% 不透明、hover 变强调色；状态存 localStorage `portio.sidebarFolded`。
+- 踩坑记录：折叠态首版写成 `grid-template-columns:0 1fr`，剩下的唯一子元素落进 0 宽第一列 → 整屏只剩背景；改为单列 `1fr` 才对。
+- 顺带清理：删除重复的 `function 初次提示() {}`；快捷键面板补 Ctrl+Alt+B 一条，并把 Ctrl+W 的旧说明改成“关闭当前标签”。
+- 验证：`node --check ui/app.js` 通过；Chrome 无头 `--dump-dom` 标题为 `<title>Portio</title>`（无 ERR）；截图 `_s6_fold.png`（1440×900 折叠态，终端+文件双栏铺满、左缘把手可见）、`_s6_icons_zoom.png`（图标按钮 4× 放大）、`_s6_keys_scroll.png`（快捷键面板 + 细滚动条）。
+- 未验证：折叠态的单击/双击在真实 Tauri 窗口里的命中率（无头截图无法验证交互），需实机点一次。
+- 图标：`scripts/icon_fit.py` 增加 `--margin` 参数并修掉 `global MARGIN` 位置导致的 SyntaxError；用 `--margin 0` 重出全套，128px 实测宽 99.2% / 高 100.0%；安装包与 `target\debug\portio-app.exe` 已内嵌该版本（exe 内 32px 帧占比 93.8%，为圆角损耗）。
+- 下一步：截图核对通过后补 S6（会话搜索与分组）的最小交付单元。

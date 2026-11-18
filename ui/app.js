@@ -230,7 +230,7 @@ function positionGutters() {
   const sidebar = parseFloat(getComputedStyle(root).getPropertyValue("--sidebar")) || 264;
   const split = parseFloat(getComputedStyle(root).getPropertyValue("--split")) || 50;
   const drawer = parseFloat(getComputedStyle(root).getPropertyValue("--drawer")) || 172;
-  document.getElementById("gutter-v").style.left = `${sidebar - 3}px`;
+  document.getElementById("gutter-v").style.left = sidebarFolded ? "0px" : `${sidebar - 3}px`;
   document.getElementById("gutter-split").style.left = `${splitEl.clientWidth * split / 100 - 3}px`;
   document.getElementById("gutter-drawer").style.top = `${stageEl.clientHeight - drawer - 3}px`;
   document.getElementById("gutter-drawer").style.bottom = "auto";
@@ -253,11 +253,35 @@ function dragWith(axis, onMove) {
   };
 }
 
+// 会话栏折叠：收起后整块让给终端，只留一条把手；鼠标移上去箭头才亮
+const FOLD_KEY = "portio.sidebarFolded";
+let sidebarFolded = localStorage.getItem(FOLD_KEY) === "1";
+function applyFold(folded) {
+  sidebarFolded = folded;
+  mainEl.classList.toggle("collapsed", folded);
+  document.getElementById("gutter-v").classList.toggle("folded", folded);
+  localStorage.setItem(FOLD_KEY, folded ? "1" : "0");
+  if (folded) {
+    root.style.setProperty("--sidebar", "0px");
+  } else {
+    applySidebar(readNum(PREF.sidebar.key, 264));
+  }
+  positionGutters();
+  // 折叠展开改变了终端可用宽度，布局稳定后再 fit 一次，否则列数不对
+  requestAnimationFrame(() => fitQuietly());
+}
+
 document.getElementById("gutter-v").addEventListener("pointerdown", dragWith("x", (ev) => {
+  if (sidebarFolded) return; // 折叠态下的拖拽不调宽，交给 click 去展开
   const left = mainEl.getBoundingClientRect().left;
   const px = Math.min(PREF.sidebar.max, Math.max(PREF.sidebar.min, ev.clientX - left));
   applySidebar(px);
 }));
+
+// 折叠态：单击把手展开；展开态：双击把手收起（拖拽不会误触发 dblclick）
+document.getElementById("gutter-v").addEventListener("click", () => {
+  if (sidebarFolded) applyFold(false);
+});
 
 document.getElementById("gutter-split").addEventListener("pointerdown", dragWith("x", (ev) => {
   const box = splitEl.getBoundingClientRect();
@@ -283,8 +307,10 @@ document.getElementById("drawer-head").addEventListener("click", () => {
   }
 });
 
-// 侧栏把手双击 = 复位默认宽度，省得一点点拖回去
-document.getElementById("gutter-v").addEventListener("dblclick", () => applySidebar(264));
+// 侧栏把手双击 = 收起/展开会话栏（Ctrl+Alt+B 同效）
+document.getElementById("gutter-v").addEventListener("dblclick", () => {
+  if (!sidebarFolded) applyFold(true);
+});
 document.getElementById("gutter-split").addEventListener("dblclick", () => applySplit(0.5));
 
 // ---------- 快捷键 ----------
@@ -294,6 +320,11 @@ window.addEventListener("keydown", (e) => {
     e.preventDefault();
     windowAction("fullscreen");
     toast("全屏切换（Ctrl+Alt+H）");
+  }
+  if (mod && e.key.toLowerCase() === "b") {
+    e.preventDefault();
+    applyFold(!sidebarFolded);
+    toast(sidebarFolded ? "会话栏已收起（Ctrl+Alt+B 恢复）" : "会话栏已展开");
   }
   if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === "w") {
     e.preventDefault();
@@ -313,12 +344,11 @@ window.addEventListener("keydown", (e) => {
 
 function 初次提示() {}
 
-function 初次提示() {}
-
 // ---------- 启动：恢复用户上次调好的尺寸 ----------
 applyTheme(localStorage.getItem("portio.theme") ?? "dark");
 applyDensity(localStorage.getItem("portio.density") ?? "standard");
 applySidebar(readNum(PREF.sidebar.key, 264));
+if (sidebarFolded) applyFold(true);
 applySplit(Math.min(PREF.split.max, Math.max(PREF.split.min, readNum(PREF.split.key, 0.5))));
 applyDrawer(readNum(PREF.drawer.key, 172));
 window.addEventListener("resize", positionGutters);
@@ -516,6 +546,8 @@ keysModal.addEventListener("click", (e) => {
 });
 // 带了 #keys 直接展开，方便截图核对与文档深链
 if (location.hash === "#keys") toggleKeys(true);
+// 带 #fold-demo 直接收起会话栏，核对折叠态把手
+if (location.hash === "#fold-demo") applyFold(true);
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && keysModal.classList.contains("open")) {
     e.preventDefault();

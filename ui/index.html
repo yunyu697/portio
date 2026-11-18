@@ -33,6 +33,16 @@
         padding:0 10px;white-space:nowrap;display:inline-flex;align-items:center;
         justify-content:center;font-size:var(--fs-12)}
   .tbtn:hover{background:var(--surface-2);color:var(--text)}
+  .tbtn svg{width:15px;height:15px;display:block;stroke:currentColor;fill:none;stroke-width:1.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .tbtn.icon-only{width:34px;padding:0}
+  /* 滚动条：细条＋主题色，默认那种白底宽槽在深色面板上太抢眼，也太占地 */
+  *{scrollbar-width:thin;scrollbar-color:var(--surface-3) transparent}
+  *::-webkit-scrollbar{width:6px;height:6px}
+  *::-webkit-scrollbar-track{background:transparent}
+  *::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:3px}
+  *::-webkit-scrollbar-thumb:hover{background:var(--text-3)}
+  *::-webkit-scrollbar-corner{background:transparent}
   .win-ctl{display:flex;height:100%}
   .win-ctl .tbtn{width:44px}
   .win-ctl #btn-close:hover{background:var(--danger);color:#fff}
@@ -51,6 +61,17 @@
   /* 拖拽把手：绝对定位压在边界上，不占栅格 */
   .gutter-v{position:absolute;top:0;bottom:0;width:7px;cursor:col-resize;z-index:6}
   .gutter-v:hover{background:var(--accent);opacity:.3}
+  /* 折叠态：会话栏整块收走，只留一条会"亮"的把手，鼠标移上去才浮出箭头。
+     注意列数要变成单列——写成 "0 1fr" 时剩下的唯一子元素会落进那个 0 宽的第一列，整屏空白。 */
+  .main.collapsed{grid-template-columns:1fr}
+  .main.collapsed .sidebar{display:none}
+  .main.collapsed #gutter-v{width:10px;cursor:pointer;background:transparent;
+    box-shadow:inset -1px 0 0 var(--line)}
+  .main.collapsed #gutter-v::after{content:"›";position:absolute;top:50%;left:50%;
+    transform:translate(-50%,-50%);font-size:12px;line-height:1;color:var(--text-3);
+    opacity:.55;transition:opacity .12s,color .12s}
+  .main.collapsed #gutter-v:hover{box-shadow:inset -1px 0 0 var(--accent)}
+  .main.collapsed #gutter-v:hover::after{opacity:1;color:var(--accent)}
 
   .stage{display:grid;grid-template-rows:1fr var(--drawer);overflow:hidden;min-width:0;min-height:0;
          position:relative}
@@ -203,13 +224,21 @@
   <header class="titlebar" data-tauri-drag-region>
     <div class="brand" data-tauri-drag-region>
       <img src="mark.svg" alt="Portio" data-tauri-drag-region>
-      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.1-Alpha1</span>
+      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.1-Alpha2</span>
     </div>
     <div class="tabs" id="tabs"></div>
-    <button class="tbtn" id="btn-theme" title="切换主题（S4 全量主题在设置里）">主题</button>
-    <button class="tbtn" id="btn-density" title="切换密度：标准 / 紧凑">密度</button>
-    <button class="tbtn" id="btn-settings" title="设置（主题 / 密度 / 终端字号）">设置</button>
-    <button class="tbtn" id="btn-keys" title="快捷键一览（Ctrl + /）" aria-label="快捷键一览">?</button>
+    <button class="tbtn icon-only" id="btn-theme" aria-label="切换主题" title="切换主题（深色 / 浅色 / 跟随系统）">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 15.2A9 9 0 1 1 8.8 3.8 7.2 7.2 0 0 0 11.4 11.4 7.2 7.2 0 0 0 8.8 3.8z"/></svg>
+    </button>
+    <button class="tbtn icon-only" id="btn-density" aria-label="切换密度" title="切换密度：标准 / 紧凑">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h10M4 17h16"/></svg>
+    </button>
+    <button class="tbtn icon-only" id="btn-settings" aria-label="设置" title="设置（主题 / 密度 / 终端字号）">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4.5v15M12 4.5v15M18 4.5v15"/><circle cx="6" cy="15" r="2.1"/><circle cx="12" cy="9" r="2.1"/><circle cx="18" cy="16.5" r="2.1"/></svg>
+    </button>
+    <button class="tbtn icon-only" id="btn-keys" aria-label="快捷键一览" title="快捷键一览（Ctrl + /）">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.4" y="6.4" width="19.2" height="11.2" rx="2"/><path d="M6.2 10h1.4M9.6 10h1.4M13 10h1.4M16.4 10h1.4M6.2 13.8h2.4M11 13.8h6.8"/></svg>
+    </button>
     <div class="win-ctl">
       <button class="tbtn" id="btn-min" aria-label="最小化">&#8212;</button>
       <button class="tbtn" id="btn-max" aria-label="最大化">&#9723;</button>
@@ -363,6 +392,7 @@
         <div class="row"><span class="k"><kbd>选中</kbd></span><span class="d">选中即复制，不再需要右键菜单</span></div>
         <div class="row"><span class="k"><kbd>F5</kbd></span><span class="d">刷新终端显示与尺寸</span></div>
         <div class="row"><span class="k"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>H</kbd></span><span class="d">切换窗口全屏</span></div>
+        <div class="row"><span class="k"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>B</kbd></span><span class="d">收起 / 展开左侧会话栏（也可双击分隔把手）</span></div>
         <div class="grp">文件</div>
         <div class="row"><span class="k"><kbd>双击</kbd></span><span class="d">目录进入；文件则直接下载或上传</span></div>
         <div class="row"><span class="k"><kbd>↑</kbd></span><span class="d">回到上级目录</span></div>
