@@ -131,3 +131,13 @@
 - 试过又回退的两版（记录备查）：①在内联脚本里提前 reveal → 290ms 就显示，但窗口下半部还没画，截图里能看到桌面上的别的窗口，属"半成品"帧；②把 xterm 脚本改 `defer` 提前 reveal → 可见时间反而涨到 2423ms。最终选择"藏到画完再显示"。
 - 未验证：安装包安装后从桌面快捷方式启动的实际观感（只跑了 `target\debug\portio-app.exe`）；macOS / Linux 上的同等行为。
 - 下一步：S6 第二单元 Xshell `.xsh` / WinSCP `.ini` 导入，或 S7 快速连接模板。
+## 2026-11-18 · v1.0.2-Alpha8 · 设计规范 + 分隔线 + 拖拽渐变高亮
+
+- 用户明确指出"早该建设计规范"，照办：新增 `docs/design-spec.md`，把精致拆成条款（色彩令牌表 / 圆角阶梯 / 三种线的职责 / 图标 / 间距 / 动效 / 组件条款 / 8 条验收清单 / 现存偏差）。`docs/autopilot.md` 加了 1.1 条：任何 UI 改动先读规范。
+- 修"终端与文件栏、终端与抽屉之间分隔线看不见"：gutter 静止态补 1px `--line-strong`（`::before`），浅色 `#bcc9d5` 下可数；折叠态把手不画这条线。
+- 拖拽提示改成用户给的参考样式：静止 1px 线 → hover 换 2px 渐变高亮（`linear-gradient` 中段实、22%/78% 处淡出）→ 拖拽 3px + 10px 外发光；横向把手按 90° 同款。原来的 34px 胶囊删除。
+- 顺手把颜色收口：`--overlay`、`--shadow-1/2/3`、`--ctx-sep`、`--on-accent`、`--on-danger`、`--term-fg/cursor/selection`、`--ansi-*` 全部进 `tokens.css`；`app.js` 的 16 色终端调色板改为 `cssToken()` 读令牌；`#fff` / `#04100e` 改成令牌；菜单入场动画改用 `--dur` / `--ease`。
+- 新增 `scripts/check_design_tokens.py`：扫 `ui/index.html` 与 `ui/app.js`，硬编码 hex / rgb / rgba / hsl 一律报错（会跳过 HTML 实体与纯注释行）。
+- 验证：`check_design_tokens.py` → `OK 界面文件没有硬编码色值`；`node --check ui/app.js` 通过；无头 2× 截图 `_sep_rest.png`（五条结构线齐全）、`_sep_hover.png`（渐变高亮 + 外发光，与参考图一致）、`_sep_dark2.png`（深色同款）；打包 exit=0，`check_versions.py` OK v1.0.2-Alpha8。
+- 未验证：真实窗口里 hover 手感与拖拽跟手度（无头无法 hover/拖拽，用 `ui/_probe.html` 注入 `opacity:1` 模拟拖拽态截屏，截完已删除该临时文件）。
+- 下一步：S6 第二单元 Xshell `.xsh` / WinSCP `.ini` 导入；终端画布是否随规范收圆仍待用户拍板（已记 backlog）。
