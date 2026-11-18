@@ -309,3 +309,25 @@ S10 的完成定义是「断网后恢复继续传，进度与速率准确」。�
 - 半截文件在真实目录里的观感与清理策略（要不要给用户"清理未完成传输"入口）——记进 backlog，等下一轮或用户拍板。
 
 **下一步**：S10 第二半——上传断点续传（远端 `.portio-part` + 远端 stat 定偏移）。
+## 2026-11-18 · v1.0.3-Alpha10 · S10：上传断点续传
+
+上轮把下载方向收了，这轮收上传——S10 的「断点续传」两个方向到这一轮齐了。
+
+- `resume::remote_part_path(remote)`：远端半截文件名 `/dir/名.portio-part`。刻意用字符串拼接而不是 `PathBuf`：远端是 posix 路径，Windows 上 `PathBuf` 会把 `/` 折成 `\`，拼出来的路径到服务器上就不存在了。
+- `upload` 流程：读本地大小 → 远端 `metadata(tmp)` 拿半截长度 → `resume_offset` 判能不能续 → 不能续且半截存在就 `remove_file` 删掉重来 → 能续就本地 `seek` 跳过已传部分、远端 `open_with_flags(WRITE)` + `seek` 定位。
+- 一个关键取舍：续传时**不能用 `create`** 打开远端半截文件，`create` 带 TRUNC，会把已经传上去的那段截掉，等于白续；所以续传走 `open_with_flags(OpenFlags::WRITE)`。
+- 收尾：`flush` → `rename(tmp, remote)`。OpenSSH 的 `rename` 覆盖同名文件是可以的，但其他实现会报失败，所以失败时先 `remove_file(remote)` 再改名一次。
+- 进度起始值给 `start`，界面进度条从断点开始，不跳 0。
+
+**验证证据**
+- `cargo test -p portio-app -p portio-ssh` 全绿：portio-app 6 passed；portio-ssh **14 passed**（本轮新增 2 条：`remote_part_stays_posix_and_keeps_name`、`skipping_source_head_then_appending_rebuilds_whole_file`）；target 集成 1 passed。
+- `skipping_source_head_then_appending_rebuilds_whole_file`：300 字节源，服务器侧只到了前 120 字节，本地 `seek(120)` 后把剩余 200 字节接上，逐字节比对等于源——上传续传的最小证据链。
+- `remote_part_stays_posix_and_keeps_name`：`/home/deploy/备份.tar.gz` → `/home/deploy/备份.tar.gz.portio-part`，并断言结果里没有 `\`。
+- 本轮无 UI 改动；机器仍锁屏，实机点检未做。
+
+**未验证**
+- 真实断网后恢复续传（协议层与本地回环之外的部分）。
+- 远端 `.portio-part` 出现在目录列表里的观感、以及要不要给它"未完成"标记 / 清理按钮——已记进 backlog，等用户拍板。
+- `open_with_flags(WRITE)` + `seek` 在真实服务器上的行为（尤其是不支持随机写的实现）。
+
+**下一步**：S10 收口——远端半截文件的 UI 处理（列表里标记"未完成"并可清理），或转 S11 凭据加密存储。

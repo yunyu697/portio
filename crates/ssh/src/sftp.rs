@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use russh_sftp::client::SftpSession;
 use russh_sftp::client::error::Error as SftpError;
+use russh_sftp::protocol::OpenFlags;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 use crate::{SshError, SshSession};
@@ -201,14 +202,47 @@ impl Sftp {
             .await
             .map_err(|e| SshError::Protocol(e.to_string()))?;
         let total = input.metadata().await.map(|m| m.len()).unwrap_or(0);
-        let mut file = self
+
+        // 远端先写半截文件，传完改名。中断后再传，从半截长度接着走。
+        let tmp = crate::resume::remote_part_path(remote);
+        let part_len = self
             .inner
-            .create(remote.to_string())
+            .metadata(tmp.clone())
             .await
-            .map_err(|e| err("创建远端文件", e))?;
+            .ok()
+            .and_then(|m| m.size)
+            .unwrap_or(0);
+        let start = crate::resume::resume_offset(part_len, total);
+        if start == 0 && part_len > 0 {
+            // 半截文件已经不能续（本地文件变小或早就传满），删掉重来
+            let _ = self.inner.remove_file(tmp.clone()).await;
+        }
+
+        let mut file = if start > 0 {
+            input
+                .seek(SeekFrom::Start(start))
+                .await
+                .map_err(|e| SshError::Protocol(format!("本地定位到 {start} 失败：{e}")))?;
+            // 半截文件已存在，只申请写权限（create 会截断，那就白续了）
+            let mut f = self
+                .inner
+                .open_with_flags(tmp.clone(), OpenFlags::WRITE)
+                .await
+                .map_err(|e| err("打开远端半截文件", e))?;
+            f.seek(SeekFrom::Start(start))
+                .await
+                .map_err(|e| SshError::Protocol(format!("远端定位到 {start} 失败：{e}")))?;
+            f
+        } else {
+            self.inner
+                .create(tmp.clone())
+                .await
+                .map_err(|e| err("创建远端文件", e))?
+        };
 
         let mut buf = vec![0u8; 32 * 1024];
-        let mut done = 0u64;
+        let mut done = start;
+        progress(done, total);
         loop {
             let n = input
                 .read(&mut buf)
@@ -227,6 +261,14 @@ impl Sftp {
             .await
             .map_err(|e| SshError::Protocol(e.to_string()))?;
         drop(file);
+        if let Err(e) = self.inner.rename(tmp.clone(), remote.to_string()).await {
+            // 有的服务器 rename 不覆盖同名文件，先删目标再改名
+            let _ = self.inner.remove_file(remote.to_string()).await;
+            self.inner
+                .rename(tmp.clone(), remote.to_string())
+                .await
+                .map_err(|_| err("改名远端文件", e))?;
+        }
         Ok(done)
     }
 
