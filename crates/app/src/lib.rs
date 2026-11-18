@@ -156,6 +156,9 @@ pub fn run() {
             // 窗口不再由 tauri.conf.json 静态建：底色要按用户上次的主题来定，
             // 否则浅色主题的用户每次启动都会先看到一块深色空窗口（就是"黑屏一下"）。
             let theme = read_ui_theme(app.handle());
+            // Release 构建里下面那段 devtools 代码会被剥掉，win 就没人用了，
+            // 所以显式放行这条"未使用"警告，免得 release 编译每次都刷一行。
+            #[allow(unused_variables)]
             let win = tauri::WebviewWindowBuilder::new(
                 app,
                 "main",
@@ -170,8 +173,11 @@ pub fn run() {
             .visible(false)
             .center()
             .build()?;
-            // 调试时想开 devtools 就设 PORTIO_DEVTOOLS=1，默认不自动弹，免得挡住窗口截图与演示
-            if cfg!(debug_assertions) && std::env::var("PORTIO_DEVTOOLS").is_ok() {
+            // 调试时想开 devtools 就设 PORTIO_DEVTOOLS=1，默认不自动弹，免得挡住窗口截图与演示。
+            // 注意 open_devtools 只在 debug 构建里存在，所以用属性宏而不是 cfg! 宏：
+            // cfg! 是运行期布尔，Release 编译时这行代码仍然要参与编译，会直接报 E0599。
+            #[cfg(debug_assertions)]
+            if std::env::var("PORTIO_DEVTOOLS").is_ok() {
                 win.open_devtools();
             }
             Ok(())
