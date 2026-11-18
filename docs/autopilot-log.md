@@ -87,3 +87,12 @@
 - 验证：`node --check` 通过；`cargo check -p portio-app` 通过；`cargo test -p portio-core -p portio-ssh` 通过；`_ctx_rename_local.png` 显示菜单含"重命名"；1.0.2-Alpha1 `/S` 安装成功，`_iconhook.log` 记 10:54:50，安装版本读回 1.0.2-Alpha1。
 - 未验证：真实 SFTP 改名（无测试主机与凭据），仅协议层 + 编译层验证。
 - 下一步：S7 终端字号 / 主题运行时联动自检；`docs/backlog.md` 仍待建。
+
+## 2026-11-18 · v1.0.2-Alpha2 · 启动去黑窗 + 主题图标对齐
+
+- 控制台黑窗：Tauri 模板 `#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]` 只在非 debug 构建里关控制台，我们发的是 `--debug` 包 → 改为无条件 `#![windows_subsystem = "windows"]`。
+- 主题图标：双 SVG（深色月亮 / 浅色太阳），两枚按 24 格中心重画；CSS `[data-theme="light"]` 切显隐。踩坑：`.tbtn svg{display:block}`(0,1,1) 压过 `.i-sun`(0,1,0) → 日月同显，选择器必须写 `.tbtn svg.i-sun`。
+- 顺带：`#theme-dark` / `#theme-light` 深链锁主题；CHANGELOG 补齐 Alpha2–Alpha10 各版条目，改为"每版一节、可直接作 GitHub Release 文案"；排期文档新增第 10 节进度看板（S1–S14 状态 + 排期外增项 + 版本对照偏差说明）。
+- 验证：PE OptionalHeader Subsystem = 2（GUI）；进程树无 conhost / cmd 子进程，仅主窗口 `Portio`；`_tb4_theme-dark.png` / `_tb4_theme-light.png` 4× 截图各只显示一枚图标且与另三枚同轴；`_real_alpha2.png` 实机桌面截图；1.0.2-Alpha2 `/S` 安装成功，`_iconhook.log` 11:04:21，安装版本读回 1.0.2-Alpha2；`cargo test -p portio-core -p portio-ssh` 通过。
+- 未验证：真实 SSH/SFTP 能力仍缺测试主机与凭据。
+- 下一步：S7 终端字号 / 主题运行时联动自检（改字号作用到已开标签、切主题同步 xterm 配色），随后转 S6 导入器。
