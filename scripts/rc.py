@@ -266,7 +266,7 @@ def main(argv: list[str]) -> int:
         ("A13", "#narrow-test 两档窄窗（1024 / 900）几何", True),
         ("A14", "#theme-test = THEME-SELFTEST-OK（深浅两套几何一致 + 令牌对比度）", True),
         ("A15", "#find-test = FIND-SELFTEST-OK（900 宽下查找：计数/坐标/环回/无命中/几何 + 800 行长 buffer、宽字符、emoji、组合字符、ANSI、居中、贴底）", True),
-        ("A16", "#density-test = DENSITY-SELFTEST-OK（标准/紧凑两档：八处行高严丝合缝等于 --row、两档只差 4px、切档不横向错位）", True),
+        ("A16", "#density-test = DENSITY-SELFTEST-OK（标准/紧凑两档：九处行高严丝合缝等于 --row、两档只差 4px、切档不横向错位）", True),
     ]
     if args.list:
         for code, label, on in plan:
