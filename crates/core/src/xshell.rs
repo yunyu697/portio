@@ -49,7 +49,11 @@ pub fn parse_xshell_session(text: &str, fallback_name: Option<&str>) -> Option<S
     if !protocol_ok || host.trim().is_empty() || user.trim().is_empty() {
         return None;
     }
-    let name = name.or_else(|| fallback_name.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()));
+    let name = name.or_else(|| {
+        fallback_name
+            .map(|n| n.trim().to_string())
+            .filter(|n| !n.is_empty())
+    });
     let (auth, keyfile) = match keyfile {
         Some(k) => ("key".to_string(), Some(k)),
         None => ("password".to_string(), None),

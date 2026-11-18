@@ -280,9 +280,8 @@ fn import_winscp_file(
     store: &mut SessionStore,
     source: &std::path::Path,
 ) -> Result<(usize, usize), String> {
-    let text = fs::read_to_string(source).map_err(|e| {
-        format!("读不到 {}：{e}", source.to_string_lossy())
-    })?;
+    let text = fs::read_to_string(source)
+        .map_err(|e| format!("读不到 {}：{e}", source.to_string_lossy()))?;
     let outcome = portio_core::parse_winscp_ini(&text);
     let mut incoming = SessionStore::new();
     for rec in outcome.records {
@@ -367,11 +366,10 @@ Host *
         assert_eq!(web.auth, "key");
         assert_eq!(web.port, 22);
         let home = dir.to_string_lossy().to_string();
-        assert!(web
-            .keyfile
-            .as_deref()
-            .unwrap()
-            .starts_with(&home), "~ 应展开到传入的 home");
+        assert!(
+            web.keyfile.as_deref().unwrap().starts_with(&home),
+            "~ 应展开到传入的 home"
+        );
         fs::remove_dir_all(&dir).ok();
     }
 
@@ -389,8 +387,12 @@ Host *
     #[test]
     fn missing_file_is_an_error_not_empty_import() {
         let mut store = SessionStore::new();
-        let err = import_into_store(&mut store, std::path::Path::new("Z:\\nope\\config"), std::path::Path::new("C:\\"))
-            .unwrap_err();
+        let err = import_into_store(
+            &mut store,
+            std::path::Path::new("Z:\\nope\\config"),
+            std::path::Path::new("C:\\"),
+        )
+        .unwrap_err();
         assert!(err.contains("读不到"), "错误要指出是哪份文件：{err}");
         assert!(store.records.is_empty());
     }
@@ -427,7 +429,11 @@ Host *
         let (added, skipped) = import_xshell_dir(&mut store, &dir).unwrap();
         assert_eq!(added, 2, "两台 SSH 主机");
         assert_eq!(skipped, 1, "RDP 会话跳过");
-        let db = store.records.iter().find(|r| r.host == "10.9.9.10").unwrap();
+        let db = store
+            .records
+            .iter()
+            .find(|r| r.host == "10.9.9.10")
+            .unwrap();
         assert_eq!(db.auth, "key");
         assert_eq!(db.name.as_deref(), Some("db-01"), "文件名当备注名");
         fs::remove_dir_all(&dir).ok();

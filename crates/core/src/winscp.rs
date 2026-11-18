@@ -20,13 +20,13 @@ pub fn parse_winscp_ini(text: &str) -> ImportOutcome {
     let mut protocol_ok = true;
 
     let flush = |out: &mut ImportOutcome,
-                     in_sessions: &bool,
-                     name: &Option<String>,
-                     host: &mut String,
-                     user: &mut String,
-                     port: &mut Option<u16>,
-                     keyfile: &mut Option<String>,
-                     protocol_ok: &bool| {
+                 in_sessions: &bool,
+                 name: &Option<String>,
+                 host: &mut String,
+                 user: &mut String,
+                 port: &mut Option<u16>,
+                 keyfile: &mut Option<String>,
+                 protocol_ok: &bool| {
         if *in_sessions && *protocol_ok && !host.trim().is_empty() && !user.trim().is_empty() {
             let (auth, key) = match keyfile.take() {
                 Some(k) => ("key".to_string(), Some(k)),
@@ -73,7 +73,9 @@ pub fn parse_winscp_ini(text: &str) -> ImportOutcome {
                 let rest = inner.get("sessions".len() + 1..).unwrap_or("");
                 // 允许 `[Sessions\分组\主机]`，整段去掉反斜杠后当备注名
                 let n = rest.replace('\\', " / ");
-                let n = n.trim_matches(|c: char| c.is_whitespace() || c == '/').to_string();
+                let n = n
+                    .trim_matches(|c: char| c.is_whitespace() || c == '/')
+                    .to_string();
                 Some(n).filter(|s| !s.is_empty())
             } else {
                 None

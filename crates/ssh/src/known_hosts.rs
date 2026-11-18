@@ -231,7 +231,10 @@ mod tests {
         let mut kh = KnownHosts::load(&p);
         kh.verify("[::1]", 22, "SHA256:V6").unwrap();
         let recs = kh.records();
-        assert_eq!(recs[0].host, "[::1]", "按最后一个冒号切，IPv6 地址不能被切碎");
+        assert_eq!(
+            recs[0].host, "[::1]",
+            "按最后一个冒号切，IPv6 地址不能被切碎"
+        );
         assert_eq!(recs[0].port, 22);
         let _ = fs::remove_file(&p);
     }
@@ -240,8 +243,11 @@ mod tests {
     fn broken_line_is_skipped_not_fatal() {
         let p = tmp_path("broken");
         let _ = fs::remove_file(&p);
-        fs::write(&p, "good.example.com:22 SHA256:OK\nbroken-no-port SHA256:X\nx:99999 SHA256:Y\n")
-            .unwrap();
+        fs::write(
+            &p,
+            "good.example.com:22 SHA256:OK\nbroken-no-port SHA256:X\nx:99999 SHA256:Y\n",
+        )
+        .unwrap();
         let kh = KnownHosts::load(&p);
         let recs = kh.records();
         assert_eq!(recs.len(), 1, "坏行跳过，好行照常显示");

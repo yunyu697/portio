@@ -5,8 +5,8 @@
 //! - 标签数量有上限，超了返回 `TooManyTabs`，由调用方决定是先提示还是先关旧标签；
 //! - 标签 id 单调递增，不复用，这样异步回调按 id 找标签不会找错。
 
-use crate::CoreError;
 use crate::session::SessionId;
+use crate::CoreError;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -284,6 +284,9 @@ mod tests {
         set.rename(a, "root@web-01").unwrap();
         assert_eq!(set.get(a).unwrap().title, "root@web-01");
         assert_eq!(set.rename(a, " "), Err(CoreError::EmptyName));
-        assert_eq!(set.rename(TabId(7), "x").unwrap_err(), CoreError::NotFound(SessionId("tab-7".into())));
+        assert_eq!(
+            set.rename(TabId(7), "x").unwrap_err(),
+            CoreError::NotFound(SessionId("tab-7".into()))
+        );
     }
 }

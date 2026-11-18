@@ -132,7 +132,8 @@ impl SessionStore {
 
     pub fn to_json(&self) -> String {
         // 手写序列化也不该失败；真失败了给一份空清单，不让调用方炸
-        serde_json::to_string_pretty(self).unwrap_or_else(|_| "{\"version\":1,\"records\":[]}".into())
+        serde_json::to_string_pretty(self)
+            .unwrap_or_else(|_| "{\"version\":1,\"records\":[]}".into())
     }
 
     /// 解析清单文件。能容错的地方容错：纯数组（手写的简易文件）也认。
@@ -203,7 +204,10 @@ mod tests {
         }
         assert_eq!(s.records.len(), MAX_RECORDS);
         assert_eq!(s.records[0].host, format!("h{}", MAX_RECORDS + 4));
-        assert!(!s.records.iter().any(|r| r.host == "h0"), "最老的应该被挤掉");
+        assert!(
+            !s.records.iter().any(|r| r.host == "h0"),
+            "最老的应该被挤掉"
+        );
     }
 
     #[test]

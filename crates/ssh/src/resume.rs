@@ -51,14 +51,21 @@ mod tests {
             PathBuf::from("C:\\下载\\报表#2026.portio-part")
         );
         // 没有父目录时落在当前目录
-        assert_eq!(part_path(Path::new("x.bin")), PathBuf::from("x.bin.portio-part"));
+        assert_eq!(
+            part_path(Path::new("x.bin")),
+            PathBuf::from("x.bin.portio-part")
+        );
     }
 
     #[test]
     fn resume_only_when_part_is_smaller() {
         assert_eq!(resume_offset(0, 100), 0, "没有半截文件就从头传");
         assert_eq!(resume_offset(40, 100), 40, "半截文件更小就接着传");
-        assert_eq!(resume_offset(100, 100), 0, "正好传满不能再续，否则会卡在 0 字节");
+        assert_eq!(
+            resume_offset(100, 100),
+            0,
+            "正好传满不能再续，否则会卡在 0 字节"
+        );
         assert_eq!(resume_offset(120, 100), 0, "比远端还大说明远端变小了，重来");
         assert_eq!(resume_offset(40, 0), 0, "远端大小未知时不敢续");
     }
@@ -97,7 +104,10 @@ mod tests {
         input.seek(SeekFrom::Start(start)).unwrap();
         let mut rest = Vec::new();
         input.read_to_end(&mut rest).unwrap();
-        let mut out = std::fs::OpenOptions::new().append(true).open(&part).unwrap();
+        let mut out = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&part)
+            .unwrap();
         out.write_all(&rest).unwrap();
         out.flush().unwrap();
         drop(out);
@@ -122,7 +132,10 @@ mod tests {
         assert_eq!(start, 120);
 
         use std::io::Write;
-        let mut out = std::fs::OpenOptions::new().append(true).open(&part).unwrap();
+        let mut out = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&part)
+            .unwrap();
         out.write_all(&src[120..]).unwrap();
         out.flush().unwrap();
         drop(out);

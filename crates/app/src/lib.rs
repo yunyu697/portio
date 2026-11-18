@@ -1,5 +1,5 @@
-use tauri::{Manager, Window};
 use tauri::utils::config::Color;
+use tauri::{Manager, Window};
 
 mod credentials;
 mod diag;
@@ -156,16 +156,20 @@ pub fn run() {
             // 窗口不再由 tauri.conf.json 静态建：底色要按用户上次的主题来定，
             // 否则浅色主题的用户每次启动都会先看到一块深色空窗口（就是"黑屏一下"）。
             let theme = read_ui_theme(app.handle());
-            let win = tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("index.html".into()))
-                .title("Portio")
-                .inner_size(1180.0, 690.0)
-                .min_inner_size(1024.0, 620.0)
-                .decorations(false)
-                .theme(Some(tauri::Theme::Dark))
-                .background_color(theme_bg(&theme))
-                .visible(false)
-                .center()
-                .build()?;
+            let win = tauri::WebviewWindowBuilder::new(
+                app,
+                "main",
+                tauri::WebviewUrl::App("index.html".into()),
+            )
+            .title("Portio")
+            .inner_size(1180.0, 690.0)
+            .min_inner_size(1024.0, 620.0)
+            .decorations(false)
+            .theme(Some(tauri::Theme::Dark))
+            .background_color(theme_bg(&theme))
+            .visible(false)
+            .center()
+            .build()?;
             // 调试时想开 devtools 就设 PORTIO_DEVTOOLS=1，默认不自动弹，免得挡住窗口截图与演示
             if cfg!(debug_assertions) && std::env::var("PORTIO_DEVTOOLS").is_ok() {
                 win.open_devtools();
@@ -175,4 +179,3 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("Portio 启动失败");
 }
-
