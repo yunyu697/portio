@@ -158,6 +158,14 @@
   .btn.primary:hover{filter:brightness(1.06)}
   .btn:disabled{opacity:.55;cursor:default}
   .new-session{width:calc(100% - 24px);margin:10px 12px 0;height:30px}
+  .sess-row{display:flex;align-items:center;gap:8px;margin:4px 12px 0;padding:0 8px;height:30px;
+    border-radius:var(--r-4);color:var(--text-2);cursor:pointer;min-width:0}
+  .sess-row:hover{background:var(--surface-2);color:var(--text)}
+  .sess-row .dot{width:6px;height:6px;border-radius:50%;background:var(--text-3);flex:none}
+  .sess-row .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .sess-row .meta{font-family:var(--mono);font-size:var(--fs-11);color:var(--text-3);flex:none}
+  .sess-row .del{margin-left:auto;flex:none;color:var(--text-3);font-size:var(--fs-11);opacity:0}
+  .sess-row:hover .del{opacity:1}
   .modal .keys{width:520px}
   .keys .body{display:block;padding:4px 0 8px}
   .keys .grp{padding:10px 16px 2px;color:var(--text-3);font-size:var(--fs-11)}
@@ -195,7 +203,7 @@
   <header class="titlebar" data-tauri-drag-region>
     <div class="brand" data-tauri-drag-region>
       <img src="mark.svg" alt="Portio" data-tauri-drag-region>
-      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.0-Alpha9</span>
+      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.0-Alpha10</span>
     </div>
     <div class="tabs" id="tabs"></div>
     <button class="tbtn" id="btn-theme" title="切换主题（S4 全量主题在设置里）">主题</button>

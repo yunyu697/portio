@@ -501,16 +501,7 @@ function setStatus(text, tone) {
     tone === "ok" ? "var(--accent)" : tone === "bad" ? "var(--danger)" : "var(--text-3)";
 }
 
-function addSessionRow(label) {
-  document.querySelector(".sidebar .empty")?.remove();
-  const row = document.createElement("div");
-  row.className = "tab active";
-  row.style.cssText =
-    "margin:8px 12px 0;border-radius:var(--r-4);height:30px;border-bottom:1px solid var(--line)";
-  row.innerHTML = `<span class="dot" style="background:var(--accent)"></span><span class="name">${label}</span>`;
-  document.querySelector(".sidebar").appendChild(row);
-  document.getElementById("session-count").textContent = "1";
-}
+// 会话列表由 renderSessions() 从 localStorage 统一渲染，不再单独插行
 
 // ---------- 快捷键一览 ----------
 const keysModal = document.getElementById("keys-modal");
@@ -547,22 +538,99 @@ authSelect.addEventListener("change", () => {
   document.getElementById("field-key").hidden = !isKey;
   document.getElementById("field-password").hidden = isKey;
 });
-function openConnect() {
-  document.getElementById("f-user").value = localStorage.getItem("portio.user") ?? "";
+function openConnect(prefill = null) {
+  const el = (id) => document.getElementById(id);
+  if (prefill) {
+    el("f-host").value = prefill.host ?? "";
+    el("f-port").value = String(prefill.port ?? 22);
+    el("f-user").value = prefill.user ?? "";
+    el("f-auth").value = prefill.auth === "key" ? "key" : "password";
+    el("f-key").value = prefill.keyfile ?? "";
+    el("field-key").hidden = prefill.auth !== "key";
+    el("field-password").hidden = prefill.auth === "key";
+  } else {
+    el("f-user").value = localStorage.getItem("portio.user") ?? "";
+    el("f-host").value = "";
+    el("f-password").value = "";
+  }
   modal.classList.add("open");
-  document.getElementById("f-host").focus();
+  (prefill?.auth === "key" ? el("f-host") : el("f-password")).focus();
 }
 
-document.getElementById("btn-connect").addEventListener("click", async () => {
-  const host = document.getElementById("f-host").value.trim();
-  const port = Number(document.getElementById("f-port").value || 22);
-  const user = document.getElementById("f-user").value.trim();
-  if (!host || !user) return toast("主机和用户名都要填");
-  localStorage.setItem("portio.user", user);
+// ---------- 会话记忆 ----------
+// 只存"怎么连"，不存密码：密码留在内存里用完即弃，私钥记路径不记内容。
+const SESS_KEY = "portio.sessions";
+function readSessions() {
+  try {
+    const arr = JSON.parse(localStorage.getItem(SESS_KEY) ?? "[]");
+    return Array.isArray(arr) ? arr.filter((s) => s && s.host && s.user) : [];
+  } catch (e) {
+    return [];
+  }
+}
+function sessionKey(s) {
+  return `${s.user}@${s.host}:${s.port ?? 22}`;
+}
+function saveSession(rec) {
+  const key = sessionKey(rec);
+  const next = readSessions().filter((s) => sessionKey(s) !== key);
+  next.unshift({ ...rec, last: Date.now() }); // 最近用过的排最前
+  localStorage.setItem(SESS_KEY, JSON.stringify(next.slice(0, 40)));
+  renderSessions();
+}
+function removeSession(key) {
+  localStorage.setItem(SESS_KEY, JSON.stringify(readSessions().filter((s) => sessionKey(s) !== key)));
+  renderSessions();
+}
+function renderSessions() {
+  const sidebar = document.querySelector(".sidebar");
+  const list = readSessions();
+  sidebar.querySelectorAll(".sess-row").forEach((el) => el.remove());
+  document.getElementById("session-count").textContent = String(list.length);
+  const empty = sidebar.querySelector(".empty");
+  if (empty) empty.hidden = list.length > 0;
+  let anchor = document.getElementById("btn-new");
+  for (const s of list) {
+    const row = document.createElement("div");
+    row.className = "sess-row";
+    row.title = `${sessionKey(s)} · 双击连上，单击编辑`;
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = s.name || `${s.user}@${s.host}`;
+    const meta = document.createElement("span");
+    meta.className = "meta";
+    meta.textContent = s.port && Number(s.port) !== 22 ? `:${s.port}` : s.auth === "key" ? "key" : "";
+    const del = document.createElement("span");
+    del.className = "del";
+    del.textContent = "×";
+    del.title = "从列表里删掉（不影响已连会话）";
+    del.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      removeSession(sessionKey(s));
+    });
+    row.append(dot, name, meta, del);
+    // 单击：把参数填进对话框，人工确认后再连（密码类必须这样）
+    row.addEventListener("click", () => openConnect(s));
+    // 双击：密钥认证可直接重连；密码认证没有密码，只能把光标停在密码框
+    row.addEventListener("dblclick", () => {
+      if (s.auth === "key") connectWith({ ...s, keyfile: s.keyfile });
+      else openConnect(s);
+    });
+    anchor.after(row);
+    anchor = row;
+  }
+}
 
-  const auth = authSelect.value;
-  const password = auth === "password" ? document.getElementById("f-password").value : null;
-  const keyfile = auth === "key" ? document.getElementById("f-key").value.trim() : null;
+async function connectWith(spec) {
+  const host = String(spec.host ?? "").trim();
+  const port = Number(spec.port ?? 22) || 22;
+  const user = String(spec.user ?? "").trim();
+  if (!host || !user) return toast("主机和用户名都要填");
+  const auth = spec.auth === "key" ? "key" : "password";
+  const password = auth === "password" ? spec.password ?? null : null;
+  const keyfile = auth === "key" ? String(spec.keyfile ?? "").trim() : null;
   if (auth === "password" && !password) return toast("密码没填");
   if (auth === "key" && !keyfile) return toast("私钥路径没填");
 
@@ -584,10 +652,9 @@ document.getElementById("btn-connect").addEventListener("click", async () => {
       cols: term.cols, rows: term.rows,
       onHandshake: channel,
     });
-    sessionId = id;
     modal.classList.remove("open");
     setStatus(`已连接 ${user}@${host}:${port}`, "ok");
-    addSessionRow(`${user}@${host}`);
+    saveSession({ host, port, user, auth, keyfile }); // 密码不入库
     // 连接成功后开一个新标签，标题就是 user@host；旧本地标签留着不动
     const tab = createTab(`${user}@${host}`, id);
     tab.term.write(`\r\n\x1b[2m—— 已连接 ${user}@${host}:${port} ——\x1b[0m\r\n`);
@@ -615,7 +682,28 @@ document.getElementById("btn-connect").addEventListener("click", async () => {
     btn.disabled = false;
     btn.textContent = "连接";
   }
+}
+
+document.getElementById("btn-connect").addEventListener("click", async () => {
+  const user = document.getElementById("f-user").value.trim();
+  if (user) localStorage.setItem("portio.user", user);
+  await connectWith({
+    host: document.getElementById("f-host").value,
+    port: Number(document.getElementById("f-port").value || 22),
+    user,
+    auth: authSelect.value,
+    password: document.getElementById("f-password").value,
+    keyfile: document.getElementById("f-key").value,
+  });
 });
+
+renderSessions();
+
+// 带 #sess-demo 时塞两条示例记录，用来核对会话栏排版（只写进当前临时 profile）
+if (location.hash === "#sess-demo") {
+  saveSession({ host: "web-01.example.com", port: 22, user: "deploy", auth: "key", keyfile: "~/.ssh/id_ed25519" });
+  saveSession({ host: "10.0.8.12", port: 2222, user: "root", auth: "password" });
+}
 
 // ---------- 后端事件 ----------
 if (window.__TAURI__?.event) {
