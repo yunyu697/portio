@@ -475,6 +475,7 @@ document.getElementById("gutter-v").addEventListener("click", () => {
 });
 
 // 文件面板折叠：整块收掉，终端铺满，右缘留一条把手（与会话栏折叠同一套做法）
+// 入口是终端标题条上那颗常驻按钮——文件面板收起来之后它自己没了，只能靠它再打开。
 const FFOLD_KEY = "portio.filesFolded";
 let filesFolded = localStorage.getItem(FFOLD_KEY) === "1";
 function applyFilesFold(folded) {
@@ -482,12 +483,19 @@ function applyFilesFold(folded) {
   splitEl.classList.toggle("files-folded", folded);
   localStorage.setItem(FFOLD_KEY, folded ? "1" : "0");
   const btn = document.getElementById("files-fold");
-  if (btn) btn.setAttribute("aria-label", folded ? "展开文件面板" : "折叠文件面板");
+  if (btn) {
+    btn.setAttribute("aria-label", folded ? "展开文件面板" : "折叠文件面板");
+    btn.setAttribute("title", folded ? "展开文件面板（Ctrl+Alt+F）" : "折叠文件面板（Ctrl+Alt+F）");
+    btn.setAttribute("aria-pressed", folded ? "true" : "false");
+  }
+  // 折叠态右缘把手的提示语要跟着变：这时候它不是"拖比例"，是"点一下拉回来"
+  const gut = document.getElementById("gutter-split");
+  if (gut) gut.title = folded ? "点击展开文件面板" : "拖动调整终端与文件面板比例";
   // 终端宽度变了，等一帧让网格落定再量，否则列数按旧宽度算
   requestAnimationFrame(() => fitQuietly());
 }
 
-document.getElementById("files-fold").addEventListener("click", () => applyFilesFold(true));
+document.getElementById("files-fold").addEventListener("click", () => applyFilesFold(!filesFolded));
 
 // 折叠态：单击右缘把手把文件面板拉回来；展开态：双击把手回到 50%（拖拽不会误触发 dblclick）
 document.getElementById("gutter-split").addEventListener("click", () => {
@@ -2089,6 +2097,16 @@ async function loadLocal(path) {
   renderList(localListEl, items, "local");
 }
 
+// 文件面板两块的刷新：右键菜单和刷新按钮都走这一条，省得两处各写一遍路径取值
+function refreshBothDirs() {
+  if (!bridge) {
+    toast("浏览器预览没有真实目录");
+    return;
+  }
+  loadRemote(document.getElementById("remote-path").value || "/");
+  loadLocal(document.getElementById("local-path").value || "");
+}
+
 // 传输行：先占位，进度事件里按 key 找回来更新
 function transferRow(name, dir) {
   const key = `${dir}:${name}`;
@@ -2280,4 +2298,172 @@ if (location.hash.includes("clip-test")) {
   document.title = ok
     ? `CLIP-SELFTEST-OK ${cases.length}`
     : `CLIP-SELFTEST-FAIL ${bad.length}/${cases.length}`;
+}
+
+// ---------- 面板级右键菜单 ----------
+// 桌面应用里不该冒出浏览器那套菜单：全局先兜住默认菜单，再由每个面板按自己的能力给菜单。
+// 面板覆盖：会话栏 / 标签条 / 文件面板（标题条与两块正文）/ 传输抽屉 / 状态栏 / 标题栏。
+document.addEventListener("contextmenu", (ev) => ev.preventDefault(), { capture: true });
+
+const sidebarEl = document.querySelector(".sidebar");
+const titlebarEl = document.querySelector(".titlebar");
+const statusEl = document.querySelector(".statusbar");
+const drawerEl = document.getElementById("drawer");
+const filesPaneEl = document.querySelector(".pane.files");
+
+// 会话栏空白处：新建、导入、收起；点在会话行/分组头上时不抢，那两处有自己的菜单
+sidebarEl.addEventListener("contextmenu", (ev) => {
+  if (ev.target.closest(".sess-row, .sess-group, button, input, .menu")) return;
+  showCtx(ev.clientX, ev.clientY, [
+    { label: "新建连接", hint: "Ctrl+N", run: () => openConnect() },
+    {
+      label: "导入会话",
+      hint: "SSH 配置 / Xshell / WinSCP",
+      run: () => document.getElementById("btn-import").click(),
+    },
+    { sep: true },
+    {
+      label: "收起会话栏",
+      hint: "Ctrl+Alt+B",
+      disabled: sidebarFolded,
+      run: () => applyFold(true),
+    },
+  ]);
+});
+
+// 标签条空白处：这块以前是浏览器菜单的重灾区（标题栏那么长一条空白）
+document.getElementById("tabs").addEventListener("contextmenu", (ev) => {
+  if (ev.target.closest(".tab")) return; // 标签项自己的菜单
+  showCtx(ev.clientX, ev.clientY, [
+    { label: "新建连接", hint: "Ctrl+N", run: () => openConnect() },
+    {
+      label: "关闭当前标签",
+      hint: "Ctrl+W",
+      disabled: tabs.length < 2,
+      run: () => closeTab(activeId),
+    },
+  ]);
+});
+
+// 文件面板标题条：折叠/展开与刷新，别的地方点不到这两个常驻动作
+filesPaneEl.querySelector(".pane-head").addEventListener("contextmenu", (ev) => {
+  showCtx(ev.clientX, ev.clientY, [
+    {
+      label: filesFolded ? "展开文件面板" : "折叠文件面板",
+      hint: "Ctrl+Alt+F",
+      run: () => applyFilesFold(!filesFolded),
+    },
+    { sep: true },
+    { label: "刷新两侧目录", run: () => refreshBothDirs() },
+  ]);
+});
+
+// 终端面板标题条：和面板里的功能对应——查找、清屏、文件面板收放
+document.querySelector(".pane.term .pane-head").addEventListener("contextmenu", (ev) => {
+  showCtx(ev.clientX, ev.clientY, [
+    { label: "查找", hint: "Ctrl+F", run: () => findToggle(true) },
+    { label: "清屏", hint: "Ctrl+L", run: () => sendRaw(activeCell(), "\f") },
+    { sep: true },
+    {
+      label: filesFolded ? "展开文件面板" : "折叠文件面板",
+      hint: "Ctrl+Alt+F",
+      run: () => applyFilesFold(!filesFolded),
+    },
+  ]);
+});
+
+// 文件面板两块正文的空白处（不在文件行上）：远端给"刷新/新建目录/上一层"，本地给"刷新/上一层"
+for (const block of filesPaneEl.querySelectorAll(".fp-block")) {
+  const side = block.dataset.side;
+  block.addEventListener("contextmenu", (ev) => {
+    if (ev.target.closest(".fp-row")) return; // 文件行有自己的菜单
+    if (ev.target.closest(".fp-path, input")) return; // 地址栏留给输入框本身
+    const items =
+      side === "remote"
+        ? [
+            { label: "刷新远端目录", run: () => loadRemote(document.getElementById("remote-path").value || "/") },
+            { label: "新建目录", hint: "在这个目录里建", run: () => newRemoteDir() },
+            { sep: true },
+            { label: "回到上一级", run: () => document.getElementById("remote-up").click() },
+          ]
+        : [
+            { label: "刷新本地目录", run: () => loadLocal(document.getElementById("local-path").value || "") },
+            { sep: true },
+            { label: "回到上一级", run: () => document.getElementById("local-up").click() },
+          ];
+    showCtx(ev.clientX, ev.clientY, items);
+  });
+}
+
+// 传输抽屉：右键只管这条抽屉自己的收放，不做队列操作（队列行还没做单条取消）
+drawerEl.addEventListener("contextmenu", (ev) => {
+  if (ev.target.closest(".drawer-head button")) return;
+  const collapsed = drawerEl.classList.contains("collapsed");
+  showCtx(ev.clientX, ev.clientY, [
+    {
+      label: collapsed ? "展开传输队列" : "收起传输队列",
+      hint: "只留一行",
+      run: () => document.getElementById("drawer-head").click(),
+    },
+  ]);
+});
+
+// 状态栏：把诊断信息捞出来最快的地方，出事时用户第一反应就是往这儿一点
+statusEl.addEventListener("contextmenu", (ev) => {
+  showCtx(ev.clientX, ev.clientY, [
+    { label: "复制诊断信息", hint: "版本 / 系统 / 最近日志", run: () => document.getElementById("btn-log-copy").click() },
+    { label: "打开运行日志", run: () => document.getElementById("btn-log-open").click() },
+  ]);
+});
+
+// 标题栏空白处：窗口自己的三个动作，跟右上角按钮一一对应
+titlebarEl.addEventListener("contextmenu", (ev) => {
+  // 标签条是标题栏里的一大块，它有自己的菜单，别被这里的窗口菜单抢走
+  if (ev.target.closest("button, .tab, #tabs")) return;
+  const maxed = document.getElementById("btn-max").getAttribute("aria-label") === "还原";
+  showCtx(ev.clientX, ev.clientY, [
+    { label: "最小化", run: () => windowAction("minimize") },
+    { label: maxed ? "还原窗口" : "最大化", run: () => windowAction("maximize") },
+    { sep: true },
+    { label: "关闭 Portio", run: () => windowAction("close") },
+  ]);
+});
+
+// #fold-test：文件面板折叠的回归门禁。量真实栅格（终端宽、文件面板宽、把手宽），结果写 <title>。
+// 折叠要求：文件面板宽度归 0、终端吃满整列、把手正好 10px 且换成 ‹ 字形。
+if (location.hash.includes("fold-test")) {
+  document.body.classList.add("dragging"); // 关过渡，只量终态
+  const w = (sel) => document.querySelector(sel).getBoundingClientRect().width;
+  const gv = document.getElementById("gutter-split");
+  const rows = [];
+  const snap = (tag) => {
+    rows.push({
+      tag,
+      cls: splitEl.classList.contains("files-folded"),
+      term: Math.round(w(".pane.term")),
+      files: Math.round(w(".pane.files")),
+      gutter: Math.round(w("#gutter-split")),
+      split: Math.round(w("#split")),
+      glyph: getComputedStyle(gv, "::after").content,
+    });
+  };
+  applyFilesFold(false);
+  snap("open");
+  applyFilesFold(true);
+  snap("fold");
+  applyFilesFold(false);
+  snap("back");
+  const f = rows[1];
+  const checks = [
+    f.cls === true,
+    f.files === 0,
+    Math.abs(f.term - (f.split - 10)) <= 1,
+    f.gutter === 10,
+    f.glyph.includes("‹"),
+    rows[2].cls === false && rows[2].files > 0,
+  ];
+  const ok = checks.every(Boolean);
+  document.title = ok
+    ? `FOLD-SELFTEST-OK ${JSON.stringify(rows)}`
+    : `FOLD-SELFTEST-FAIL ${JSON.stringify(rows)}`;
 }
