@@ -92,7 +92,7 @@
   .gutter-h:hover{background:var(--accent);opacity:.3}
 
   .drawer{display:flex;flex-direction:column;background:var(--surface-2);border-top:1px solid var(--line);
-          min-height:0;overflow:hidden}
+          min-height:0;overflow:hidden;border-radius:var(--r-8) var(--r-8) 0 0}
   .drawer-head{display:flex;align-items:center;gap:10px;height:30px;padding:0 12px;flex:none;
                font-size:var(--fs-11);color:var(--text-3);cursor:pointer}
   .drawer-head .num{font-family:var(--mono);color:var(--text-2)}
@@ -119,7 +119,8 @@
 
   /* ---------- 文件双栏 ---------- */
   .fp{flex:1;min-height:0;display:grid;grid-template-rows:1fr 1fr;gap:1px;background:var(--line)}
-  .fp-block{background:var(--surface);display:flex;flex-direction:column;min-height:0}
+  .fp-block{background:var(--surface);display:flex;flex-direction:column;min-height:0;
+            border-radius:var(--r-8);overflow:hidden}
   .fp-bar{display:flex;align-items:center;gap:6px;overflow:hidden;padding:0 8px;height:var(--row);
           border-bottom:1px solid var(--line);background:var(--surface-2)}
   .fp-bar b{font-size:var(--fs-11);color:var(--text-3);font-weight:600;letter-spacing:.02em}
@@ -179,6 +180,12 @@
   .btn.primary:hover{filter:brightness(1.06)}
   .btn:disabled{opacity:.55;cursor:default}
   .new-session{width:calc(100% - 24px);margin:10px 12px 0;height:30px}
+  .sess-search{display:block;width:calc(100% - 24px);margin:6px 12px 2px;height:26px;
+    padding:0 8px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-4);
+    color:var(--text);font-size:var(--fs-12);outline:none}
+  .sess-search::placeholder{color:var(--text-3)}
+  .sess-search:focus{border-color:var(--accent)}
+  .sess-empty{padding:20px 16px;color:var(--text-3);font-size:var(--fs-12)}
   .sess-row{display:flex;align-items:center;gap:8px;margin:4px 12px 0;padding:0 8px;height:30px;
     border-radius:var(--r-4);color:var(--text-2);cursor:pointer;min-width:0}
   .sess-row:hover{background:var(--surface-2);color:var(--text)}
@@ -224,11 +231,11 @@
   <header class="titlebar" data-tauri-drag-region>
     <div class="brand" data-tauri-drag-region>
       <img src="mark.svg" alt="Portio" data-tauri-drag-region>
-      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.1-Alpha2</span>
+      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.1-Alpha3</span>
     </div>
     <div class="tabs" id="tabs"></div>
     <button class="tbtn icon-only" id="btn-theme" aria-label="切换主题" title="切换主题（深色 / 浅色 / 跟随系统）">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 15.2A9 9 0 1 1 8.8 3.8 7.2 7.2 0 0 0 11.4 11.4 7.2 7.2 0 0 0 8.8 3.8z"/></svg>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 0 1-9-9Z"/></svg>
     </button>
     <button class="tbtn icon-only" id="btn-density" aria-label="切换密度" title="切换密度：标准 / 紧凑">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h10M4 17h16"/></svg>
@@ -250,6 +257,8 @@
     <aside class="sidebar">
       <h2>会话 <span class="count" id="session-count">0</span></h2>
       <button class="btn primary new-session" id="btn-new">新建连接</button>
+      <input class="sess-search" id="sess-search" type="search" spellcheck="false"
+             placeholder="搜主机 / 用户 / 备注" aria-label="搜索会话">
       <div class="empty">
         还没有会话。<br>
         按 <kbd>Ctrl</kbd>+<kbd>T</kbd> 新建，或点上面的按钮。<br>

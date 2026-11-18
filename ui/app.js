@@ -654,12 +654,33 @@ function loadSessions() {
 }
 function renderSessions() {
   const sidebar = document.querySelector(".sidebar");
-  const list = readSessions();
+  const all = readSessions();
+  const q = (document.getElementById("sess-search").value || "").trim().toLowerCase();
+  // 搜索覆盖主机、用户名、端口和备注名——运维记得住的是"那台 web 机"
+  const list = q
+    ? all.filter((s) =>
+        `${s.user}@${s.host}:${s.port ?? 22} ${s.name ?? ""}`.toLowerCase().includes(q)
+      )
+    : all;
   sidebar.querySelectorAll(".sess-row").forEach((el) => el.remove());
-  document.getElementById("session-count").textContent = String(list.length);
+  document.getElementById("session-count").textContent = q
+    ? `${list.length}/${all.length}`
+    : String(all.length);
   const empty = sidebar.querySelector(".empty");
-  if (empty) empty.hidden = list.length > 0;
-  let anchor = document.getElementById("btn-new");
+  if (empty) empty.hidden = all.length > 0;
+  // "搜不到"和"一条都没有"要说清楚，别让人以为是数据丢了
+  let hint = sidebar.querySelector(".sess-empty");
+  if (q && list.length === 0) {
+    if (!hint) {
+      hint = document.createElement("div");
+      hint.className = "sess-empty";
+      document.getElementById("btn-new").after(hint);
+    }
+    hint.textContent = `没有匹配「${q}」的会话`;
+  } else if (hint) {
+    hint.remove();
+  }
+  let anchor = document.getElementById("sess-search");
   for (const s of list) {
     const row = document.createElement("div");
     row.className = "sess-row";
@@ -692,6 +713,15 @@ function renderSessions() {
     anchor = row;
   }
 }
+
+// 会话搜索：边打边筛，Esc 清空
+document.getElementById("sess-search").addEventListener("input", renderSessions);
+document.getElementById("sess-search").addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    e.currentTarget.value = "";
+    renderSessions();
+  }
+});
 
 async function connectWith(spec) {
   const host = String(spec.host ?? "").trim();
@@ -768,9 +798,15 @@ document.getElementById("btn-connect").addEventListener("click", async () => {
 });
 
 // 会话清单以前端内存镜像为准，启动时从磁盘拉一次
-if (location.hash === "#sess-demo") {
+if (location.hash.startsWith("#sess-demo")) {
   saveSession({ host: "web-01.example.com", port: 22, user: "deploy", auth: "key", keyfile: "~/.ssh/id_ed25519" });
   saveSession({ host: "10.0.8.12", port: 2222, user: "root", auth: "password" });
+  // #sess-demo&q=web 可直接演示搜索过滤
+  const q = new URLSearchParams(location.hash.slice(1)).get("q");
+  if (q) {
+    document.getElementById("sess-search").value = q;
+    renderSessions();
+  }
 } else {
   loadSessions();
 }

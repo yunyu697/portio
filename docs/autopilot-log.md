@@ -28,3 +28,12 @@
 - 未验证：折叠态的单击/双击在真实 Tauri 窗口里的命中率（无头截图无法验证交互），需实机点一次。
 - 图标：`scripts/icon_fit.py` 增加 `--margin` 参数并修掉 `global MARGIN` 位置导致的 SyntaxError；用 `--margin 0` 重出全套，128px 实测宽 99.2% / 高 100.0%；安装包与 `target\debug\portio-app.exe` 已内嵌该版本（exe 内 32px 帧占比 93.8%，为圆角损耗）。
 - 下一步：截图核对通过后补 S6（会话搜索与分组）的最小交付单元。
+
+## 2026-11-18 · v1.0.1-Alpha3 · 主题图标修正 + 圆角尺度统一 + 会话搜索
+- 主题图标：原手写月牙路径弧线参数错，形状残缺；改用标准 `M12 3a6 6 0 0 0 9 9 9 9 0 0 1-9-9Z`，2× DPR 截图核对形状正常。
+- 圆角根因（重要）：`ui/index.html` 里到处引用 `var(--r-4/6/8/12)`，但 `ui/tokens.css` 只定义了 `--r-1/2/3`；未定义变量的 `border-radius` 整条声明失效，所以除窗口本身外全是直角。补齐四档令牌，并把面板类补上圆角：`.fp-block` 8px、`.drawer` 顶部 8px。
+- 现行圆角口径：4px 控件 / 6px 输入与标签 / 8px 面板 / 12px 浮层；终端画布保持满幅直角（终端惯例，不做卡片化）。
+- 会话搜索：`#sess-search` 输入框（新建连接按钮下方），输入即筛选，匹配 `user@host:port` 与备注名；计数显示 `命中/总数`；无命中时给 `.sess-empty` 提示且不误报“还没有会话”；Esc 清空。深链 `#sess-demo&q=web` 可演示过滤。
+- 验证：`node --check ui/app.js` 通过；无头 `--dump-dom` 标题 `<title>Portio</title>`（无 ERR）；截图 `_s7_search.png`（查询 web → 1/2、只剩 deploy@web-01）、`_s7_settings.png`（设置面板 12px 圆角、分段控件 6px、按钮 4px）、`_s7_keys.png`、`_s7_fold.png`、`_s6_icons_zoom.png`（月牙形状）。
+- 未验证：搜索时键盘上下键跳选（未做）；真实 Tauri 窗口内输入法中文搜索未测。
+- 下一步：S6 剩下会话分组/最近使用排序，再做终端字号与主题的运行时联动检查。

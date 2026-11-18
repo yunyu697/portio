@@ -5,7 +5,10 @@
   --text:#dfe5ec; --text-2:#8b96a5; --text-3:#5e6875;
   --accent:#2fb39a; --info:#6fa8dc; --warn:#c99a4e; --danger:#d2655f;
   --term-bg:#090c10;
+  /* 圆角尺度：组件一律引用这五个档，别再写裸 px——
+     --r-4 控件、--r-6 输入与标签、--r-8 面板、--r-12 浮层。 */
   --r-1:4px; --r-2:8px; --r-3:12px;
+  --r-4:4px; --r-6:6px; --r-8:8px; --r-12:12px;
   --fs-11:11px; --fs-12:12px; --fs-13:13px; --fs-14:14px; --fs-16:16px; --fs-20:20px;
   --row:28px; --titlebar:38px; --statusbar:26px; --sidebar:264px; --drawer:172px; --split:50%;
   --mono:"JetBrains Mono","Cascadia Mono",ui-monospace,Consolas,monospace;
