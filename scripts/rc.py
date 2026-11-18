@@ -150,13 +150,14 @@ def a_script(script: str, label: str) -> tuple[str, str]:
     return PASS, (out.splitlines()[-1] if out else label)
 
 
-def chrome_title(chrome: str, url: str, profile: str, window: str | None = None) -> tuple[int, str]:
+def chrome_title(chrome: str, url: str, profile: str, window: str | None = None,
+                 budget: int = 4000) -> tuple[int, str]:
     args = [
         chrome,
         "--headless=new",
         "--disable-gpu",
         "--allow-file-access-from-files",
-        "--virtual-time-budget=4000",
+        f"--virtual-time-budget={budget}",
         f"--user-data-dir={profile}",
         "--dump-dom",
     ]
@@ -194,12 +195,12 @@ def a_narrow(chrome: str | None, profile: str) -> tuple[str, str]:
 
 
 def a_page(chrome: str | None, profile: str, frag: str, expect: str,
-           window: str | None = None) -> tuple[str, str]:
+           window: str | None = None, budget: int = 4000) -> tuple[str, str]:
     """expect 是标题必须以之开头的字符串；默认页允许标题里带别的，只要不出现 ERR:。"""
     if not chrome:
         return SKIP, "找不到 Chrome（设 PORTIO_CHROME）"
     url = (UI / "index.html").as_uri() + frag
-    code, title = chrome_title(chrome, url, profile, window)
+    code, title = chrome_title(chrome, url, profile, window, budget)
     if code != 0:
         return FAIL, f"Chrome 退出码 {code}"
     if "ERR:" in title:
@@ -264,7 +265,7 @@ def main(argv: list[str]) -> int:
         ("A12", "#ctx-test = CTX-SELFTEST-OK 9（九处面板右键菜单）", True),
         ("A13", "#narrow-test 两档窄窗（1024 / 900）几何", True),
         ("A14", "#theme-test = THEME-SELFTEST-OK（深浅两套几何一致 + 令牌对比度）", True),
-        ("A15", "#find-test = FIND-SELFTEST-OK（900 宽下查找：计数/坐标/环回/无命中/几何 + 120 行长 buffer、宽字符、ANSI、居中、贴底）", True),
+        ("A15", "#find-test = FIND-SELFTEST-OK（900 宽下查找：计数/坐标/环回/无命中/几何 + 800 行长 buffer、宽字符、emoji、组合字符、ANSI、居中、贴底）", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -321,7 +322,8 @@ def main(argv: list[str]) -> int:
         elif code == "A14":
             status, detail = a_page(chrome, profile, "#theme-test", "THEME-SELFTEST-OK")
         else:
-            status, detail = a_page(chrome, profile, "#find-test", "FIND-SELFTEST-OK", "900,620")
+            # 800 行素材 + 80 次跳转比别的探针吃虚拟时间，预算给到 20s
+            status, detail = a_page(chrome, profile, "#find-test", "FIND-SELFTEST-OK", "900,620", 20000)
         results.append((code, label, status, detail))
         print(f"[{status}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
 

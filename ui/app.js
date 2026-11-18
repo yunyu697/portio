@@ -2897,25 +2897,29 @@ if (location.hash.startsWith("#find-test")) {
     longPhase();
   }
 
-  // ---------- ⑧ 长 buffer / 宽字符 / ANSI：写 120 行，每 10 行一处命中 ----------
-  // 这一段专治"只在短 banner 上看着对"：真实远端输出里有中文（宽字符占两格）、有颜色控制符、
-  // 而且早就滚进滚动缓冲了。命中落在这些行上，列号一偏就全偏。
+  // ---------- ⑧ 长 buffer：写 800 行，每 10 行一处命中（共 80 处）----------
+  // 这一段专治"只在短 banner 上看着对"：真实远端输出里有中文（宽字符占两格）、有 emoji（代理对占两格）、
+  // 有 ANSI 颜色控制符、有组合字符，而且早就滚进滚动缓冲了。命中落在这些行上，列号一偏就全偏。
+  // 800 行是"一天的日志尾巴"的量级，同时也第一次量出"边打边扫"的真实开销。
   const q2 = "Portio_long";
-  const longWant = 12;
+  const LINES = 800;
+  const longWant = LINES / 10;
 
   function longPhase() {
     let block = "";
-    for (let i = 1; i <= 120; i += 1) {
+    for (let i = 1; i <= LINES; i += 1) {
       let body;
       if (i % 10 === 0) {
         const tag = `Portio_long_${String(i).padStart(3, "0")}`;
-        body = i % 20 === 0
-          ? `中文宽字符 ${tag} 尾巴`            // 宽字符在查询词前面，列号要跨过它们
-          : `\x1b[36m${tag}\x1b[0m 带色`;       // 查询词被 ANSI 颜色包着
+        if (i % 40 === 20) body = `😀 表情 ${tag} 尾巴`;        // emoji 是代理对：两个 code unit 占两格
+        else if (i % 20 === 0) body = `中文宽字符 ${tag} 尾巴`;   // 宽字符在查询词前面，列号要跨过它们
+        else body = `\x1b[36m${tag}\x1b[0m 带色`;                // 查询词被 ANSI 颜色包着
       } else if (i % 25 === 0) {
-        body = "半个词 Portio_lon 不算命中";      // 少个尾字母的诱饵：needle 截短时会多算
+        body = "半个词 Portio_lon 不算命中";                     // 少个尾字母的诱饵：needle 截短时会多算
+      } else if (i % 40 === 7) {
+        body = "e\u0301 组合字符 也不算命中";                    // 组合字符：一个格子里两个 code unit
       } else {
-        body = `第 ${i} 行普通输出`;
+        body = `第 ${i} 行普通输出，这一行没什么特别的`;
       }
       block += `${body}\r\n`;
     }
@@ -2924,7 +2928,7 @@ if (location.hash.startsWith("#find-test")) {
     let t2 = 0;
     (function waitLong() {
       const got = recount(q2).length;
-      if (got < longWant && t2 < 80) {
+      if (got < longWant && t2 < 200) {
         t2 += 1;
         setTimeout(waitLong, 50);
         return;
@@ -2932,6 +2936,24 @@ if (location.hash.startsWith("#find-test")) {
       checkLong(got);
       finish();
     })();
+  }
+
+  // 量一次"边打边扫"要扫多少东西：每次按键都会把整段 buffer 重扫一遍，
+  // 这里记下行数与扫过的字符数——这条判据能抓住"只扫可视区"这种偷工（那样会漏掉滚动缓冲里的命中）。
+  // （耗时在这里量不到：无头 Chrome 的虚拟时间把 performance.now 冻在定时器回调里，前后读数完全相同，
+  //   所以这里只报规模，不报毫秒。）
+  function scanCost(needle) {
+    const buf = term.buffer.active;
+    let rows = 0;
+    let chars = 0;
+    for (let row = 0; row < buf.length; row += 1) {
+      const line = buf.getLine(row);
+      if (!line) continue;
+      rows += 1;
+      chars += line.translateToString(true).length;
+    }
+    const got = findScan(needle).length;
+    return { rows, chars, hits: got };
   }
 
   function checkLong(flushed) {
@@ -2963,7 +2985,7 @@ if (location.hash.startsWith("#find-test")) {
       bad.push(`列号对不上（把字符下标当成了格号？）：${JSON.stringify(off.slice(0, 3))}`);
     }
 
-    // 8b 逐条跳过去，选区必须是查询词本身——中文行、带色行都走一遍
+    // 8b 逐条跳过去，选区必须是查询词本身——中文行、emoji 行、带色行都走一遍
     const selBad = [];
     for (let i = 0; i < all.length; i += 1) {
       findHits.at = i - 1;
@@ -2976,11 +2998,12 @@ if (location.hash.startsWith("#find-test")) {
     // 8c 中间那条要落在视野中间：scrollToLine 的落点就是"命中行 - 半屏"
     const mid = Math.floor(term.rows / 2);
     const buf = term.buffer.active;
-    findHits.at = 4;
+    const midAt = Math.floor(all.length / 2);
+    findHits.at = midAt - 1;
     findJump(1);
-    const hitMid = all[5];
+    const hitMid = all[midAt];
     const wantY = Math.min(Math.max(0, hitMid.row - mid), buf.baseY);
-    seen.long.center = { row: hitMid.row, viewportY: buf.viewportY, wantY, rows: term.rows, baseY: buf.baseY };
+    seen.long.center = { at: midAt, row: hitMid.row, viewportY: buf.viewportY, wantY, rows: term.rows, baseY: buf.baseY };
     if (Math.abs(buf.viewportY - wantY) > 1) {
       bad.push(`中间那条没滚到视野中间：viewportY ${buf.viewportY}，应 ${wantY}`);
     }
@@ -3003,7 +3026,15 @@ if (location.hash.startsWith("#find-test")) {
     const after = recountCells(q2).length;
     seen.long.after = after;
     if (after !== longWant) bad.push(`滚过之后命中条数掉了：${after}，应为 ${longWant}`);
-    if (buf.baseY <= 0) bad.push("写完 120 行都没产生滚动，长 buffer 前提不成立");
+    if (buf.baseY <= 0) bad.push(`写完 ${LINES} 行都没产生滚动，长 buffer 前提不成立`);
+
+    // 8f "边打边扫"的扫描规模：每次按键都要把整段 buffer 重扫一遍，不能只扫可视区
+    //    （只扫可视区会漏掉滚动缓冲里的命中，这条判据专门拦那种偷工）
+    const cost = scanCost(q2);
+    seen.long.scan = cost;
+    if (cost.rows < LINES) bad.push(`只扫到 ${cost.rows} 行，应至少 ${LINES} 行`);
+    if (cost.chars < 15000) bad.push(`只扫了 ${cost.chars} 个字符，整段 buffer 应有一万六左右`);
+    if (cost.hits !== longWant) bad.push(`扫描复现的命中是 ${cost.hits} 条，应为 ${longWant}`);
 
     // 收拾现场
     findInput.value = "";
