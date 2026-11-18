@@ -354,3 +354,28 @@ S10 之后按看板进 S11「安全与凭据」。S11 有两块：口令加密�
 - S11 的 v0.3 gate（10GB 文件中断续传）无服务器，仍不可验。
 
 **下一步**：把加密层接到连接流程——连接参数里带"记住口令"选项，`CredentialStore` 的路径落到 `%APPDATA%\io.portio.desktop\credentials.json`，主密钥落 `vault.key`；然后做指纹管理界面（列出 known_hosts 记录、删一条、看指纹）。
+## 2026-11-18 · v1.0.4-Alpha2 · S11：记住口令接进连接流程
+
+上一轮把加密层做好了但没接线，这轮把它接到用户真正会碰的地方。
+
+- 新增 `crates/app/src/credentials.rs`：`Credentials(Mutex<Option<CredentialStore>>)` 懒加载——第一次真正读写口令时才生成 `vault.key` 与打开 `credentials.json`，不用口令的人不会多出一个密钥文件。四个命令 `cred_get` / `cred_set` / `cred_forget` / `cred_path`，路径都在应用数据目录。
+- 口令的键用 `user@host:port`（和会话清单同一个 `sessionKey`），不是只按主机：同一台机器换账号是另一份凭据，不该互相覆盖。
+- 前端：密码框下加「记住口令（本机加密保存）」；打开面板时查一次有没有存过——存过就把勾打上、把密码框占位换成「已保存口令，留空沿用」；连接时密码框留空就直接用存好的那份，这样"记住"才真省事。
+- 取消勾选的处理：连接成功后调用 `cred_forget` 把旧口令删掉。否则界面上看着没记住，磁盘里还躺着一条，是更糟的状态。
+- 改主机/端口/用户名时会重新查一次（`blur` 触发），避免拿着 A 的凭据去连 B。
+- 勾选框自绘：系统原生勾选框在深色主题下是亮白方块，跟界面不搭。按规范 §10 新加的 #32 行实现：12×12、`--r-4`、`--line-strong` 边框、选中底 `--accent` + `--on-accent` 对勾。
+- 规范先行：按 `autopilot.md` 1.1 的要求，先在 `docs/design-spec.md` §10 加了 #32 行才写代码。
+
+**验证证据**
+- `cargo check -p portio-app` 通过（无 error / warning）。
+- `node --check ui/app.js` 通过；`check_ui_scale.py` OK；`check_design_tokens.py` OK。
+- Chrome 无头 `--dump-dom`（真实 `ui/index.html#quick-demo`，带 `--allow-file-access-from-files`）：`<title>Portio</title>`，全文无 `ERR:`，`f-remember` 与「记住口令」都在 DOM 里。
+- 截图 `_a12_pw.png`（900×760@2x，连接面板密码态）与 `_a12_cb_off.png` / `_a12_cb_on.png`（勾选框两态）：勾选行与输入左对齐、行高一致，未选中是细边空心、选中是 accent 底加对勾，两态都不抢输入框。
+- 一次插曲：第一版临时核验页放在仓库根，`vendor/xterm-addon-fit.js` 的相对路径断了，状态栏出现 `ERR Uncaught ReferenceError: FitAddon is not defined`——这是核验页的路径问题，不是产品问题；把核验页放进 `ui/` 目录后复验无 `ERR`。记录在这里，免得下次误判成回归。
+
+**未验证**
+- 真实连接时"留空沿用已存口令"没端到端跑过（无服务器）；只有单测覆盖加密层本身。
+- Windows 上 `vault.key` 的 ACL 依赖用户目录默认权限，未实测。
+- 机器仍锁屏，实机窗口点检未做（GUI 侧只做了无头渲染）。
+
+**下一步**：S11 后半——指纹管理界面（列 known_hosts 记录、显示 SHA256 指纹、删一条）。

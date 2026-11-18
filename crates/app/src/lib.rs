@@ -1,6 +1,7 @@
 use tauri::{Manager, Window};
 use tauri::utils::config::Color;
 
+mod credentials;
 mod session_store;
 mod sessions;
 
@@ -97,11 +98,16 @@ fn window_ready(window: Window) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .manage(sessions::Registry::default())
+        .manage(credentials::Credentials::default())
         .invoke_handler(tauri::generate_handler![
             window_control,
             window_state,
             window_ready,
             ui_theme_set,
+            credentials::cred_get,
+            credentials::cred_set,
+            credentials::cred_forget,
+            credentials::cred_path,
             session_store::sessions_read,
             session_store::sessions_write,
             session_store::sessions_path,

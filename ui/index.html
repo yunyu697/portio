@@ -211,10 +211,21 @@
   .field{display:grid;gap:4px}
   /* [hidden] 必须压过 .field 的 display:grid，否则私钥模式下密码框还留在面板上 */
   .field[hidden]{display:none}
-  .field label{font-size:var(--fs-11);color:var(--text-3)}
-  .field input,.field select{background:var(--surface-2);border:1px solid var(--line);color:var(--text);
+  .field label{font-size:var(--fs-11);color:var(--text-3)}  .field input,.field select{background:var(--surface-2);border:1px solid var(--line);color:var(--text);
           border-radius:var(--r-4);padding:0 12px;font-family:var(--mono);font-size:var(--fs-12);
           outline:none;height:var(--ctl-3)}
+  /* 记住口令：勾选框跟着输入走一行，高 --ctl，说明文字 12 号 --text-3 */
+  .field .remember{display:flex;align-items:center;gap:var(--sp-2);height:var(--ctl);
+          font-family:var(--ui);font-size:var(--fs-12);color:var(--text-3);cursor:pointer}
+  .field .remember input{appearance:none;flex:none;width:var(--sp-3);height:var(--sp-3);
+          position:relative;padding:0;margin:0;border:1px solid var(--line-strong);
+          border-radius:var(--r-4);background:var(--surface-2);cursor:pointer}
+  .field .remember input:hover{border-color:var(--accent)}
+  .field .remember input:checked{background:var(--accent);border-color:var(--accent)}
+  .field .remember input:checked::after{content:"";position:absolute;left:3px;top:1px;
+          width:var(--sp-1);height:var(--sp-2);border:solid var(--on-accent);
+          border-width:0 1px 1px 0;transform:rotate(45deg)}
+  .field .remember:hover{color:var(--text-2)}
   .field input:focus,.field select:focus{border-color:var(--accent)}
   .row{display:grid;grid-template-columns:1fr 96px;gap:12px}
   .sheet footer{display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;
@@ -372,7 +383,7 @@
         <rect x="11.2" y="16.1" width="4.2" height="1.5" rx=".75" fill="var(--mark-accent)" opacity=".5"/>
         <rect x="15.4" y="11.3" width="3.6" height="1.4" rx=".7" fill="var(--mark-accent)"/>
       </svg>
-      <b data-tauri-drag-region>Portio</b><span class="ver" data-tauri-drag-region>1.0.4-Alpha1</span>
+      <b data-tauri-drag-region>Portio</b><span class="ver" data-tauri-drag-region>1.0.4-Alpha2</span>
     </div>
     <!-- 标签条本身就是标题栏里最大的一片空白，之前没挂 drag 区域，
          于是整条中间地段都点不动窗口。挂上后：空白处可拖、可双击最大化，标签项照常点击。 -->
@@ -500,7 +511,9 @@
             <option value="key">私钥文件</option>
           </select></div>
         <div class="field" id="field-password"><label for="f-password">密码</label>
-          <input id="f-password" type="password" autocomplete="off" placeholder="不会落盘"></div>
+          <input id="f-password" type="password" autocomplete="off" placeholder="不会落盘">
+          <label class="remember"><input type="checkbox" id="f-remember">
+            <span>记住口令（本机加密保存）</span></label></div>
         <div class="field" id="field-key" hidden><label for="f-key">私钥路径</label>
           <input id="f-key" placeholder="C:\Users\you\.ssh\id_ed25519"></div>
       </div>

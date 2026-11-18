@@ -708,6 +708,27 @@ authSelect.addEventListener("change", () => {
   document.getElementById("field-key").hidden = !isKey;
   document.getElementById("field-password").hidden = isKey;
 });
+// ---------- 记住口令 ----------
+// 口令不落会话清单，走 portio-core 的加密层单独存 credentials.json；
+// 键与会话清单同一个（user@host:port）——换账号就是另一条，不会串。
+function credKey(user, host, port) {
+  return `${user}@${host}:${Number(port ?? 22) || 22}`;
+}
+async function credPeek(key) {
+  if (!bridge || !key || !key.includes("@")) return null;
+  return await call("cred_get", { key });
+}
+// 面板打开 / 主机改成另一台时刷一次：存过就把勾打上，占位提示也换掉。
+async function refreshRemember() {
+  const el = (id) => document.getElementById(id);
+  const user = el("f-user").value.trim();
+  const host = el("f-host").value.trim();
+  const port = Number(el("f-port").value) || 22;
+  const saved = user && host ? await credPeek(credKey(user, host, port)) : null;
+  el("f-remember").checked = Boolean(saved);
+  el("f-password").placeholder = saved ? "已保存口令，留空沿用" : "不会落盘";
+}
+
 function openConnect(prefill = null) {
   const el = (id) => document.getElementById(id);
   if (prefill) {
@@ -726,6 +747,12 @@ function openConnect(prefill = null) {
   }
   modal.classList.add("open");
   (prefill?.auth === "key" ? el("f-host") : el("f-password")).focus();
+  refreshRemember();
+}
+
+// 改了主机/用户名/端口就重新看有没有存过口令，避免拿着 A 的口令去连 B。
+for (const id of ["f-host", "f-port", "f-user"]) {
+  document.getElementById(id).addEventListener("blur", () => refreshRemember());
 }
 
 // ---------- 会话记忆 ----------
@@ -1118,9 +1145,17 @@ async function connectWith(spec) {
   const user = String(spec.user ?? "").trim();
   if (!host || !user) return toast("主机和用户名都要填");
   const auth = spec.auth === "key" ? "key" : "password";
-  const password = auth === "password" ? spec.password ?? null : null;
+  const typed = auth === "password" ? String(spec.password ?? "") : "";
+  const remember = Boolean(spec.remember);
+  const credKeyId = credKey(user, host, port);
+  let password = null;
+  if (auth === "password") {
+    password = typed;
+    // 输入框留空时用存过的口令，这样"记住口令"才真的省事
+    if (!password) password = await credPeek(credKeyId);
+    if (!password) return toast("密码没填");
+  }
   const keyfile = auth === "key" ? String(spec.keyfile ?? "").trim() : null;
-  if (auth === "password" && !password) return toast("密码没填");
   if (auth === "key" && !keyfile) return toast("私钥路径没填");
 
   const btn = document.getElementById("btn-connect");
@@ -1143,7 +1178,12 @@ async function connectWith(spec) {
     });
     modal.classList.remove("open");
     setStatus(`已连接 ${user}@${host}:${port}`, "ok");
-    saveSession({ host, port, user, auth, keyfile }); // 密码不入库
+    saveSession({ host, port, user, auth, keyfile }); // 会话清单仍不存密码，密码走加密的凭据文件
+    // 记住口令：勾了就存密文；取消勾选就把旧的那份删掉——别留一条用户以为已经删了口令
+    if (auth === "password") {
+      if (remember && typed) await call("cred_set", { key: credKeyId, password: typed });
+      else if (!remember) await call("cred_forget", { key: credKeyId });
+    }
     // 连接成功后开一个新标签，标题就是 user@host；旧本地标签留着不动
     const tab = createTab(`${user}@${host}`, id);
     tab.term.write(`\r\n\x1b[2m—— 已连接 ${user}@${host}:${port} ——\x1b[0m\r\n`);
@@ -1241,6 +1281,7 @@ document.getElementById("btn-connect").addEventListener("click", async () => {
     auth: authSelect.value,
     password: document.getElementById("f-password").value,
     keyfile: document.getElementById("f-key").value,
+    remember: document.getElementById("f-remember").checked,
   });
 });
 
