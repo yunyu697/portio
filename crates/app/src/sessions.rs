@@ -9,8 +9,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use portio_ssh::{
-    options, AuthMethod, HostKeyVerdict, KnownHosts, PtySize, RemoteEntry, ShellCommand, ShellEvent,
-    Sftp, SshSession,
+    options, perm_string, AuthMethod, HostKeyVerdict, KnownHosts, PtySize, RemoteEntry, ShellCommand,
+    ShellEvent, Sftp, SshSession,
 };
 use serde::Serialize;
 use tauri::ipc::Channel;
@@ -188,11 +188,14 @@ pub struct FileItem {
     size: u64,
     modified: i64,
     is_dir: bool,
+    /// 权限串，`ls -l` 形态；本地（Windows）没有 POSIX 位，给 `—`
+    perm: String,
 }
 
 impl FileItem {
     fn from_remote(e: RemoteEntry) -> Self {
         Self {
+            perm: perm_string(e.perm, e.is_dir),
             name: e.name,
             path: e.path,
             size: e.size,
@@ -266,6 +269,8 @@ pub fn local_list(path: Option<String>) -> Result<(String, Vec<FileItem>), Strin
             name,
             size: if is_dir { 0 } else { meta.len() },
             modified,
+            // Windows 没有 POSIX 权限位，本地栏不显示这一列
+            perm: "—".to_string(),
             is_dir,
         });
     }

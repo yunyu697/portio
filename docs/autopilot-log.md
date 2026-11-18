@@ -245,3 +245,23 @@
 - 已知阻塞不变：真实 SSH/SFTP 端到端、PTY、tmux 无测试服务器。
 
 **下一步**：出 Alpha6 安装包并交付；之后进 S8 —— SFTP 通道复用已有 SSH 连接。
+## 2026-11-18 · v1.0.3-Alpha7 · S9：远端文件列表权限列
+
+排期 S9 的完成定义是「双栏浏览、路径与权限、中文文件名」，双栏与重命名早前已做，缺的是**权限**与中文名专项。本轮先做权限列这个最小单元。
+
+- 数据源：`crates/ssh/src/sftp.rs` 的 `RemoteEntry` 加 `perm: Option<u32>`，取 SFTP `readdir` 返回的 `FileAttributes.permissions`，不需要额外 `stat` 往返，也没有多开通道。
+- 展示：新增 `perm_string(perm, is_dir)`，把 mode 排成 `ls -l` 那串 10 位——首字符 d/-，后接三组 rwx；服务器没给时返回 `—`。
+- 外壳：`FileItem` 加 `perm: String`，远端走 `perm_string`，本地固定 `—`（Windows 无 POSIX 位）。
+- 前端：`renderList(el, items, side)` 在 `side === "remote"` 时多给一列 `.pm`，行上带 `has-perm` 类改用五列栅格 `16 / 1fr / 68 / 64 / 80`；本地行仍是四列，两栏不对齐是刻意的（本地没有这一列）。
+- 规范同步：§10 矩阵第 19 行「文件行」补远端权限列条款（列宽、字号、对齐、缺省 `—`、本地不显示）。
+
+**验证证据**
+- `cargo test -p portio-ssh perm` → `test sftp::tests::perm_string_renders_rwx ... ok`（覆盖 0755 / 0644 / 000 / 777 / 750 / None 六组）。
+- `check_ui_scale.py` OK、`check_design_tokens.py` OK、`node --check ui/app.js` exit 0。
+- 无头截图（1180×690 @2x，塞了 5 条远端样本 + 2 条本地样本）：`_pm_light.png` / `_pm_dark.png`——权限串对齐、`—` 不缺列、本地栏确实只有四列。
+- 临时页 `ui/_pm.html` 与脚本 `_pm.py` 用完已删。
+
+**未验证**
+- 真实主机上的 readdir 是否真的带 `permissions` 字段（OpenSSH sftp-server 通常带，russh 的 `meta.permissions` 为 `Option`，拿不到就退化 `—`）。无测试服务器，只能登记。
+
+**下一步**：S9 中文名目录专项（本机造中文目录 + 回环验证），之后 S10 断点续传。

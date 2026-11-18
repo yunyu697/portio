@@ -30,7 +30,7 @@ fn err(context: &str, e: SftpError) -> SshError {
     SshError::Protocol(format!("{context}：{e}"))
 }
 
-/// 远端目录项。字段和 WinSCP 的列表列一一对应：名字、大小、修改时间。
+/// 远端目录项。字段和 WinSCP 的列表列一一对应：名字、大小、修改时间，外加权限位。
 #[derive(Debug, Clone)]
 pub struct RemoteEntry {
     pub name: String,
@@ -39,6 +39,33 @@ pub struct RemoteEntry {
     pub size: u64,
     /// 修改时间（秒），0 表示服务器没给
     pub modified: i64,
+    /// 服务器给的权限位（POSIX mode），`None` 表示这次 readdir 没带
+    pub perm: Option<u32>,
+}
+
+/// 把 POSIX mode 排成 `ls -l` 那串：`drwxr-xr-x`。
+/// 只认最常见的 rwx 三组，setuid / sticky 这些少见位统一显示成 `s` / `t`。
+pub fn perm_string(perm: Option<u32>, is_dir: bool) -> String {
+    let Some(mode) = perm else {
+        return "—".to_string();
+    };
+    let mut out = String::with_capacity(10);
+    out.push(if is_dir { 'd' } else { '-' });
+    let bits = [
+        (0o400, 'r'),
+        (0o200, 'w'),
+        (0o100, 'x'),
+        (0o040, 'r'),
+        (0o020, 'w'),
+        (0o010, 'x'),
+        (0o004, 'r'),
+        (0o002, 'w'),
+        (0o001, 'x'),
+    ];
+    for (bit, ch) in bits {
+        out.push(if mode & bit != 0 { ch } else { '-' });
+    }
+    out
 }
 
 pub struct Sftp {
@@ -73,6 +100,7 @@ impl Sftp {
                 is_dir: meta.is_dir(),
                 size: meta.size.unwrap_or(0),
                 modified: meta.mtime.unwrap_or(0) as i64,
+                perm: meta.permissions,
                 path: full,
                 name,
             });
@@ -247,5 +275,20 @@ mod tests {
         assert_eq!(parent_of("/var/log"), "/var");
         assert_eq!(parent_of("/var"), "/");
         assert_eq!(parent_of("/"), "/");
+    }
+
+    #[test]
+    fn perm_string_renders_rwx() {
+        // 目录 0755、文件 0644，运维最常看到的两种
+        assert_eq!(perm_string(Some(0o755), true), "drwxr-xr-x");
+        assert_eq!(perm_string(Some(0o644), false), "-rw-r--r--");
+        // 全空 / 全开
+        assert_eq!(perm_string(Some(0o000), false), "----------");
+        assert_eq!(perm_string(Some(0o777), true), "drwxrwxrwx");
+        // 执行位与跨组：0750 只有组可读可执行
+        assert_eq!(perm_string(Some(0o750), false), "-rwxr-x---");
+        // 服务器没给权限位时不留空列
+        assert_eq!(perm_string(None, false), "—");
+        assert_eq!(perm_string(None, true), "—");
     }
 }

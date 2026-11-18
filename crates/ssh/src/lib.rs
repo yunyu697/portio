@@ -11,7 +11,7 @@ use portio_core::HostId;
 
 pub use client::{options, PtySize, ShellCommand, ShellEvent, SshSession};
 pub use known_hosts::{HostKeyVerdict, KnownHosts};
-pub use sftp::{join, parent_of, RemoteEntry, Sftp};
+pub use sftp::{join, parent_of, perm_string, RemoteEntry, Sftp};
 
 /// 连接参数。
 #[derive(Debug, Clone)]

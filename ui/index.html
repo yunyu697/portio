@@ -175,6 +175,7 @@
   .fp-list{flex:1;min-height:0;overflow:auto;padding:2px 0}
   .fp-row{display:grid;grid-template-columns:16px minmax(0,1fr) 64px 80px;align-items:center;gap:4px;
           height:var(--row);padding:0 8px;cursor:default;font-size:var(--fs-12)}
+  .fp-row.has-perm{grid-template-columns:16px minmax(0,1fr) 68px 64px 80px}
   .fp-row:hover{background:var(--surface-2)}
   .fp-row.sel{background:var(--surface-3);box-shadow:inset 2px 0 0 var(--accent)}
   .fp-row .ico{color:var(--text-3);font-size:var(--fs-11);text-align:center}
@@ -183,6 +184,7 @@
   .fp-row.dir .nm{color:var(--info)}
   .fp-row .sz,.fp-row .tm{color:var(--text-3);font-size:var(--fs-11);text-align:right;
           font-variant-numeric:tabular-nums}
+  .fp-row .pm{color:var(--text-3);font-size:var(--fs-11);font-family:var(--mono);white-space:nowrap}
   .fp-list .hint{padding:12px}
 
   /* ---------- 传输队列 ---------- */
@@ -370,7 +372,7 @@
         <rect x="11.2" y="16.1" width="4.2" height="1.5" rx=".75" fill="var(--mark-accent)" opacity=".5"/>
         <rect x="15.4" y="11.3" width="3.6" height="1.4" rx=".7" fill="var(--mark-accent)"/>
       </svg>
-      <b data-tauri-drag-region>Portio</b><span class="ver" data-tauri-drag-region>1.0.3-Alpha6</span>
+      <b data-tauri-drag-region>Portio</b><span class="ver" data-tauri-drag-region>1.0.3-Alpha7</span>
     </div>
     <!-- 标签条本身就是标题栏里最大的一片空白，之前没挂 drag 区域，
          于是整条中间地段都点不动窗口。挂上后：空白处可拖、可双击最大化，标签项照常点击。 -->

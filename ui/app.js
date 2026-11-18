@@ -1372,10 +1372,11 @@ function renderList(el, items, side) {
   const frag = document.createDocumentFragment();
   for (const it of items) {
     const row = document.createElement("div");
-    row.className = `fp-row${it.is_dir ? " dir" : ""}`;
+    row.className = `fp-row${it.is_dir ? " dir" : ""}${side === "remote" ? " has-perm" : ""}`;
     row.innerHTML =
       `<span class="ico">${it.is_dir ? "▸" : "·"}</span>` +
       `<span class="nm">${escapeHtml(it.name)}</span>` +
+      (side === "remote" ? `<span class="pm">${escapeHtml(it.perm || "—")}</span>` : "") +
       `<span class="sz">${it.is_dir ? "—" : fmtSize(it.size)}</span>` +
       `<span class="tm">${fmtTime(it.modified)}</span>`;
     row.title = it.path;
