@@ -148,10 +148,16 @@ function resolveTheme(pref) {
   }
   return pref === "light" ? "light" : "dark";
 }
+// 设置项（主题 / 字号 / 滚动缓冲）要作用到**每个已开标签**的终端，不能只管当前这一块。
+// tabs 用 var 声明是为了能在它初始化之前（启动时就调用的 applyTheme）安全判空，避开 let 的暂时性死区。
+function eachTerm(fn) {
+  if (term && !(tabs && tabs.some((t) => t.term === term))) fn(term);
+  if (tabs) for (const t of tabs) if (t.term) fn(t.term);
+}
 function applyTheme(pref) {
   localStorage.setItem("portio.theme", pref);
   root.dataset.theme = resolveTheme(pref);
-  if (typeof term !== "undefined" && term) term.options.theme = terminalTheme();
+  eachTerm((t) => { t.options.theme = terminalTheme(); });
   syncSegs();
 }
 function applyDensity(density) {
@@ -159,9 +165,18 @@ function applyDensity(density) {
   localStorage.setItem("portio.density", density);
   syncSegs();
 }
+// 标题栏按钮是"一键换观感"：按当前实际显示的主题取反，直接落成明确偏好。
+// 之前按 dark→light→system 轮转，"系统自动"在系统本身是深色时等于没变化，
+// 用户看到的就是"要点两次才变亮"——三选项照旧留在设置面板里。
 document.getElementById("btn-theme").addEventListener("click", () => {
   const pref = localStorage.getItem("portio.theme") ?? "dark";
-  applyTheme(pref === "dark" ? "light" : pref === "light" ? "system" : "dark");
+  const next = resolveTheme(pref) === "dark" ? "light" : "dark";
+  applyTheme(next);
+  toast(next === "light" ? "已切换到浅色主题" : "已切换到深色主题");
+});
+// 跟随系统时，系统切换深浅色要立即跟上（以前只在启动那一刻读一次）
+window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
+  if ((localStorage.getItem("portio.theme") ?? "dark") === "system") applyTheme("system");
 });
 document.getElementById("btn-density").addEventListener("click", () => {
   const next = root.dataset.density === "compact" ? "standard" : "compact";
@@ -182,15 +197,14 @@ function readScrollback() {
 }
 function setFontSize(px) {
   localStorage.setItem(FONT_KEY, String(px));
-  if (typeof term !== "undefined" && term) {
-    term.options.fontSize = px;
-    fitQuietly();
-  }
+  eachTerm((t) => { t.options.fontSize = px; });
+  // 只有当前可见的终端能量尺寸，隐藏标签等切回去时靠 activateTab 再 fit
+  if (term) fitQuietly();
   syncSegs();
 }
 function setScrollback(rows) {
   localStorage.setItem(SCROLL_KEY, String(rows));
-  if (typeof term !== "undefined" && term) term.options.scrollback = rows;
+  eachTerm((t) => { t.options.scrollback = rows; });
   syncSegs();
 }
 function markSeg(id, value) {
@@ -425,7 +439,7 @@ setInterval(tick, 30_000);
 // 后台标签的会话仍在跑（这是 Xshell / 浏览器标签的共同习惯）。
 const termHost = document.getElementById("term");
 const tabsBox = document.getElementById("tabs");
-let tabs = [];
+var tabs = [];
 let activeId = null;
 let tabSeq = 0;
 // term / fitAddon 已在文件顶部声明（那里要避免 TDZ），这里只做"指向当前标签"
