@@ -1,0 +1,109 @@
+name: Release
+
+# 打 tag 即触发：v<版本>。
+# 规则（用户拍板）：只有 RC 与正式版发包；Alpha 只打 tag、不建 Release、不跑矩阵构建。
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: gate（判断该不该发包）
+    runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.check.outputs.publish }}
+      prerelease: ${{ steps.check.outputs.prerelease }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 版本号必须与仓库里的五处一致
+        run: python scripts/check_versions.py
+      - id: check
+        name: 按 tag 决定发不发
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          got=$(python -c "import re, io; print(re.search(r'<span class=\"ver\"[^>]*>(.*?)</span>', io.open('ui/index.html', encoding='utf-8').read()).group(1).strip())")
+          echo "tag=$tag / 仓库版本=$got"
+          if [ "$version" != "$got" ]; then
+            echo "::error::tag $tag 与仓库里的版本 $got 不一致，先改版本再打 tag"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          case "$version" in
+            *-Alpha*) echo "publish=false"  >> "$GITHUB_OUTPUT"; echo "prerelease=false" >> "$GITHUB_OUTPUT"
+                      echo "这是 Alpha 版：只打 tag，不发包。" ;;
+            *-RC*)    echo "publish=true"   >> "$GITHUB_OUTPUT"; echo "prerelease=true"  >> "$GITHUB_OUTPUT"
+                      echo "这是 RC 版：发预发布包。" ;;
+            *)        echo "publish=true"   >> "$GITHUB_OUTPUT"; echo "prerelease=false" >> "$GITHUB_OUTPUT"
+                      echo "这是正式版：发正式包。" ;;
+          esac
+
+  build:
+    name: build（${{ matrix.name }}）
+    needs: gate
+    if: needs.gate.outputs.publish == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            args: --bundles nsis
+          - name: macos-arm64
+            os: macos-latest
+            args: --bundles dmg
+          - name: macos-x64
+            os: macos-13
+            args: --bundles dmg
+          - name: linux-x64
+            os: ubuntu-22.04
+            args: --bundles deb,appimage
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.name }}
+      - name: Linux 系统依赖
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - run: npm ci
+      - name: 打包并挂到 Release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Portio ${{ needs.gate.outputs.version }}
+          prerelease: ${{ needs.gate.outputs.prerelease }}
+          releaseDraft: false
+          args: ${{ matrix.args }}
+          releaseBody: |
+            安装包在本页下方的 Assets 里。Windows 是 `.exe`（NSIS，当前用户安装，需要 WebView2）；
+            macOS 是 `.dmg`（未签名，首次打开要按住 Control 点图标选「打开」）；
+            Linux 是 `.deb` / `.AppImage`。
+
+            这一版改了什么、还有哪些没验证过，看仓库里的 `CHANGELOG.md`（同级版本号那段），
+            以及 `docs/release-notes.md` 与 `docs/rc-checklist.md`。
+
+            Portio 目前是预发布：真实服务器上的登录、交互式终端、tmux 全屏、大文件续传还没有端到端跑过，
+            请先在一台可以随手重连的机器上试。
