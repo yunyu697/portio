@@ -304,14 +304,17 @@ function positionGutters() {
   document.getElementById("gutter-drawer").style.bottom = "auto";
 }
 
-// 通用拖拽：按轴更新，松手落盘
+// 通用拖拽：按轴更新，松手落盘。拖拽期间给把手加 .dragging，胶囊把手变长变实。
 function dragWith(axis, onMove) {
   return (e) => {
     e.preventDefault();
+    const handle = e.currentTarget;
+    if (handle && handle.classList) handle.classList.add("dragging");
     document.body.classList.add(axis === "x" ? "dragging" : "dragging-x");
     const move = (ev) => onMove(ev);
     const up = () => {
       document.body.classList.remove("dragging", "dragging-x");
+      if (handle && handle.classList) handle.classList.remove("dragging");
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       positionGutters();

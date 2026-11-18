@@ -16,10 +16,10 @@
 
   /* ---------- 标题栏 ---------- */
   .titlebar{display:flex;align-items:center;gap:10px;padding-left:10px;padding-right:0;
-            background:var(--surface);border-bottom:1px solid var(--line);height:var(--titlebar)}
+            background:var(--surface);border-bottom:1px solid var(--line-strong);height:var(--titlebar)}
   .titlebar .brand{display:flex;align-items:center;gap:8px;font-weight:600;letter-spacing:-.01em;
                    padding-right:10px;border-right:1px solid var(--line);height:100%}
-  .titlebar .brand img{width:18px;height:18px}
+  .titlebar .brand img,.titlebar .brand .mark{width:18px;height:18px;flex:none;display:block}
   .titlebar .brand .ver{color:var(--text-3);font-weight:400;font-family:var(--mono);font-size:var(--fs-11)}
   .tabs{display:flex;align-items:center;gap:2px;flex:1;min-width:0;height:100%}
   .tab{display:flex;align-items:center;gap:8px;height:calc(var(--titlebar) - 6px);padding:0 10px;
@@ -53,7 +53,7 @@
 
   /* ---------- 主体 ---------- */
   .main{display:grid;grid-template-columns:var(--sidebar) 1fr;overflow:hidden;min-height:0;position:relative}
-  .sidebar{background:var(--surface);border-right:1px solid var(--line);overflow:auto;min-width:0}
+  .sidebar{background:var(--surface);border-right:1px solid var(--line-strong);overflow:auto;min-width:0}
   .sidebar h2{margin:0;padding:8px 12px;display:flex;align-items:center;gap:6px;
               font-size:var(--fs-11);letter-spacing:.08em;color:var(--text-3);
               border-bottom:1px solid var(--line)}
@@ -62,27 +62,33 @@
   .empty kbd{font-family:var(--mono);background:var(--surface-2);border:1px solid var(--line);
              border-radius:4px;padding:1px 5px;font-size:var(--fs-11)}
 
-  /* 拖拽把手：绝对定位压在边界上，不占栅格 */
-  .gutter-v{position:absolute;top:0;bottom:0;width:7px;cursor:col-resize;z-index:6}
-  .gutter-v:hover{background:var(--accent);opacity:.3}
-  /* 折叠态：会话栏整块收走，只留一条会"亮"的把手，鼠标移上去才浮出箭头。
+  /* 拖拽把手：绝对定位压在边界上，不占栅格。
+     平时完全透明（不留一条高亮色带），鼠标移上来才浮出一小段胶囊，拖拽时胶囊变长变实——
+     提示"这里能拖"，又不改写布局本身的观感。 */
+  .gutter-v{position:absolute;top:0;bottom:0;width:9px;cursor:col-resize;z-index:6;background:none}
+  .gutter-v::after{content:"";position:absolute;left:50%;top:50%;width:3px;height:34px;
+    transform:translate(-50%,-50%) scaleY(.6);border-radius:999px;background:var(--accent);
+    opacity:0;transition:opacity var(--dur) var(--ease),transform var(--dur-2) var(--ease-out)}
+  .gutter-v:hover::after{opacity:.45;transform:translate(-50%,-50%) scaleY(1)}
+  .gutter-v.dragging::after{opacity:.95;height:72px;transform:translate(-50%,-50%) scaleY(1)}
+  /* 折叠态：会话栏整块收走，只留一条把手，鼠标移上去才浮出箭头。
      注意列数要变成单列——写成 "0 1fr" 时剩下的唯一子元素会落进那个 0 宽的第一列，整屏空白。 */
   .main.collapsed{grid-template-columns:1fr}
   .main.collapsed .sidebar{display:none}
   .main.collapsed #gutter-v{width:10px;cursor:pointer;background:transparent;
-    box-shadow:inset -1px 0 0 var(--line)}
-  .main.collapsed #gutter-v::after{content:"›";position:absolute;top:50%;left:50%;
-    transform:translate(-50%,-50%);font-size:12px;line-height:1;color:var(--text-3);
-    opacity:.55;transition:opacity .12s,color .12s}
+    box-shadow:inset -1px 0 0 var(--line-strong)}
+  .main.collapsed #gutter-v::after{content:"›";position:absolute;top:50%;left:50%;width:auto;height:auto;
+    transform:translate(-50%,-50%);font-size:12px;line-height:1;color:var(--text-3);background:none;
+    border-radius:0;opacity:.55;transition:opacity .12s,color .12s}
   .main.collapsed #gutter-v:hover{box-shadow:inset -1px 0 0 var(--accent)}
-  .main.collapsed #gutter-v:hover::after{opacity:1;color:var(--accent)}
+  .main.collapsed #gutter-v:hover::after{opacity:1;color:var(--accent);transform:translate(-50%,-50%)}
 
   .stage{display:grid;grid-template-rows:1fr var(--drawer);overflow:hidden;min-width:0;min-height:0;
          position:relative}
   .split{display:grid;grid-template-columns:minmax(0,var(--split, 50%)) minmax(340px,1fr);overflow:hidden;min-width:0;min-height:0;position:relative}
   .pane{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
   .pane-head{display:flex;align-items:center;gap:8px;padding:0 12px;height:28px;flex:none;
-             background:var(--surface);border-bottom:1px solid var(--line);
+             background:var(--surface);border-bottom:1px solid var(--line-strong);
              font-size:var(--fs-11);color:var(--text-3);letter-spacing:.04em}
   .pane-head .path{font-family:var(--mono);color:var(--text-2);letter-spacing:0}
   .pane-head .right{margin-left:auto;display:flex;gap:4px}
@@ -92,10 +98,14 @@
   .pane.files .pane-body{background:var(--surface-2)}
   .hint{color:var(--text-3);font-family:var(--ui);font-size:var(--fs-12)}
 
-  .gutter-h{position:absolute;left:0;right:0;height:7px;cursor:row-resize;z-index:6}
-  .gutter-h:hover{background:var(--accent);opacity:.3}
+  .gutter-h{position:absolute;left:0;right:0;height:9px;cursor:row-resize;z-index:6;background:none}
+  .gutter-h::after{content:"";position:absolute;left:50%;top:50%;width:34px;height:3px;
+    transform:translate(-50%,-50%) scaleX(.6);border-radius:999px;background:var(--accent);
+    opacity:0;transition:opacity var(--dur) var(--ease),transform var(--dur-2) var(--ease-out)}
+  .gutter-h:hover::after{opacity:.45;transform:translate(-50%,-50%) scaleX(1)}
+  .gutter-h.dragging::after{opacity:.95;width:72px;transform:translate(-50%,-50%) scaleX(1)}
 
-  .drawer{display:flex;flex-direction:column;background:var(--surface-2);border-top:1px solid var(--line);
+  .drawer{display:flex;flex-direction:column;background:var(--surface-2);border-top:1px solid var(--line-strong);
           min-height:0;overflow:hidden;border-radius:var(--r-8) var(--r-8) 0 0}
   .drawer-head{display:flex;align-items:center;gap:10px;height:30px;padding:0 12px;flex:none;
                font-size:var(--fs-11);color:var(--text-3);cursor:pointer}
@@ -105,7 +115,7 @@
                font-size:var(--fs-11);color:var(--text-3)}
 
   .statusbar{display:flex;align-items:center;gap:16px;padding:0 12px;background:var(--surface);
-             border-top:1px solid var(--line);font-size:var(--fs-11);color:var(--text-3)}
+             border-top:1px solid var(--line-strong);font-size:var(--fs-11);color:var(--text-3)}
   .statusbar .state{display:flex;align-items:center;gap:6px;color:var(--text-2)}
   .statusbar .state i{width:7px;height:7px;border-radius:50%;background:var(--text-3)}
   .statusbar .right{margin-left:auto;display:flex;gap:16px;font-family:var(--mono)}
@@ -240,6 +250,32 @@
              box-shadow:0 6px 20px rgba(0,0,0,.35);animation:in .16s cubic-bezier(.2,.7,.2,1)}
   @keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
+  /* ---------- 动效：只做"因果明显"的那几处 ---------- */
+  /* 面板伸缩：会话栏收放、传输抽屉高低都靠栅格轨道过渡，不是跳一下 */
+  .main{transition:grid-template-columns var(--dur-2) var(--ease-out)}
+  .stage{transition:grid-template-rows var(--dur-2) var(--ease-out)}
+  /* 拖拽时关掉过渡，否则跟手感被吃掉 */
+  body.dragging .main,body.dragging-x .stage{transition:none}
+  .tbtn,.seg button,.btn,.fp-btn{transition:background var(--dur) var(--ease),color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease)}
+  .sess-row,.fp-row,.ctx-item,.tr{transition:background var(--dur) var(--ease),color var(--dur) var(--ease)}
+  /* 右键菜单：从鼠标点张开 */
+  .ctx{transform-origin:top left}
+  .ctx.open{animation:ctxIn .13s var(--ease-out)}
+  @keyframes ctxIn{from{opacity:0;transform:scale(.97) translateY(-2px)}to{opacity:1;transform:none}}
+  /* 连接 / 快捷键 / 设置浮层：背景先淡入，卡片跟上 */
+  .modal.open{animation:fadeIn .14s var(--ease)}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  .modal.open .sheet{animation:sheetIn .2s var(--ease-out)}
+  @keyframes sheetIn{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+  /* 切标签：新终端淡入，不让画面闪一下 */
+  .term-pane.on{animation:paneIn .14s var(--ease)}
+  @keyframes paneIn{from{opacity:.55}to{opacity:1}}
+  @media (prefers-reduced-motion:reduce){
+    *,::before,::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;
+      transition-duration:.01ms !important}
+  }
+
   /* 拖拽中：暂时禁掉 hover 高亮，避免和选区打架 */
   body.dragging{cursor:col-resize}
   body.dragging-x{cursor:row-resize}
@@ -248,8 +284,18 @@
 <body>
   <header class="titlebar" data-tauri-drag-region>
     <div class="brand" data-tauri-drag-region>
-      <img src="mark.svg" alt="Portio" data-tauri-drag-region>
-      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.2-Alpha3</span>
+      <!-- 标题栏标记改成内联 SVG，颜色全部走主题令牌。
+           之前贴的是带深色底板的位图，浅色主题下就是一块突兀的深色方块。 -->
+      <svg class="mark" viewBox="0 0 24 24" aria-label="Portio" data-tauri-drag-region>
+        <rect x="2.6" y="4.2" width="18.8" height="15.6" rx="3.2"
+              fill="var(--mark-body)" stroke="var(--mark-line)" stroke-width="1.2"/>
+        <path d="M2.6 8.2h18.8" stroke="var(--mark-line)" stroke-width="1.2" opacity=".55"/>
+        <path d="M6.4 12.6l2.6 2.2-2.6 2.2" fill="none" stroke="var(--mark-accent)"
+              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="11.2" y="16.1" width="4.2" height="1.5" rx=".75" fill="var(--mark-accent)" opacity=".5"/>
+        <rect x="15.4" y="11.3" width="3.6" height="1.4" rx=".7" fill="var(--mark-accent)"/>
+      </svg>
+      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.2-Alpha4</span>
     </div>
     <div class="tabs" id="tabs"></div>
     <button class="tbtn icon-only" id="btn-theme" aria-label="切换主题" title="切换主题：深色 / 浅色（跟随系统在设置里选）">
