@@ -27,4 +27,5 @@ Thumbs.db
 _*.png
 _*.py
 _*.html
+_*.js
 _commitmsg.txt

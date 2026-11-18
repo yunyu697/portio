@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>Portio 使用说明</title>
+<style>
+/* ===== 令牌：与 ui/tokens.css 同一套配色，改这里也改那边 ===== */
+:root{
+  --bg:#0d1014; --surface:#131820; --surface-2:#1a2029; --surface-3:#222a35;
+  --line:#262e3a; --line-strong:#333e4d;
+  --text:#dfe5ec; --text-2:#8b96a5; --text-3:#5e6875;
+  --accent:#2fb39a; --info:#6fa8dc; --warn:#c99a4e; --danger:#d2655f;
+  --term-bg:#090c10;
+  --mark-body:#16323a; --mark-line:#3f7a84; --mark-accent:#2fd8c2;
+  --sel:#1a2029;
+  --mono:"JetBrains Mono","Cascadia Mono",ui-monospace,Consolas,monospace;
+  --ui:"HarmonyOS Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --r-4:4px; --r-6:6px; --r-8:8px; --r-12:12px;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-6:24px;
+  --dur:160ms; --ease:cubic-bezier(.2,.7,.2,1);
+}
+html[data-theme="light"]{
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#f7f9fa; --surface-3:#eef2f5;
+  --line:#d5dde5; --line-strong:#bcc9d5;
+  --text:#1a222c; --text-2:#5a6673; --text-3:#8b96a5;
+  --accent:#12897a; --info:#2f6ea5; --warn:#96702c; --danger:#b8453f;
+  --term-bg:#ffffff;
+  --mark-body:#eaf3f5; --mark-line:#7fa5ad; --mark-accent:#12897a;
+  --sel:#eef2f5;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--bg); color:var(--text); font-family:var(--ui);
+  font-size:15px; line-height:1.72; letter-spacing:.002em;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--accent); text-decoration:none}
+a:hover{text-decoration:underline}
+code,kbd,.mono{font-family:var(--mono); font-size:.92em}
+code{background:var(--surface-2); border:1px solid var(--line); border-radius:var(--r-4);
+     padding:1px 5px; white-space:nowrap; color:var(--text)}
+kbd{display:inline-block; min-width:1.6em; text-align:center; padding:1px 6px;
+    background:var(--surface-2); border:1px solid var(--line-strong); border-bottom-width:2px;
+    border-radius:var(--r-4); font-size:11.5px; color:var(--text); line-height:1.6}
+
+/* ===== 骨架：左目录 + 右正文，和软件本身的三栏是同一个思路 ===== */
+.page{display:grid; grid-template-columns:240px minmax(0,1fr); min-height:100vh}
+.rail{
+  position:sticky; top:0; align-self:start; height:100vh; overflow:auto;
+  border-right:1px solid var(--line-strong); background:var(--surface);
+  padding:var(--sp-6) var(--sp-4) var(--sp-6) var(--sp-6);
+  display:flex; flex-direction:column; gap:var(--sp-6);
+}
+.rail .brand{display:flex; align-items:center; gap:var(--sp-2)}
+.rail .brand svg{width:26px; height:26px; flex:none; display:block}
+.rail .brand .name{font-weight:600; font-size:17px; letter-spacing:-.01em}
+.rail .brand .ver{font-family:var(--mono); font-size:11px; color:var(--text-3); margin-left:auto}
+.rail nav{display:flex; flex-direction:column; gap:2px; font-size:13px}
+.rail nav a{
+  color:var(--text-2); padding:5px 10px; border-radius:var(--r-4);
+  border-left:2px solid transparent; transition:color var(--dur) var(--ease),
+  background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.rail nav a:hover{color:var(--text); background:var(--surface-2); text-decoration:none}
+.rail nav a.on{color:var(--text); border-left-color:var(--accent); background:var(--surface-2)}
+.rail .foot{margin-top:auto; font-size:11.5px; color:var(--text-3); line-height:1.7}
+.rail .foot .tog{
+  display:inline-flex; align-items:center; gap:6px; margin-bottom:var(--sp-2);
+  background:var(--surface-2); border:1px solid var(--line); border-radius:var(--r-6);
+  color:var(--text-2); font:inherit; font-size:12px; padding:4px 10px; cursor:pointer;
+  transition:border-color var(--dur) var(--ease), color var(--dur) var(--ease)
+}
+.rail .foot .tog:hover{border-color:var(--line-strong); color:var(--text)}
+
+.main{padding:var(--sp-6) 0 96px; min-width:0}
+.wrap{max-width:680px; margin:0 auto; padding:0 var(--sp-6)}
+
+/* ===== 首屏 ===== */
+.hero{padding-top:var(--sp-6); padding-bottom:var(--sp-6)}
+.hero h1{
+  margin:0 0 var(--sp-3); font-size:40px; line-height:1.15; letter-spacing:-.022em; font-weight:600;
+}
+.hero .lead{margin:0 0 var(--sp-2); font-size:16px; color:var(--text); max-width:34em}
+.hero .sub{margin:0; font-size:13.5px; color:var(--text-3)}
+.hero .sub code{color:var(--text-2)}
+.verchip{font-family:var(--mono); font-size:12px; color:var(--text-2);
+         background:var(--surface-2); border:1px solid var(--line); border-radius:var(--r-4);
+         padding:0 5px}
+
+/* 界面示意：用 CSS 画一个窗口，替掉一张截图 —— 截图会过期，结构不会 */
+.mock{
+  margin:var(--sp-6) 0 var(--sp-2); border:1px solid var(--line-strong); border-radius:var(--r-12);
+  background:var(--surface); overflow:hidden;
+}
+.mock .bar{display:flex; align-items:center; gap:8px; height:30px; padding:0 10px;
+           background:var(--surface-2); border-bottom:1px solid var(--line-strong)}
+.mock .bar .d{width:7px;height:7px;border-radius:50%;background:var(--surface-3);flex:none}
+.mock .bar .t{font-size:11px; color:var(--text-3); margin-left:4px}
+.mock .bar .t.active{color:var(--text-2)}
+.mock .bar .r{margin-left:auto; display:flex; gap:6px}
+.mock .bar .r i{width:14px; height:1px; background:var(--surface-3); display:block}
+.mock .body{display:grid; grid-template-columns:150px minmax(0,1fr) 190px; height:158px}
+.mock .col{min-width:0; display:flex; flex-direction:column; font-size:11.5px; line-height:1.9}
+.mock .col + .col{border-left:1px solid var(--line)}
+.mock .head{height:26px; display:flex; align-items:center; padding:0 10px; color:var(--text-3);
+            border-bottom:1px solid var(--line); font-size:11px; letter-spacing:.02em; min-width:0}
+.mock .head .path{color:var(--text-3); opacity:.7; margin-left:6px; font-family:var(--mono);
+                  font-size:10.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.mock .sess{padding:6px 0}
+.mock .sess .row{padding:0 10px; color:var(--text-2); white-space:nowrap; overflow:hidden;
+                 text-overflow:ellipsis}
+.mock .sess .row.on{background:var(--sel); color:var(--text); box-shadow:inset 2px 0 0 var(--accent)}
+.mock .term{background:var(--term-bg); padding:8px 10px; font-family:var(--mono); font-size:11px;
+            color:var(--text); line-height:1.75; min-width:0}
+.mock .term .dim{color:var(--text-3)}
+.mock .term .cur{display:inline-block; width:7px; height:12px; background:var(--accent);
+                 vertical-align:-2px; margin-left:2px}
+.mock .files{padding:6px 0; color:var(--text-2); font-family:var(--mono); font-size:10.5px}
+.mock .files .row{padding:0 10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.mock .files .row.dir{color:var(--info)}
+.mock .files .row.on{background:var(--sel); color:var(--text)}
+.mock-cap{margin:0; font-size:12.5px; color:var(--text-3)}
+
+/* ===== 章节 ===== */
+section{padding-top:var(--sp-6); scroll-margin-top:var(--sp-6)}
+section + section{border-top:1px solid var(--line); margin-top:var(--sp-6)}
+h2{margin:0 0 var(--sp-3); font-size:21px; line-height:1.35; letter-spacing:-.012em; font-weight:600}
+h2 .n{font-family:var(--mono); font-size:11px; color:var(--text-3); font-weight:400;
+      margin-right:10px; letter-spacing:0}
+h3{margin:var(--sp-4) 0 var(--sp-2); font-size:15px; font-weight:600; color:var(--text)}
+p{margin:0 0 var(--sp-3); color:var(--text-2); max-width:40em}
+p strong{color:var(--text); font-weight:600}
+ul,ol{margin:0 0 var(--sp-3); padding-left:1.35em; color:var(--text-2); max-width:38em}
+li{margin:0 0 6px}
+li::marker{color:var(--text-3)}
+li strong{color:var(--text); font-weight:600}
+
+.note{
+  border-left:2px solid var(--accent); background:var(--surface-2);
+  border-radius:0 var(--r-6) var(--r-6) 0; padding:var(--sp-3) var(--sp-4);
+  margin:0 0 var(--sp-3); font-size:13.5px; color:var(--text-2);
+}
+.note.warn{border-left-color:var(--warn)}
+.note b{color:var(--text); font-weight:600}
+
+table{width:100%; border-collapse:collapse; margin:0 0 var(--sp-3); font-size:13.5px}
+th,td{text-align:left; padding:7px 10px; border-bottom:1px solid var(--line);
+      vertical-align:top; color:var(--text-2)}
+th{font-weight:600; color:var(--text); border-bottom-color:var(--line-strong); font-size:12.5px}
+td:first-child{color:var(--text)}
+tr:last-child td{border-bottom:0}
+td.w{white-space:nowrap}
+
+.steps{counter-reset:s; list-style:none; padding-left:0; max-width:38em}
+.steps li{counter-increment:s; position:relative; padding-left:30px; margin-bottom:10px}
+.steps li::before{
+  content:counter(s); position:absolute; left:0; top:1px; width:19px; height:19px;
+  display:grid; place-items:center; border-radius:50%; background:var(--surface-2);
+  border:1px solid var(--line-strong); color:var(--text-2);
+  font-family:var(--mono); font-size:11px; line-height:1;
+}
+footer{border-top:1px solid var(--line-strong); margin-top:var(--sp-6); padding-top:var(--sp-4);
+       font-size:12px; color:var(--text-3)}
+
+/* ===== 窄屏：目录改到正文上方，横排 —— 别把手机 / 小窗按三栏硬塞 ===== */
+@media (max-width:900px){
+  .page{grid-template-columns:1fr}
+  .rail{position:static; height:auto; border-right:0; border-bottom:1px solid var(--line-strong);
+        padding:var(--sp-4) var(--sp-4) var(--sp-3)}
+  .rail nav{flex-direction:row; flex-wrap:wrap; gap:var(--sp-1)}
+  .rail nav a{border-left:0; border-bottom:2px solid transparent; border-radius:var(--r-4)}
+  .rail nav a.on{border-bottom-color:var(--accent)}
+  .rail .foot{margin-top:var(--sp-3)}
+  .wrap{padding:0 var(--sp-4)}
+  .hero h1{font-size:30px}
+  .mock .body{grid-template-columns:110px minmax(0,1fr); height:170px}
+  .mock .files{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition:none !important; scroll-behavior:auto !important}
+}
+html{scroll-behavior:smooth}
+@media print{
+  .rail{display:none}
+  .page{display:block}
+  body{background:#fff; color:#000}
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<aside class="rail">
+  <div class="brand">
+    <svg viewBox="0 0 24 24" aria-label="Portio" role="img">
+      <rect x="2.6" y="4.2" width="18.8" height="15.6" rx="3.2"
+            fill="var(--mark-body)" stroke="var(--mark-line)" stroke-width="1.2"/>
+      <path d="M2.6 8.2h18.8" stroke="var(--mark-line)" stroke-width="1.2" opacity=".55"/>
+      <path d="M6.4 12.6l2.6 2.2-2.6 2.2" fill="none" stroke="var(--mark-accent)"
+            stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="11.2" y="16.1" width="4.2" height="1.5" rx=".75" fill="var(--mark-accent)"/>
+    </svg>
+    <span class="name">Portio</span>
+    <span class="ver">1.0.5-Alpha1</span>
+  </div>
+  <nav id="toc">
+    <a href="#install">安装</a>
+    <a href="#first">第一次连上</a>
+    <a href="#hostkey">主机指纹</a>
+    <a href="#sessions">会话与分组</a>
+    <a href="#import">从别的工具搬过来</a>
+    <a href="#files">文件与传输</a>
+    <a href="#terminal">终端与快捷键</a>
+    <a href="#look">设置与外观</a>
+    <a href="#trouble">出问题先看这里</a>
+    <a href="#where">文件都放在哪</a>
+    <a href="#ver">版本与进度</a>
+  </nav>
+  <div class="foot">
+    <button class="tog" id="theme-tog" type="button">切换深色 / 浅色</button>
+    <div>这一页不用联网。<br>双击就能打开。</div>
+  </div>
+</aside>
+
+<main class="main">
+<div class="wrap">
+
+<!-- ===== 首屏 ===== -->
+<header class="hero">
+  <h1>一个窗口，两件事</h1>
+  <p class="lead">SSH 终端和 SFTP 文件管理本来就该在一起：命令敲在中间，文件摆在右边，
+  不用在 <code>ssh</code> 和另一个客户端之间来回切。</p>
+  <p class="sub">Windows 版，当前 <span class="verchip">1.0.5-Alpha1</span>。装完双击图标就能用。</p>
+
+  <div class="mock" aria-hidden="true">
+    <div class="bar">
+      <span class="d"></span><span class="d"></span><span class="d"></span>
+      <span class="t active">deploy@web-01</span><span class="t">本地 · 未连接</span>
+      <span class="r"><i></i><i></i></span>
+    </div>
+    <div class="body">
+      <div class="col">
+        <div class="head">会话</div>
+        <div class="sess">
+          <div class="row on">deploy@web-01</div>
+          <div class="row">ops@db-02</div>
+          <div class="row">root@edge-03</div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="head">终端</div>
+        <div class="term">
+          <div class="dim">deploy@web-01:~$ ls</div>
+          <div>app&nbsp;&nbsp;logs&nbsp;&nbsp;release.tgz</div>
+          <div class="dim">deploy@web-01:~$ tar -tzf release.tgz</div>
+          <div>app/VERSION<span class="dim"> </span>logs/.keep</div>
+          <div class="dim">deploy@web-01:~$ <span class="cur"></span></div>
+        </div>
+      </div>
+      <div class="col files">
+        <div class="head">远端 <span class="path">/home/deploy</span></div>
+        <div class="row dir">drwxr-xr-x&nbsp;&nbsp;app</div>
+        <div class="row dir">drwxr-xr-x&nbsp;&nbsp;logs</div>
+        <div class="row on">-rw-r--r--&nbsp;&nbsp;release.tgz</div>
+      </div>
+    </div>
+  </div>
+  <p class="mock-cap">左边是会话，中间是命令，右边是文件。这一页里凡是写到的位置和键位，都和软件里一致。</p>
+</header>
+
+<!-- ===== 安装 ===== -->
+<section id="install">
+  <h2><span class="n">01</span>安装</h2>
+  <p>拿到的文件形如 <code>Portio_1.0.5-Alpha1_x64-setup.exe</code>，双击、下一步、装完。</p>
+  <ol class="steps">
+    <li>双击安装包。装的是<strong>当前用户</strong>，不弹管理员授权，位置在 <code>%LOCALAPPDATA%\Portio</code>。</li>
+    <li>桌面和开始菜单都会出现 Portio 快捷方式，图标是一个窗口：左边终端、右边文件。</li>
+    <li>第一次打开如果没反应：先确认机器上有 <strong>WebView2 Runtime</strong>（Win11 自带；Win10 缺的话安装包会引导你装）。</li>
+  </ol>
+  <div class="note">
+    <b>卸载</b>：设置 → 应用 → Portio → 卸载。卸载只删程序，<strong>不动你的会话清单和已知主机</strong>；
+    真要清干净，再手动删 <code>%APPDATA%\io.portio.desktop</code> 与 <code>%LOCALAPPDATA%\io.portio.desktop</code>。
+  </div>
+  <h3>它现在还不做的三件事</h3>
+  <ul>
+    <li><strong>没有代码签名</strong>：Windows 可能先提示「未知发布者」，选「仍要运行」即可。</li>
+    <li><strong>没有自动更新</strong>：新版本自己下安装包装一遍，覆盖安装不会丢会话。</li>
+    <li><strong>崩溃只落本地</strong>：出问题写在本机日志里，不往任何服务器发（见下文「出问题先看这里」）。</li>
+  </ul>
+</section>
+
+<!-- ===== 第一次连上 ===== -->
+<section id="first">
+  <h2><span class="n">02</span>第一次连上</h2>
+  <p>三条入口，挑顺手的：</p>
+  <ol class="steps">
+    <li><strong>新建连接</strong>：会话栏顶上那颗主按钮，填主机 / 端口 / 用户名，密码或私钥二选一。默认端口 22。</li>
+    <li><strong>快速连接</strong>：会话栏那行 <code>user@host:port</code>，写完敲回车（或点右侧 ↵），连接面板会带着地址打开，只剩密码要填。这台机器以前连过的话，端口和认证方式按上次记录带出来。</li>
+    <li><strong>双击会话</strong>：列表里双击。密钥认证的会直接连；密码的会停在密码框等你输入。</li>
+  </ol>
+  <div class="note warn">
+    <b>密码不保存。</b>会话清单里只存「怎么连」：主机、端口、用户、认证方式、私钥路径。
+    这是我把密码当一次性东西用的默认做法——清单被谁看了一眼，也看不出你的口令。
+  </div>
+  <h3>想让它记住口令</h3>
+  <p>连接面板里勾上「记住密码」，这一条凭据会用本机主密钥加密后写到 <code>credentials.json</code>
+  （密钥在 <code>vault.key</code>，算法 AES-256-GCM，明文不落盘）。下次连这台机器不用再输。
+  要作废已存的口令：关掉程序，删掉 <code>credentials.json</code> 即可。</p>
+  <h3>连上之后</h3>
+  <ul>
+    <li>标签条每台机器一个标签，<kbd>Ctrl</kbd>+<kbd>T</kbd> 再开一个，<kbd>Ctrl</kbd>+<kbd>W</kbd> 关掉当前标签。</li>
+    <li>终端右上角两个读数（列 × 行）跟窗口走，拖窗口大小时 PTY 也会跟着改。</li>
+    <li>右边文件栏同时列<strong>远端</strong>和<strong>本地</strong>两块，双击目录进出，双击文件就传输。</li>
+  </ul>
+</section>
+
+<!-- ===== 主机指纹 ===== -->
+<section id="hostkey">
+  <h2><span class="n">03</span>主机指纹</h2>
+  <p>第一次连一台陌生机器，Portio 会把它的主机指纹记进 <code>known_hosts</code>；
+  之后再连同一台，指纹必须对得上。</p>
+  <p><strong>指纹变了，我就直接停手</strong>，把新旧指纹都打出来，让你自己判断是不是重装过系统。
+  不会为了「让连接跑通」而放过去——这一条我从来没打算做成开关。</p>
+  <table>
+    <thead><tr><th>你想做的事</th><th>在哪做</th></tr></thead>
+    <tbody>
+      <tr><td>看记了哪些主机、各自指纹是什么</td><td>设置 → 已知主机</td></tr>
+      <tr><td>某台机器重装过，要重新信任</td><td>设置 → 已知主机 → 删掉那一条，下次连接会重新问一次</td></tr>
+      <tr><td>换机器时把信任关系带走</td><td>复制 <code>%APPDATA%\io.portio.desktop\known_hosts</code></td></tr>
+    </tbody>
+  </table>
+  <div class="note">删一条已知主机<strong>不是</strong>「以后自动信任」——它只是把状态退回从未连过，下次仍然要你确认。</div>
+</section>
+
+<!-- ===== 会话与分组 ===== -->
+<section id="sessions">
+  <h2><span class="n">04</span>会话与分组</h2>
+  <p>会话写在本机清单里（<code>sessions.json</code>），一次填好，下次双击就连。</p>
+  <ul>
+    <li><strong>搜索</strong>：会话栏那行搜索框，按主机名、用户名或备注过滤，右边显示命中计数。</li>
+    <li><strong>分组</strong>：会话行右键 →「分到分组…」，填个组名（<code>生产</code> / <code>测试</code> 之类），列表就按组收拢。</li>
+    <li><strong>折叠</strong>：组标题点一下收起，只留标题和条数；组标题右键能「解散这个分组」。</li>
+    <li><strong>没分组的</strong>落在「未分组」；一条分组都没有时，列表仍按「最近使用 / 更早」排。</li>
+    <li><strong>重命名 / 删除 / 复制地址</strong>：都在会话行右键里。</li>
+  </ul>
+  <div class="note">会话栏、标签条、终端、文件栏、传输队列、状态栏、标题栏，每一块右键都有自己的菜单，跟那块的功能对得上；桌面上那套浏览器菜单不会冒出来。</div>
+</section>
+
+<!-- ===== 导入 ===== -->
+<section id="import">
+  <h2><span class="n">05</span>从别的工具搬过来</h2>
+  <p>会话栏「导入会话」下拉里三项，读的是这些位置：</p>
+  <table>
+    <thead><tr><th class="w">来源</th><th>读哪里</th><th>怎么处理</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="w">SSH 配置</td>
+        <td><code>%USERPROFILE%\.ssh\config</code></td>
+        <td>通配符块与 <code>Match</code> 块跳过并计数；<code>IdentityFile</code> 记为密钥认证</td>
+      </tr>
+      <tr>
+        <td class="w">Xshell</td>
+        <td><code>%APPDATA%\NetSarang\Xshell\Sessions</code></td>
+        <td>递归收子目录，一个 <code>.xsh</code> 一台主机；RDP / Serial 跳过</td>
+      </tr>
+      <tr>
+        <td class="w">WinSCP</td>
+        <td><code>%APPDATA%\WinSCP.ini</code> → <code>%LOCALAPPDATA%\WinSCP.ini</code> → <code>文档\WinSCP.ini</code></td>
+        <td>取第一份存在的；FTP / WebDAV / S3 跳过，只收 SSH 系列站点</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>导入是<strong>合并</strong>：同一个「用户@主机:端口」只留一条，重复的不会覆盖你改过的备注名。
+  三个来源的密码字段一概不读——Xshell 与 WinSCP 的密码是各自加密的，读了也用不上。</p>
+  <div class="note warn">导入完成后会告诉你收了多少条、跳过多少条。跳过的那几条通常是通配符块、非 SSH 的站点，或字段缺主机名。</div>
+</section>
+
+<!-- ===== 文件与传输 ===== -->
+<section id="files">
+  <h2><span class="n">06</span>文件与传输</h2>
+  <p>右边是两块列表：远端在上、本地在下，各自有路径栏、上级 <kbd>↑</kbd>、刷新。</p>
+  <ul>
+    <li><strong>双击目录</strong>进入；<strong>双击文件</strong>就传输（远端文件下载，本地文件上传到当前远端目录）。</li>
+    <li><strong>拖拽</strong>：把系统里的文件拖到本地栏，等于上传到当前远端目录。</li>
+    <li><strong>权限列</strong>：远端行最右边是 <code>ls -l</code> 形态的权限串（<code>drwxr-xr-x</code>），看不出来源时为 <code>—</code>。</li>
+    <li><strong>右键</strong>：远端行能下载 / 删除 / 重命名 / 新建目录；本地行能上传 / 重命名 / 在系统里打开。</li>
+  </ul>
+  <h3>传输队列</h3>
+  <p>屏幕底部那条是队列，每条一个进度。研发电脑屏幕小的时候我把它做成能收起来的：
+  点标题条收起后只占<strong>一行</strong>，有新的传输会自动回到上次的高度。右键里也有「收起 / 展开传输队列」。</p>
+  <h3>断了会接着传</h3>
+  <ul>
+    <li><strong>下载</strong>：先写成 <code>文件名.portio-part</code>，传完才改回原名。半途断了再点一次，只要半截文件还在、且比远端小，就从断点接着传。</li>
+    <li><strong>上传</strong>：远端先写 <code>文件名.portio-part</code>，整份传完再改名——所以远端永远看不到「传了一半叫正式名」的文件。</li>
+    <li><strong>不能续的情况</strong>：远端文件比本地半截还小（说明对面改了），会丢掉半截文件重来，而不是拼出一个坏文件。</li>
+  </ul>
+  <div class="note warn">远端残留的 <code>.portio-part</code> 目前<strong>没有界面清理</strong>：要删就去远端文件栏右键删除。这条已经记在待办里。</div>
+</section>
+
+<!-- ===== 终端与快捷键 ===== -->
+<section id="terminal">
+  <h2><span class="n">07</span>终端与快捷键</h2>
+  <p>终端是 xterm.js 渲染、russh 走协议，VT 序列、颜色、滚动缓冲都在。下面这些键位和软件里的「快捷键一览」是同一份内容。</p>
+
+  <h3>窗口与标签</h3>
+  <table>
+    <tbody>
+      <tr><td class="w"><kbd>Ctrl</kbd>+<kbd>T</kbd></td><td>新建连接</td></tr>
+      <tr><td class="w"><kbd>Ctrl</kbd>+<kbd>W</kbd></td><td>关掉当前标签（只剩一个时不动，避免空窗口）</td></tr>
+      <tr><td class="w"><kbd>Ctrl</kbd>+<kbd>/</kbd></td><td>打开快捷键一览（<kbd>Esc</kbd> 关闭）</td></tr>
+      <tr><td class="w"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>H</kbd></td><td>窗口全屏</td></tr>
+      <tr><td class="w"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>B</kbd></td><td>收起 / 展开左侧会话栏（也可以双击分隔把手）</td></tr>
+      <tr><td class="w"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd></td><td>收起 / 展开右侧文件面板（折叠钮在终端标题条上，收起来后点右缘细条也能回来）</td></tr>
+      <tr><td class="w"><kbd>F5</kbd></td><td>重绘终端与尺寸（不是重连）</td></tr>
+    </tbody>
+  </table>
+
+  <h3>分屏与查找</h3>
+  <table>
+    <tbody>
+      <tr><td class="w"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd></td><td>左右分一格（同一主机再开一条通道）</td></tr>
+      <tr><td class="w"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd></td><td>上下分一格</td></tr>
+      <tr><td class="w"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>W</kbd></td><td>关掉当前格（回到上一档格数）</td></tr>
+      <tr><td class="w"><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td>终端里查找（扫整条缓冲含滚动区，计数在右边；没命中数字转红，<kbd>Esc</kbd> 关闭）</td></tr>
+    </tbody>
+  </table>
+  <p>格数只走 1 → 2 → 4；分到 3 格时第一格占满左列，不留空格子。当前格有一圈细描边，标题条上的列 × 行读数跟的是当前格。</p>
+
+  <h3>复制粘贴</h3>
+  <table>
+    <tbody>
+      <tr><td class="w"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> / <kbd>Ctrl</kbd>+<kbd>Insert</kbd></td><td>复制选中</td></tr>
+      <tr><td class="w"><kbd>Ctrl</kbd>+<kbd>C</kbd></td><td>有选中时复制；<strong>没选中就照发 ^C</strong>（中断当前命令，不打断你的手）</td></tr>
+      <tr><td class="w"><kbd>Ctrl</kbd>+<kbd>V</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> / <kbd>Shift</kbd>+<kbd>Insert</kbd></td><td>粘贴</td></tr>
+    </tbody>
+  </table>
+  <p>拖选只是高亮，不会自动进剪贴板——这是我从一开始就定下的习惯，想复制得自己按一下。
+  粘贴多行时会先提示一句「多行」，但不拦你。</p>
+</section>
+
+<!-- ===== 设置与外观 ===== -->
+<section id="look">
+  <h2><span class="n">08</span>设置与外观</h2>
+  <p>标题栏右上角三个图标：主题、快捷键一览、设置。</p>
+  <table>
+    <thead><tr><th class="w">设置项</th><th>可选</th></tr></thead>
+    <tbody>
+      <tr><td class="w">主题</td><td>深色 / 浅色 / 跟随系统（点一下轮换）</td></tr>
+      <tr><td class="w">界面密度</td><td>标准 / 紧凑（紧凑会把行高收窄一档，一屏多看几行）</td></tr>
+      <tr><td class="w">终端字号</td><td>11–18</td></tr>
+      <tr><td class="w">终端滚动缓冲</td><td>2000 / 8000 / 20000 行</td></tr>
+      <tr><td class="w">已知主机</td><td>列出已信任的主机与指纹，可逐条删除</td></tr>
+      <tr><td class="w">运行日志</td><td>日志路径、当前体积、「打开位置」「复制诊断」</td></tr>
+    </tbody>
+  </table>
+  <p>这些都记在本机，下次打开还是你调的样子。界面元素的高度、间距、颜色都走同一套令牌，
+  深色浅色两套主题对得上——同一个钮在两个主题里不该长得不一样。</p>
+</section>
+
+<!-- ===== 故障排查 ===== -->
+<section id="trouble">
+  <h2><span class="n">09</span>出问题先看这里</h2>
+  <h3>日志在哪</h3>
+  <p>程序崩了、界面报错了，都会写进同一个文件：
+  <code>%LOCALAPPDATA%\io.portio.desktop\logs\portio.log</code>。
+  一条一行，带 UTC 时间、级别、来源；单条过长会折行标记；文件满 1 MiB 轮转成 <code>portio.log.1</code>，只留一份。</p>
+  <p>设置 → 运行日志 里能看到路径和实时体积，两个按钮：<strong>打开位置</strong>（在资源管理器里定位到文件）、
+  <strong>复制诊断</strong>（版本号 + 系统 + 窗口尺寸 + 最近一段日志，可直接粘给我看）。</p>
+
+  <h3>常见报错怎么读</h3>
+  <p>报错会先说「发生了什么」，再说「下一步做什么」：</p>
+  <table>
+    <thead><tr><th class="w">它说什么</th><th>通常意味着</th><th>你先做</th></tr></thead>
+    <tbody>
+      <tr><td class="w">认证被拒绝</td><td>用户名、密码或私钥不对</td><td>确认登录方式与凭据，私钥换了就把路径填对</td></tr>
+      <tr><td class="w">连接被拒绝</td><td>端口没开或被防火墙拦了</td><td>确认服务端 sshd 在跑、端口对，别先怀疑客户端</td></tr>
+      <tr><td class="w">连接超时</td><td>网络不可达或服务端限流</td><td>检查网络与白名单 / 安全组</td></tr>
+      <tr><td class="w">权限不足</td><td>账号对目标路径没权限</td><td>换个目录，或换有权限的账号</td></tr>
+      <tr><td class="w">远端磁盘已满</td><td>目标分区写不进去了</td><td>清理远端目录，或换目标路径</td></tr>
+      <tr><td class="w">路径不存在</td><td>目录被删或改名</td><td>点刷新确认当前目录</td></tr>
+      <tr><td class="w">主机指纹变化</td><td>对面换了主机密钥</td><td>先弄清是不是重装过；不是的话别连</td></tr>
+    </tbody>
+  </table>
+  <div class="note">
+    匹配不上规则时，报错会<strong>原样保留服务端原文</strong>——宁可粗糙，也不替你猜。
+    原文贴进搜索框，通常比我给的概括更准。
+  </div>
+
+  <h3>界面不对劲</h3>
+  <ul>
+    <li>窗口拉窄到 1024×620 时各面板仍然不越界、不裁切、不叠字。</li>
+    <li>哪个面板右键没菜单、或冒出了浏览器那套菜单，都算缺陷，请记下来告诉我。</li>
+    <li>文件面板折叠后，右缘平时什么都不画，鼠标移上去才淡出一条 <code>‹</code>——这是刻意的，不是漏画。</li>
+  </ul>
+</section>
+
+<!-- ===== 文件位置 ===== -->
+<section id="where">
+  <h2><span class="n">10</span>文件都放在哪</h2>
+  <table>
+    <thead><tr><th class="w">路径</th><th>里面是什么</th></tr></thead>
+    <tbody>
+      <tr><td class="w"><code>%APPDATA%\io.portio.desktop\sessions.json</code></td><td>会话清单（怎么连，不含密码）</td></tr>
+      <tr><td class="w"><code>%APPDATA%\io.portio.desktop\credentials.json</code></td><td>勾了「记住密码」的那些口令，加密存放</td></tr>
+      <tr><td class="w"><code>%APPDATA%\io.portio.desktop\vault.key</code></td><td>加密用的本机主密钥；和凭据一起拷走才能解密</td></tr>
+      <tr><td class="w"><code>%APPDATA%\io.portio.desktop\known_hosts</code></td><td>已信任的主机指纹</td></tr>
+      <tr><td class="w"><code>%APPDATA%\io.portio.desktop\theme.txt</code></td><td>上次选的主题</td></tr>
+      <tr><td class="w"><code>%LOCALAPPDATA%\io.portio.desktop\logs\portio.log</code></td><td>运行日志（轮转文件为 <code>portio.log.1</code>）</td></tr>
+      <tr><td class="w"><code>%LOCALAPPDATA%\Portio</code></td><td>程序本体</td></tr>
+    </tbody>
+  </table>
+  <p>换电脑：拷 <code>%APPDATA%\io.portio.desktop</code> 整个目录过去，会话与已知主机就跟着走了。
+  带走 <code>vault.key</code> 等于带走保存的口令，自己判断要不要一起拷。</p>
+</section>
+
+<!-- ===== 版本 ===== -->
+<section id="ver">
+  <h2><span class="n">11</span>版本与进度</h2>
+  <p>版本号形如 <code>v1.0.5-Alpha1</code>：<strong>每完成一个交付单元 Alpha 进一位，满 10 进 patch 回 Alpha1</strong>。
+  标题栏上显示的就是当前版本。</p>
+  <table>
+    <thead><tr><th class="w">版本</th><th>范围</th></tr></thead>
+    <tbody>
+      <tr><td class="w">v0.1 能连能敲</td><td>外壳、SSH、终端、会话树</td></tr>
+      <tr><td class="w">v0.2 会话管理与迁移</td><td>会话 CRUD、分组、导入 Xshell / WinSCP / ssh config、快速连接、设置项</td></tr>
+      <tr><td class="w">v0.3 文件双栏</td><td>SFTP 双栏、传输队列、断点续传</td></tr>
+      <tr><td class="w">v0.4 打磨发布</td><td>主题全量、签名、自动更新、文档站</td></tr>
+    </tbody>
+  </table>
+  <p>逐版做了什么写在仓库根的 <code>CHANGELOG.md</code>；设计约束写在 <code>docs/design-spec.md</code>；
+  这一轮还没做的事记在 <code>docs/backlog.md</code>。</p>
+  <footer>
+    Portio 1.0.5-Alpha1 · 这一页随仓库走（<code>docs/site/index.html</code>） · 没有任何外部资源请求，断网也能打开
+  </footer>
+</section>
+
+</div>
+</main>
+</div>
+
+<script>
+/* 主题：?theme=light / ?theme=dark 优先，其次本地记住的，最后跟系统。只用十来行，不引任何库。 */
+(function () {
+  var q = new URLSearchParams(location.search).get("theme");
+  var saved = null;
+  try { saved = localStorage.getItem("portio.docs.theme"); } catch (e) {}
+  var sys = window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  var theme = q === "light" || q === "dark" ? q : (saved || sys);
+  document.documentElement.dataset.theme = theme;
+
+  var btn = document.getElementById("theme-tog");
+  if (btn) {
+    btn.addEventListener("click", function () {
+      var next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+      document.documentElement.dataset.theme = next;
+      try { localStorage.setItem("portio.docs.theme", next); } catch (e) {}
+    });
+  }
+
+  /* 目录高亮：取「已经滚过阈值的那一节里最靠下的一节」，任何时刻都有一条亮着。 */
+  var links = [].slice.call(document.querySelectorAll("#toc a"));
+  var secs = links.map(function (a) { return document.getElementById(a.getAttribute("href").slice(1)); });
+  var ticking = false;
+  function paint() {
+    ticking = false;
+    var best = links[0], bestD = Infinity, i, s, d;
+    for (i = 0; i < links.length; i++) {
+      s = secs[i];
+      if (!s) continue;
+      d = s.getBoundingClientRect().top - 150;
+      if (d <= 0 && -d < bestD) { bestD = -d; best = links[i]; }
+    }
+    for (i = 0; i < links.length; i++) links[i].classList.toggle("on", links[i] === best);
+  }
+  function onScroll() { if (!ticking) { ticking = true; requestAnimationFrame(paint); } }
+  paint();
+  addEventListener("scroll", onScroll, { passive: true });
+  addEventListener("hashchange", paint);
+})();
+</script>
+</body>
+</html>

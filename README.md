@@ -4,6 +4,9 @@
 
 > 名字取 **port + io**：port 是 SSH 端口，也是数据的进出口——命令往下走，文件往上走。
 
+> 完整使用说明在 [`docs/site/index.html`](docs/site/index.html)（一页、离线、不用联网就能打开）。
+> 下面这份是速览；两处不一致时以那一页为准。
+
 ## 这是什么
 
 左边是会话清单，中间是终端，右边是远端 / 本地两栏文件。连上主机后终端能直接敲，
@@ -38,9 +41,9 @@
 
 ## 从别的工具搬过来
 
-会话栏有三个虚线按钮：
+会话栏那颗「导入会话」下拉里三项：
 
-| 按钮 | 读哪里 | 说明 |
+| 菜单项 | 读哪里 | 说明 |
 |---|---|---|
 | 导入 `~/.ssh/config` | `%USERPROFILE%\.ssh\config` | 通配符块与 `Match` 块会跳过并计数；`IdentityFile` 记为密钥认证 |
 | 导入 Xshell 会话 | `%APPDATA%\NetSarang\Xshell\Sessions` | 递归收子目录，一个 `.xsh` 一台主机；RDP / Serial 跳过 |
@@ -73,10 +76,12 @@
 | `Ctrl` + `W` | 关闭当前标签 |
 | `Ctrl` + `/` | 打开快捷键一览（`Esc` 关闭） |
 | `Ctrl` + `Alt` + `B` | 收起 / 展开左侧会话栏 |
-| `Ctrl` + `Alt` + `H` | 窗口全屏 |
+| `Ctrl` + `Alt` + `F` | 收起 / 展开右侧文件面板 |
+| `Ctrl` + `Shift` + `D` / `E` | 左右 / 上下分一格 |
+| `Ctrl` + `F` | 终端里查找 |
 | `F5` | 刷新终端显示与尺寸 |
-| 选中文本 | 选中即复制 |
-| `Ctrl` + `V` | 粘贴 |
+| `Ctrl` + `Shift` + `C` / `Ctrl` + `Insert` | 复制选中（`Ctrl` + `C` 有选中才复制，否则照发 `^C`） |
+| `Ctrl` + `V` / `Shift` + `Insert` | 粘贴 |
 
 ## 当前进度
 
@@ -89,8 +94,8 @@
 | v0.3 文件双栏 | SFTP、传输队列、断点续传 |
 | v0.4 打磨发布 | 主题全量、签名、自动更新、文档站 |
 
-版本号形如 `v1.0.3-Alpha2`：每完成一个交付单元 Alpha 进一位，满 10 进 patch 回 Alpha1。
-逐版更新内容见 [CHANGELOG.md](CHANGELOG.md)。
+版本号形如 `v1.0.5-Alpha1`：每完成一个交付单元 Alpha 进一位，满 10 进 patch 回 Alpha1。
+逐版更新内容见 [CHANGELOG.md](CHANGELOG.md)，使用说明见 [`docs/site/index.html`](docs/site/index.html)。
 
 ## 开发
 
