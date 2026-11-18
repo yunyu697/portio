@@ -191,3 +191,35 @@
 - 验证：真几何量测（临时 `_probe.html` 用 iframe + `getBoundingClientRect` 写进 `<title>`，读完即删）：1180×690 下 `pane-head` 28/28、`fp-bar` 28、`drawer-head` 28、`sidebar h2` 28；`gutter-v` 与 `sidebar.right` dx=0.00、`gutter-split` 与 `panes` 交界 dx=0.00、`gutter-h` 与 `drawer.top` dx=0.00。窄到 700px 时同样 dx=0.00（旧实现此例会偏）。折叠态量测：sidebar 0、gutter 0–10、stage 10–1180。截图 `_s9_dark.png`（1440×900@2x）、`_s9_light.png`（1180×690@2x）、`_s9_fold.png`（折叠态）；两条竖线 6× 裁切对比 `_s9_line_side.png` / `_s9_line_split.png` 宽度一致；`node --check ui/app.js` exit 0；`check_design_tokens.py` OK；`cargo test -p portio-core` / `-p portio-app` 均 ok；无头 dump-dom `<title>` 仍 `Portio`。
 - 未验证：真实窗口里 hover/拖拽的手感与渐变高亮实拖（无头不能 hover/拖拽），只验证了静止态几何与折叠态。
 - 下一步：S8 —— SFTP 通道复用已有 SSH 连接。
+## 2026-11-18 · v1.0.3-Alpha5 · 设计规范升级 v2「全覆盖」+ 43 处裸数字收进刻度
+
+**用户要求**：设计规范应覆盖软件所有界面元素和各种方面（间距、对齐方式等等），"而不是发现一个补一个，如果覆盖不全面，那就说明规范本身就是有问题的"（这是用户第 3 次强调规范）。
+
+- 规范 v2 重写（`docs/design-spec.md`，130 行 v1 → 约 250 行）：
+  - 新增 §0 适用范围；§3 尺度令牌表（间距 `--sp-1..--sp-6` = 4/8/12/16/24、控件三档 `--ctl/--ctl-2/--ctl-3` = 26/30/32、圆角 `--r-full` 胶囊 / `--r-hair` 发丝、字号四档、图标 16/18、线 1px、把手 9、滚动条 6）；
+  - 新增 §4 对齐规则（同一行垂直居中、面板 12 / 行内控件 8 / 行内文字 12、同层左缘重合、右侧动作 `margin-left:auto` + gap 4、图标盒居中、单行截断、数字右对齐 `--mono`、分组靠 caret 不靠缩进）；
+  - 新增 §9 状态矩阵（默认 / hover / active 选中 / focus / disabled / 拖拽中 / 加载 七态各自视觉）；
+  - 新增 §10 **31 条元素覆盖矩阵**：窗口本体、标题栏、标签条、会话栏、会话栏标题、主按钮、快速连接行、搜索框、三枚导入按钮、空态、分组标题、会话行、右键菜单、终端标题条、终端画布、文件标题条、远端/本地块、文件栏工具条、文件行、传输抽屉、进度条、状态栏、toast、四类模态、表单字段、分段控件、滑块、键位表、滚动条、把手、窗口控制按钮——每条写清层级与关键条款；
+  - 新增 §11 文案条款；§14 变更流程写明"新增界面元素必须先在 §10 加一行再写代码，没进矩阵的元素不接受"；
+  - §12 偏差表补到 11 条（新增「规范只覆盖出过问题的几处」并标已修）；§13 验收清单 11 条（两个守卫脚本 + 四态截图 + 结构线/标题条/圆角/图标/状态/动效自检 + 实机截屏）。
+- `ui/tokens.css` 新增 `--r-full:999px`、`--r-hair:2px`、`--ctl:26px`、`--ctl-2:30px`、`--ctl-3:32px`、`--sp-1..--sp-6`。
+- 新增 `scripts/check_ui_scale.py`：扫 `ui/index.html` 与 `ui/app.js`，`font-size` 必须 `var(--fs-*)`、`border-radius` 必须 `var(--r-*)` 或 50%、`padding/margin/gap` 必须落在 `0/1/2/4/8/12/16/24`、`height` 只认 `--row/--ctl*/发丝档`、`width` 认刻度或 4 的倍数；命中打印 `path:line` 并退出码 1。
+- 首跑报 **43 处**裸数字，逐处改到令牌：titlebar gap 10→8 / padding-left 10→12、tab 与 tbtn 左右内边距 10→12、tbtn svg 15→16、滚动条拇指 `3px`→`--r-full`、`sidebar h2` gap 6→8、`kbd` 圆角 `4px`→`--r-1` + padding `1px 5px`→`1px 4px`、空态 `font-size:12px`→`--fs-12`、drawer-head gap 10→8、状态栏 `.state` gap 6→8 与圆点 7→8、紧凑面板 padding `8 10`→`8 12`、终端画布 padding `6 0 0 8`→`4 0 0 8`、fp-bar gap 6→4、fp-row 列 `14/82`→`16/80` + gap 6→4、fp-list hint padding 10→12、传输进度条 `2px`→`--r-hair`、来源表单 gap 10→12、输入 `padding:7 9`→`0 12` + 高 32→`--ctl-3`、`.row` gap 10→12、`.btn` padding `7 14`→`8 12`、new-session margin `10 12 0`→`12 12 0` + 高 30→`--ctl-2`、搜索框 margin `6 12 2`→`4 12 4` + 高 26→`--ctl`、快速连接 gap 6→4 + margin →`8 12 0` + 输入/键钮 26→`--ctl`、导入按钮 margin →`4 12 4` + 高→`--ctl`、空态 padding `20 16`→`24 16`、右键菜单项 gap 10→8 + 高→`--ctl`、菜单分组线 margin `4 6`→`4 8`、分组标题 gap 6→8 + margin `14 12 4`→`12 12 4`、会话行 30→`--ctl-2`、键位表组 `padding:10 16 2`→`12 16 4` / 行 `7 16`→`8 16` / kbd `1 6`→`1 4`、toast padding `6 14`→`8 12`。
+- 收尾把图标 16、状态点 8 这两个合法档补进脚本白名单（图标尺寸与圆点直径不是间距），脚本从报 2 处转为 OK。
+- `docs/autopilot.md` 第 1.1 条改写：规范是 v2 全覆盖版，新增元素先入矩阵，改完两个脚本都要跑。
+
+**验证证据**
+- `python scripts/check_ui_scale.py` → `OK 界面尺度全部走令牌与刻度（tokens.css）`（改前 43 处）。
+- `python scripts/check_design_tokens.py` → `OK 界面文件没有硬编码色值（令牌来源：ui/tokens.css）`。
+- `node --check ui/app.js` → exit 0。
+- 无头 dump-dom `<title>` = `Portio`（无 `ERR:`）。
+- 真几何量测（临时 `_probe.html`，iframe + `getBoundingClientRect` 写进 `<title>`，读完即删）：`paneHeadTerm=28`、`paneHeadFiles=28`、`drawerHead=28`、`sidebarH2=28`（四条标题条一致）、`newSession=30`、`sessSearch=26`、`importBtn=26`（三档控件各就位）、`titlebar=38`、`statusbar=26`、`tbtnW=34`、`icon=16`（图标 15→16 已生效）。
+- 截图（2× DPR）：`_a5_dark.png`（1440×900 #theme-dark）、`_a5_light.png`（1180×690 #theme-light）、`_a5_settings.png`（1440×900 #settings）、`_a5_small.png`（1024×620 浅色）——五条结构线在浅深两态都可见，四条标题条齐平，面板圆角与内嵌控件圆角同族。
+- `cargo test -p portio-core` / `-p portio-app`：本轮只动前端与文档，未重跑（上一轮均 ok）。
+
+**未验证**
+- 无头环境不能 hover / 拖拽 / 右键，把手的渐变高亮与拖拽手感仍未实机验证。
+- 真实登录会话、PTY 交互、tmux 全屏、真实 SFTP 上传下载仍无测试服务器（登记在案的已知阻塞）。
+- 终端画布是否随规范收圆：仍待用户拍板（`docs/backlog.md`）。
+
+**下一步**：S8 —— SFTP 通道复用已有 SSH 连接（同一连接开文件通道，不二次鉴权）；同时把本轮出的 NSIS 包交付。

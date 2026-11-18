@@ -6,7 +6,7 @@
 ## 一、每轮固定动作（顺序不可变）
 
 1. 读本文件 + `docs/decisions.md` + `排期-v0.1.md`，确认当前处在哪个 Sprint、该 Sprint 的完成定义。
-1.1 **任何 UI 改动必须先读 `docs/design-spec.md`**：它规定了颜色令牌、圆角阶梯、三种分隔线、图标、间距、动效和每轮验收清单。界面文件和 `app.js` 里不许出现硬编码色值，改完跑 `python scripts/check_design_tokens.py`。
+1.1 **任何 UI 改动必须先读 `docs/design-spec.md`**（v2 全覆盖版）：它规定了颜色令牌、尺度刻度（间距 / 控件高度 / 圆角 / 字号）、对齐规则、三种分隔线、图标、动效、状态矩阵，以及 31 条元素覆盖矩阵和每轮验收清单。**新增界面元素必须先在规范 §10 加一行再写代码**，否则视为规范缺口。界面文件和 `app.js` 里不许出现硬编码色值，也不许出现刻度外的裸数字，改完两个脚本都要跑：`python scripts/check_design_tokens.py`、`python scripts/check_ui_scale.py`。
 2. 取**下一个未完成的最小交付单元**（一次只做一件，能一小时左右收口最好）。
 3. 实现 → 自测 → 提交 → 版本 Alpha 进位。四件事缺一不可。
 4. 把当轮结论写进 `docs/autopilot-log.md`（日期、做了什么、验证证据、下一步）。

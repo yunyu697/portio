@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/app", "crates/core", "crates/ssh"]
 
 [workspace.package]
-version = "1.0.3-Alpha4"
+version = "1.0.3-Alpha5"
 edition = "2021"
 license = "MIT"
 authors = ["Portio contributors"]

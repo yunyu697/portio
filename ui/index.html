@@ -15,14 +15,14 @@
        overflow:hidden;user-select:none}
 
   /* ---------- 标题栏 ---------- */
-  .titlebar{display:flex;align-items:center;gap:10px;padding-left:10px;padding-right:0;
+  .titlebar{display:flex;align-items:center;gap:8px;padding-left:12px;padding-right:0;
             background:var(--surface);border-bottom:1px solid var(--line-strong);height:var(--titlebar)}
   .titlebar .brand{display:flex;align-items:center;gap:8px;font-weight:600;letter-spacing:-.01em;
                    padding-right:10px;border-right:1px solid var(--line);height:100%}
   .titlebar .brand img,.titlebar .brand .mark{width:18px;height:18px;flex:none;display:block}
   .titlebar .brand .ver{color:var(--text-3);font-weight:400;font-family:var(--mono);font-size:var(--fs-11)}
   .tabs{display:flex;align-items:center;gap:2px;flex:1;min-width:0;height:100%}
-  .tab{display:flex;align-items:center;gap:8px;height:calc(var(--titlebar) - 6px);padding:0 10px;
+  .tab{display:flex;align-items:center;gap:8px;height:calc(var(--titlebar) - 6px);padding:0 12px;
        background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-8) var(--r-8) 0 0;
        border-bottom:0;color:var(--text-2);font-size:var(--fs-12);max-width:220px;min-width:0}
   .tab.active{background:var(--bg);color:var(--text)}
@@ -30,10 +30,10 @@
   .tab .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .tab .x{opacity:.6;padding:0 2px}
   .tbtn{background:none;border:0;color:var(--text-2);cursor:pointer;height:100%;
-        padding:0 10px;white-space:nowrap;display:inline-flex;align-items:center;
+        padding:0 12px;white-space:nowrap;display:inline-flex;align-items:center;
         justify-content:center;font-size:var(--fs-12)}
   .tbtn:hover{background:var(--surface-2);color:var(--text)}
-  .tbtn svg{width:15px;height:15px;display:block;stroke:currentColor;fill:none;stroke-width:1.6;
+  .tbtn svg{width:16px;height:16px;display:block;stroke:currentColor;fill:none;stroke-width:1.6;
     stroke-linecap:round;stroke-linejoin:round}
   .tbtn.icon-only{width:34px;padding:0}
   /* 主题按钮：深色显示月亮、浅色显示太阳；两枚图标都按 24 格中心对齐，避免一高一低 */
@@ -44,7 +44,7 @@
   *{scrollbar-width:thin;scrollbar-color:var(--surface-3) transparent}
   *::-webkit-scrollbar{width:6px;height:6px}
   *::-webkit-scrollbar-track{background:transparent}
-  *::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:3px}
+  *::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:var(--r-full)}
   *::-webkit-scrollbar-thumb:hover{background:var(--text-3)}
   *::-webkit-scrollbar-corner{background:transparent}
   .win-ctl{display:flex;height:100%}
@@ -59,13 +59,13 @@
   .main > .stage{grid-column:3}
   .main > #gutter-v{grid-column:2}
   .sidebar{background:var(--surface);overflow:auto;min-width:0}
-  .sidebar h2{margin:0;padding:0 12px;display:flex;align-items:center;gap:6px;height:var(--row);
+  .sidebar h2{margin:0;padding:0 12px;display:flex;align-items:center;gap:8px;height:var(--row);
               font-size:var(--fs-11);letter-spacing:.08em;color:var(--text-3);
               border-bottom:1px solid var(--line)}
   .sidebar h2 .count{margin-left:auto;font-family:var(--mono);font-weight:400}
   .empty{padding:28px 16px;color:var(--text-3);font-size:var(--fs-12);line-height:1.7}
   .empty kbd{font-family:var(--mono);background:var(--surface-2);border:1px solid var(--line);
-             border-radius:4px;padding:1px 5px;font-size:var(--fs-11)}
+             border-radius:var(--r-1);padding:1px 4px;font-size:var(--fs-11)}
 
   /* 拖拽把手：绝对定位压在边界上，不占栅格。
      平时完全透明（不留一条高亮色带），鼠标移上来才浮出一小段胶囊，拖拽时胶囊变长变实——
@@ -96,7 +96,7 @@
   .main.collapsed #gutter-v::before{display:none}
   .main.collapsed #gutter-v::after{display:none}
   .main.collapsed #gutter-v::after{content:"›";position:absolute;top:50%;left:50%;width:auto;height:auto;
-    transform:translate(-50%,-50%);font-size:12px;line-height:1;color:var(--text-3);background:none;
+    transform:translate(-50%,-50%);font-size:var(--fs-12);line-height:1;color:var(--text-3);background:none;
     border-radius:0;opacity:.55;transition:opacity .12s,color .12s}
   .main.collapsed #gutter-v:hover{box-shadow:inset -1px 0 0 var(--accent)}
   .main.collapsed #gutter-v:hover::after{opacity:1;color:var(--accent);transform:translate(-50%,-50%)}
@@ -135,7 +135,7 @@
 
   .drawer{display:flex;flex-direction:column;background:var(--surface-2);
           min-height:0;overflow:hidden;border-radius:var(--r-8) var(--r-8) 0 0}
-  .drawer-head{display:flex;align-items:center;gap:10px;height:var(--row);padding:0 12px;flex:none;
+  .drawer-head{display:flex;align-items:center;gap:8px;height:var(--row);padding:0 12px;flex:none;
                font-size:var(--fs-11);color:var(--text-3);cursor:pointer}
   .drawer-head .num{font-family:var(--mono);color:var(--text-2)}
   .drawer-head .right{margin-left:auto}
@@ -144,26 +144,26 @@
 
   .statusbar{display:flex;align-items:center;gap:16px;padding:0 12px;background:var(--surface);
              border-top:1px solid var(--line-strong);font-size:var(--fs-11);color:var(--text-3)}
-  .statusbar .state{display:flex;align-items:center;gap:6px;color:var(--text-2)}
-  .statusbar .state i{width:7px;height:7px;border-radius:50%;background:var(--text-3)}
+  .statusbar .state{display:flex;align-items:center;gap:8px;color:var(--text-2)}
+  .statusbar .state i{width:8px;height:8px;border-radius:50%;background:var(--text-3)}
   .statusbar .right{margin-left:auto;display:flex;gap:16px;font-family:var(--mono)}
 
   /* ---------- 密度 ---------- */
   html[data-density="compact"]{--titlebar:32px;--statusbar:24px;--lh-24:20px}
   
-  html[data-density="compact"] .pane-body{padding:8px 10px}
+  html[data-density="compact"] .pane-body{padding:8px 12px}
 
   /* ---------- 终端宿主 ---------- */
   .term-host{flex:1;min-width:0;min-height:0;padding:0;background:var(--term-bg);overflow:hidden;position:relative}
   .term-host .xterm{height:100%}
-  .term-pane{position:absolute;inset:0;padding:6px 0 0 8px;display:none}
+  .term-pane{position:absolute;inset:0;padding:4px 0 0 8px;display:none}
   .term-pane.on{display:block}
 
   /* ---------- 文件双栏 ---------- */
   .fp{flex:1;min-height:0;display:grid;grid-template-rows:1fr 1fr;gap:1px;background:var(--line-strong)}
   .fp-block{background:var(--surface);display:flex;flex-direction:column;min-height:0;
             border-radius:var(--r-8);overflow:hidden}
-  .fp-bar{display:flex;align-items:center;gap:6px;overflow:hidden;padding:0 8px;height:var(--row);
+  .fp-bar{display:flex;align-items:center;gap:4px;overflow:hidden;padding:0 8px;height:var(--row);
           border-bottom:1px solid var(--line);background:var(--surface-2)}
   .fp-bar b{font-size:var(--fs-11);color:var(--text-3);font-weight:600;letter-spacing:.02em}
   .fp-path{flex:1;min-width:0;width:0;background:transparent;border:none;outline:none;color:var(--text-2);
@@ -173,7 +173,7 @@
           padding:0 4px;line-height:1}
   .fp-btn:hover{color:var(--accent)}
   .fp-list{flex:1;min-height:0;overflow:auto;padding:2px 0}
-  .fp-row{display:grid;grid-template-columns:14px minmax(0,1fr) 64px 82px;align-items:center;gap:6px;
+  .fp-row{display:grid;grid-template-columns:16px minmax(0,1fr) 64px 80px;align-items:center;gap:4px;
           height:var(--row);padding:0 8px;cursor:default;font-size:var(--fs-12)}
   .fp-row:hover{background:var(--surface-2)}
   .fp-row.sel{background:var(--surface-3);box-shadow:inset 2px 0 0 var(--accent)}
@@ -183,14 +183,14 @@
   .fp-row.dir .nm{color:var(--info)}
   .fp-row .sz,.fp-row .tm{color:var(--text-3);font-size:var(--fs-11);text-align:right;
           font-variant-numeric:tabular-nums}
-  .fp-list .hint{padding:10px}
+  .fp-list .hint{padding:12px}
 
   /* ---------- 传输队列 ---------- */
   .tr{display:grid;grid-template-columns:16px 1fr 96px;gap:8px;align-items:center;
       height:var(--row);padding:0 12px;font-size:var(--fs-12)}
   .tr .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .tr .nm .arrow{color:var(--text-3);margin:0 4px}
-  .tr .bar{height:3px;background:var(--surface-3);border-radius:2px;overflow:hidden}
+  .tr .bar{height:3px;background:var(--surface-3);border-radius:var(--r-hair);overflow:hidden}
   .tr .bar i{display:block;height:100%;background:var(--accent);width:0;transition:width 160ms}
   .tr .meta{color:var(--text-3);font-size:var(--fs-11);text-align:right;
             font-variant-numeric:tabular-nums}
@@ -205,62 +205,62 @@
                 font-weight:600}
   .sheet header .sub{margin-left:auto;font-weight:400;color:var(--text-3);font-size:var(--fs-11);
                      font-family:var(--mono)}
-  .sheet .body{display:grid;gap:10px;padding:16px}
+  .sheet .body{display:grid;gap:12px;padding:16px}
   .field{display:grid;gap:4px}
   /* [hidden] 必须压过 .field 的 display:grid，否则私钥模式下密码框还留在面板上 */
   .field[hidden]{display:none}
   .field label{font-size:var(--fs-11);color:var(--text-3)}
   .field input,.field select{background:var(--surface-2);border:1px solid var(--line);color:var(--text);
-          border-radius:var(--r-4);padding:7px 9px;font-family:var(--mono);font-size:var(--fs-12);
-          outline:none;height:32px}
+          border-radius:var(--r-4);padding:0 12px;font-family:var(--mono);font-size:var(--fs-12);
+          outline:none;height:var(--ctl-3)}
   .field input:focus,.field select:focus{border-color:var(--accent)}
-  .row{display:grid;grid-template-columns:1fr 96px;gap:10px}
+  .row{display:grid;grid-template-columns:1fr 96px;gap:12px}
   .sheet footer{display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;
                 border-top:1px solid var(--line);background:var(--surface-2)}
-  .btn{background:var(--surface-3);border:1px solid var(--line);color:var(--text-2);padding:7px 14px;
+  .btn{background:var(--surface-3);border:1px solid var(--line);color:var(--text-2);padding:8px 12px;
        border-radius:var(--r-4);cursor:pointer;font-size:var(--fs-12)}
   .btn:hover{color:var(--text)}
   .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
   .btn.primary:hover{filter:brightness(1.06)}
   .btn:disabled{opacity:.55;cursor:default}
-  .new-session{width:calc(100% - 24px);margin:10px 12px 0;height:30px}
-  .sess-search{display:block;width:calc(100% - 24px);margin:6px 12px 2px;height:26px;
+  .new-session{width:calc(100% - 24px);margin:12px 12px 0;height:var(--ctl-2)}
+  .sess-search{display:block;width:calc(100% - 24px);margin:4px 12px 4px;height:var(--ctl);
     padding:0 8px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-4);
     color:var(--text);font-size:var(--fs-12);outline:none}
   .sess-search::placeholder{color:var(--text-3)}
   .sess-search:focus{border-color:var(--accent)}
   /* 快速连接：一行 host 串 + 回车键，跟搜索框同高同圆角，但对齐"动作"这一列 */
-  .sess-quick{display:flex;gap:6px;margin:6px 12px 0}
-  .sess-quick input{flex:1;min-width:0;height:26px;padding:0 8px;background:var(--surface-2);
+  .sess-quick{display:flex;gap:4px;margin:8px 12px 0}
+  .sess-quick input{flex:1;min-width:0;height:var(--ctl);padding:0 8px;background:var(--surface-2);
     border:1px solid var(--line);border-radius:var(--r-4);color:var(--text);
     font-family:var(--mono);font-size:var(--fs-12);outline:none}
   .sess-quick input::placeholder{color:var(--text-3);font-family:var(--ui)}
   .sess-quick input:focus{border-color:var(--accent)}
-  .sess-quick button{flex:none;width:26px;height:26px;padding:0;background:var(--surface-2);
+  .sess-quick button{flex:none;width:var(--ctl);height:var(--ctl);padding:0;background:var(--surface-2);
     border:1px solid var(--line);border-radius:var(--r-4);color:var(--text-3);cursor:pointer;
     font-size:var(--fs-12);transition:color var(--dur) var(--ease),border-color var(--dur) var(--ease)}
   .sess-quick button:hover{color:var(--accent);border-color:var(--accent)}
   /* 导入：弱化成一个"次要动作"，不跟"新建连接"抢视觉重心 */
-  .sess-import{display:block;width:calc(100% - 24px);margin:4px 12px 2px;height:26px;
+  .sess-import{display:block;width:calc(100% - 24px);margin:4px 12px 4px;height:var(--ctl);
              background:transparent;color:var(--text-3);border:1px dashed var(--line-strong);
              border-radius:var(--r-6);font-size:var(--fs-12);cursor:pointer;
              transition:color var(--dur) var(--ease),border-color var(--dur) var(--ease)}
   .sess-import:hover{color:var(--accent);border-color:var(--accent)}
-  .sess-empty{padding:20px 16px;color:var(--text-3);font-size:var(--fs-12)}
+  .sess-empty{padding:24px 16px;color:var(--text-3);font-size:var(--fs-12)}
   /* 右键菜单：所有模块共用一套，位置在鼠标点，越界自动内收 */
   .ctx{position:fixed;z-index:40;min-width:184px;padding:4px;background:var(--surface-2);
     border:1px solid var(--line);border-radius:var(--r-6);box-shadow:var(--shadow-2);
     display:none}
   .ctx.open{display:block}
-  .ctx-item{display:flex;align-items:center;gap:10px;height:26px;padding:0 8px;
+  .ctx-item{display:flex;align-items:center;gap:8px;height:var(--ctl);padding:0 8px;
     border-radius:var(--r-4);font-size:var(--fs-12);color:var(--text);cursor:pointer;white-space:nowrap}
   .ctx-item:hover{background:var(--surface-3)}
   .ctx-item.dis{color:var(--text-3);cursor:default}
   .ctx-item.dis:hover{background:transparent}
   .ctx-item .hint{margin-left:auto;color:var(--text-3);font-size:var(--fs-11)}
-  .ctx-sep{height:1px;margin:4px 6px;background:var(--ctx-sep)}
+  .ctx-sep{height:1px;margin:4px 8px;background:var(--ctx-sep)}
   /* 分组标题：可折叠，caret 用 12ms 级的旋转，折叠时图标朝右 */
-  .sess-group{display:flex;align-items:center;gap:6px;margin:14px 12px 4px;color:var(--text-3);
+  .sess-group{display:flex;align-items:center;gap:8px;margin:12px 12px 4px;color:var(--text-3);
     font-size:var(--fs-11);letter-spacing:.04em;cursor:pointer;user-select:none;
     transition:color var(--dur) var(--ease)}
   .sess-group:hover{color:var(--text-2)}
@@ -270,7 +270,7 @@
   .sess-group .gcount{margin-left:auto;color:var(--text-3);font-family:var(--mono);
     font-size:var(--fs-11);opacity:0}
   .sess-group:hover .gcount,.sess-group.folded .gcount{opacity:1}
-  .sess-row{display:flex;align-items:center;gap:8px;margin:4px 12px 0;padding:0 8px;height:30px;
+  .sess-row{display:flex;align-items:center;gap:8px;margin:4px 12px 0;padding:0 8px;height:var(--ctl-2);
     border-radius:var(--r-4);color:var(--text-2);cursor:pointer;min-width:0}
   .sess-row:hover{background:var(--surface-2);color:var(--text)}
   .sess-row .dot{width:6px;height:6px;border-radius:50%;background:var(--text-3);flex:none}
@@ -280,11 +280,11 @@
   .sess-row:hover .del{opacity:1}
   .modal .keys{width:520px}
   .keys .body{display:block;padding:4px 0 8px}
-  .keys .grp{padding:10px 16px 2px;color:var(--text-3);font-size:var(--fs-11)}
-  .keys .row{display:grid;grid-template-columns:168px minmax(0,1fr);gap:12px;align-items:center;padding:7px 16px}
+  .keys .grp{padding:12px 16px 4px;color:var(--text-3);font-size:var(--fs-11)}
+  .keys .row{display:grid;grid-template-columns:168px minmax(0,1fr);gap:12px;align-items:center;padding:8px 16px}
   .keys .row .k{display:flex;gap:4px;flex-wrap:wrap}
   .keys kbd{font-family:var(--mono);font-size:var(--fs-11);color:var(--text-2);background:var(--surface-2);
-    border:1px solid var(--line);border-radius:var(--r-6);padding:1px 6px;line-height:1.6}
+    border:1px solid var(--line);border-radius:var(--r-6);padding:1px 4px;line-height:1.6}
   .keys .row .d{color:var(--text-2)}
   .modal .set{width:460px}
   .set .body{display:grid;gap:16px;padding:16px}
@@ -294,7 +294,7 @@
   .set .field > label b{color:var(--text);font-family:var(--mono);font-weight:400}
   .seg{display:flex;border:1px solid var(--line);border-radius:var(--r-6);overflow:hidden;justify-self:start}
   .seg button{appearance:none;background:transparent;border:0;color:var(--text-2);font:inherit;
-    padding:6px 14px;cursor:pointer}
+    padding:8px 12px;cursor:pointer}
   .seg button + button{border-left:1px solid var(--line)}
   .seg button:hover{color:var(--text)}
   .seg button.on{background:var(--surface-3);color:var(--text)}
@@ -351,7 +351,7 @@
         <rect x="11.2" y="16.1" width="4.2" height="1.5" rx=".75" fill="var(--mark-accent)" opacity=".5"/>
         <rect x="15.4" y="11.3" width="3.6" height="1.4" rx=".7" fill="var(--mark-accent)"/>
       </svg>
-      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.3-Alpha4</span>
+      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.3-Alpha5</span>
     </div>
     <div class="tabs" id="tabs"></div>
     <button class="tbtn icon-only" id="btn-theme" aria-label="切换主题" title="切换主题：深色 / 浅色（跟随系统在设置里选）">

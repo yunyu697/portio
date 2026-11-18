@@ -9,8 +9,14 @@
      --r-4 控件、--r-6 输入与标签、--r-8 面板、--r-12 浮层。 */
   --r-1:4px; --r-2:8px; --r-3:12px;
   --r-4:4px; --r-6:6px; --r-8:8px; --r-12:12px;
+  /* 大圆角胶囊与发丝圆角，避免组件里出现 999 / 2 这类裸数字 */
+  --r-full:999px; --r-hair:2px;
   --fs-11:11px; --fs-12:12px; --fs-13:13px; --fs-14:14px; --fs-16:16px; --fs-20:20px;
   --row:28px; --titlebar:38px; --statusbar:26px; --sidebar:264px; --drawer:172px; --split:50%;
+  /* 控件高度三档：小控件 / 主按钮与会话行 / 表单输入。行与标题条一律 --row */
+  --ctl:26px; --ctl-2:30px; --ctl-3:32px;
+  /* 间距刻度：只用这七档，组件里不许再写 6 / 7 / 10 / 14 这类数 */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-6:24px;
   --mono:"JetBrains Mono","Cascadia Mono",ui-monospace,Consolas,monospace;
   --ui:"HarmonyOS Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
   /* 标题栏标记（内联 SVG）专用色：深色主题用深底＋亮青描线 */
