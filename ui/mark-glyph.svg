@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="Portio">
+  <!-- 无底板版：只留"终端+文件"这个图形本体，透明背景。
+       按 Apple 图标规范把图形装进 824×824 的安全区（1024 画布的 80.5%），居中留白。
+       图形原始坐标：x 8..88、y 12..84（矢量单位），放大 10.3 倍后正好 824 宽、741.6 高。 -->
+  <g transform="translate(17.6 17.6) scale(10.3)">
+    <rect x="8" y="12" width="80" height="72" rx="13" fill="#2F6167"/>
+    <path d="M56 12 H75 A13 13 0 0 1 88 25 V71 A13 13 0 0 1 75 84 H56 Z" fill="#DDEFEF"/>
+    <path d="M8 25 A13 13 0 0 1 21 12 H75 A13 13 0 0 1 88 25 Z" fill="#417A80"/>
+    <rect x="8" y="24.2" width="80" height="1.6" fill="#1B3C41" opacity=".55"/>
+    <path d="M22 47 L31 54.5 L22 62" fill="none" stroke="#FFFFFF" stroke-width="4.4"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="36" y="56.4" width="11" height="3.8" rx="1.9" fill="#FFFFFF"/>
+    <rect x="63" y="41" width="18" height="4.6" rx="2.3" fill="#24D6C0"/>
+    <rect x="63" y="51.4" width="21" height="4.6" rx="2.3" fill="#0E2E33" opacity=".55"/>
+    <rect x="63" y="61.8" width="14" height="4.6" rx="2.3" fill="#0E2E33" opacity=".38"/>
+  </g>
+</svg>

@@ -657,12 +657,16 @@ function renderSessions() {
   const all = readSessions();
   const q = (document.getElementById("sess-search").value || "").trim().toLowerCase();
   // 搜索覆盖主机、用户名、端口和备注名——运维记得住的是"那台 web 机"
-  const list = q
+  const matched = q
     ? all.filter((s) =>
         `${s.user}@${s.host}:${s.port ?? 22} ${s.name ?? ""}`.toLowerCase().includes(q)
       )
     : all;
-  sidebar.querySelectorAll(".sess-row").forEach((el) => el.remove());
+  // 最近用过的排前面：运维真正在敲的是那两三台机器，不该埋在列表深处
+  const list = [...matched].sort((a, b) => (b.last ?? 0) - (a.last ?? 0));
+  const recent = list.filter((s) => s.last).slice(0, 5);
+  const older = list.filter((s) => !recent.includes(s));
+  sidebar.querySelectorAll(".sess-row, .sess-group").forEach((el) => el.remove());
   document.getElementById("session-count").textContent = q
     ? `${list.length}/${all.length}`
     : String(all.length);
@@ -680,8 +684,23 @@ function renderSessions() {
   } else if (hint) {
     hint.remove();
   }
+  // 有搜索词就平铺（用户要的是"哪些匹配"），没搜索词才分"最近使用 / 更早"
+  const groups = q
+    ? [{ label: "", items: list }]
+    : [
+        { label: "最近使用", items: recent },
+        { label: "更早", items: older },
+      ];
   let anchor = document.getElementById("sess-search");
-  for (const s of list) {
+  for (const g of groups) {
+    if (g.label && g.items.length) {
+      const head = document.createElement("div");
+      head.className = "sess-group";
+      head.textContent = g.label;
+      anchor.after(head);
+      anchor = head;
+    }
+    for (const s of g.items) {
     const row = document.createElement("div");
     row.className = "sess-row";
     row.title = `${sessionKey(s)} · 双击连上，单击编辑`;
@@ -711,6 +730,7 @@ function renderSessions() {
     });
     anchor.after(row);
     anchor = row;
+    }
   }
 }
 
@@ -801,7 +821,10 @@ document.getElementById("btn-connect").addEventListener("click", async () => {
 if (location.hash.startsWith("#sess-demo")) {
   saveSession({ host: "web-01.example.com", port: 22, user: "deploy", auth: "key", keyfile: "~/.ssh/id_ed25519" });
   saveSession({ host: "10.0.8.12", port: 2222, user: "root", auth: "password" });
-  // #sess-demo&q=web 可直接演示搜索过滤
+  // 再塞一条"从没用过"的记录，好核对"更早"这组标题
+  sessionStore.records.push({ host: "db-02.internal", port: 22, user: "dba", auth: "password", last: 0 });
+  persistSessions();
+  renderSessions();
   const q = new URLSearchParams(location.hash.slice(1)).get("q");
   if (q) {
     document.getElementById("sess-search").value = q;
