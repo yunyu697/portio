@@ -840,3 +840,48 @@ S12 的第一件：终端能找了。第二个交付（分屏）还没动。
 **把前端那三条自检从"每轮临时拼命令"变成仓库里一个固定入口**——加 `scripts/rc.py`（一条命令跑完
 A1–A10 并打印 PASS/FAIL 汇总），这样回归记录表的每一行都有可复现的输出，不用我每次手打命令。
 之后是首发物料里的截图素材与多语言。
+
+## 2026-11-19 · v1.0.5-RC1 · 进入 RC 阶段 + 一条命令跑完自动化回归
+
+**这一轮要什么**：用户拍板"下一轮开始改成 RC 版本"，同时上一轮记下的下一步是补 `scripts/rc.py`。
+两件事正好是一件事：宣布 RC 就意味着"不再加功能、只修 Bug"，那第一件该做的事就是让"能不能发"
+有一个可复现的判断口，而不是靠我每轮手打一堆命令。
+
+**做了什么**
+- 新增 `scripts/rc.py`（约 300 行），按 `docs/rc-checklist.md` §1 的 A1–A11 顺序跑：
+  - A1 `cargo test --workspace`（解析 `test result:` 行累计 passed / failed）
+  - A2 `node --check ui/app.js`
+  - A3/A4 两个界面守卫脚本
+  - A5 `check_versions.py`
+  - A6–A9 Chrome 无头抓 `<title>`（默认页 / `#split-test` / `#clip-test` / `#fold-test`，出现 `ERR:` 即判失败）
+  - A10 读 `portio-app.exe` 的 PE 子系统
+  - A11 最新 NSIS 包的体积与文件名
+  - 全跑约 57 秒（`cargo test` 占 50 秒）；`--fast` 跳过 A1；`--list` 只列项；任一 FAIL 退出码 1，可直接当 CI 门禁；
+    三个工具自动探测（rustup 默认 cargo、豆包运行时自带 node、标准路径 Chrome），也可用环境变量覆盖；
+    跳过项不算通过，汇总行会提醒写清跳过原因。
+- 版本规则补上 RC（`docs/versioning.md` 新增「从 Alpha 转到 RC」小节）：`v1.0.5-RC1` 起每完成一个单元 RC 进一位，
+  RC 满 10 进位到下一个 patch 回 RC1，转正去掉后缀，阶段只许前进（`version.py` 会拦住退回）。
+- `docs/autopilot.md` 里两处"Alpha 进位"改成"预发布位进位（Alpha / RC）"，并写明 RC 只修 Bug。
+- README 开发段把"照清单过一遍"换成两条命令（`rc.py` / `rc.py --fast`）。
+- `rc-checklist.md` §1 顶部写明固定入口；§7 回归记录加 RC1 一行。
+
+**验证证据**
+- `python scripts/rc.py` 全跑：**11 通过 / 0 失败 / 0 跳过，56.8s**
+  （A1 82 passed；A2 exit 0；A3/A4 OK；A5 `OK v1.0.5-RC1`；A6 `title = Portio`；A7 `SELFTEST-OK`；
+  A8 `CLIP-SELFTEST-OK 10`；A9 `FOLD-SELFTEST-OK`（fold: files=0 / gutter=10 / back 复原）；
+  A10 `Subsystem=2`；A11 当时读到的是上一版包）。
+- 打包后又跑一次 `--fast`：A11 已指到 `Portio_1.0.5-RC1_x64-setup.exe` 4532960 字节（4.32 MiB），
+  A5 仍是 `OK v1.0.5-RC1`。
+- `python -m unittest scripts.test_version` → 12 tests OK（含 `Alpha3 → RC1`、`RC1 → final`）。
+- `python scripts/version.py next 1.0.5-Alpha3 stage RC` → `1.0.5-RC1`；`set_version.py` 四处同步。
+- 提交 `e33d85c`（12 files +390/−15）。
+
+**未验证项**
+- `rc-checklist.md` §2 的 12 项人工点检、§4 的 9 项真服务器项：本版一项没做（机器被占用、无测试服务器）。
+- 安装包仍未签名（S13 的 C1 未到位）。
+- `rc.py` 只覆盖本机能验的部分；A6–A9 依赖本机装 Chrome，换机器要设 `PORTIO_CHROME`。
+
+**下一步**：RC 阶段只修 Bug，所以接下来的单元都从清单里挑。第一顺位是
+**§2 那 12 项人工点检**——它是清单里唯一"代码全齐、就是没人点过"的部分，
+其中 M5（九个面板右键）、M6（文件面板与队列折叠）、M11（窄窗）是前面几轮用户亲自报过的点，
+最该由我先验一遍。机器被占用时退而求其次做首发物料的截图素材与多语言。
