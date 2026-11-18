@@ -11,6 +11,40 @@
 > 只写用户能感知的变化；内部重构放 `### Changed`，未验证的能力写进 `### Known limitations`。
 > 口吻：站在用这个软件的人这一侧说话（"我把 X 改成 Y"），不写成第三方播报。
 
+## [1.0.5-RC1] - 2026-11-19
+
+进 RC 了。从这一版起**功能冻结**，只修 Bug。
+
+### Added
+- **`scripts/rc.py`——一条命令跑完整个自动化回归**。以前这些检查散在日志里，每轮都要手打
+  `cargo test`、`node --check`、两个守卫脚本、四条 Chrome 无头自检、PE 子系统、安装包体积，
+  少跑一项也没人知道。现在 `python scripts/rc.py` 按 A1–A11 顺序跑完，逐项打 `[PASS]` / `[FAIL]` / `[SKIP]`，
+  最后一行是汇总，可以直接贴进 `docs/rc-checklist.md` §7 的回归记录。
+  - 全跑约 57 秒（`cargo test` 占 50 秒）；只改前端时 `--fast` 跳过 A1。
+  - `--list` 只列项不跑；有任何一项 FAIL 退出码为 1，能直接当 CI 门禁。
+  - 三个工具自动探测（cargo 走 rustup 默认路径、node 走豆包运行时自带那份、Chrome 走标准安装路径），
+    也可用 `PORTIO_CARGO` / `PORTIO_NODE` / `PORTIO_CHROME` 覆盖。
+  - 跳过项不会被算成通过——汇总行会提醒"有跳过项时，回归记录里要写清跳过原因"。
+
+### Changed
+- **版本规则补上 RC 阶段**（`docs/versioning.md`）：`v1.0.5-RC1` 起每完成一个交付单元 RC 位进一位，
+  RC 满 10 进位到下一个 patch 再回 RC1，转正时去掉后缀；阶段只许往前走，`version.py` 会拦住退回。
+- `docs/autopilot.md` 的每轮动作与完成判定改成"预发布位进位（Alpha / RC）"，并写明 RC 只修 Bug。
+- `docs/rc-checklist.md` §1 顶部说明固定入口；README 开发段把"照清单过一遍"换成两条 `rc.py` 命令。
+- `scripts/set_version.py` 的说明补上 RC 写法。
+
+### 验证方式
+- `python scripts/rc.py` 实跑：**11 通过 / 0 失败 / 0 跳过，56.8s**
+  （A1 82 passed；A2 exit 0；A3/A4 两守卫 OK；A5 `OK v1.0.5-RC1`；
+  A6 标题 `Portio`、A7 `SELFTEST-OK`、A8 `CLIP-SELFTEST-OK 10`、A9 `FOLD-SELFTEST-OK`（fold: files=0 / gutter=10）；
+  A10 `Subsystem=2`；A11 安装包体积）。
+- `python -m unittest scripts.test_version` → 12 tests OK（含 `Alpha3 → RC1`、`RC1 → final`）。
+- `python scripts/version.py next 1.0.5-Alpha3 stage RC` → `1.0.5-RC1`，版本四处同步。
+
+### Known limitations
+- `rc.py` 只覆盖本机能验的部分。`未验证`：`docs/rc-checklist.md` §2 的 12 项人工点检、
+  §4 的 9 项真服务器项，这一版一项都没做；安装包仍未签名。
+
 ## [1.0.5-Alpha3] - 2026-11-19
 
 ### Added

@@ -35,6 +35,20 @@ vMAJOR.MINOR.PATCH-RCN       候选版       v1.0.0-RC1
 
 **预发布计数 `N` 也是 1–10**：做到 `Alpha10` 后还想发第 11 个内测版，就进位到下一个 patch、重新从 `Alpha1` 开始（例：`1.2.3-Alpha10` → `1.2.4-Alpha1`）。这一条是我按同一精神补的，你若想改成"Alpha 允许超过 10"说一声。
 
+## 从 Alpha 转到 RC（`v1.0.5-RC1` 起）
+
+`v1.0.5-Alpha3` 之后功能冻结，版本号改用 RC 计数：
+
+| 动作 | 命令 | 结果 |
+|---|---|---|
+| 进入 RC 阶段 | `python scripts/version.py next 1.0.5-Alpha3 stage RC` | `1.0.5-RC1` |
+| 又推进一个单元 | `python scripts/version.py next 1.0.5-RC1 stage RC` | `1.0.5-RC2` |
+| RC 满 10 还想再来 | 同上 | `1.0.6-RC1`（进位到下一个 patch，重新从 1 起） |
+| 准备转正 | `python scripts/version.py next 1.0.5-RC3 final` | `1.0.5` |
+
+**RC 阶段只修 Bug，不加功能。** 真要在 RC 里加一个东西，说明它本来就该在 Alpha 阶段做完——
+那就当 Bug 修，别当功能发。阶段只能往前走（`Alpha → RC → 正式`），`version.py` 会拦住退回。
+
 ## 里程碑与对外版本对照
 
 内部的 v0.1–v0.4 是**阶段代号**，不是版本号；对外只发下面这些。
@@ -77,3 +91,6 @@ git tag -a v1.0.6 -m "v1.0.6"
 | S4 打磨与可发布 | v1.0.0-Alpha4 |
 
 Alpha 满 10 时按同一进位规则进到下一个 patch，再从 Alpha1 重新开始。写入版本用 scripts/set_version.py，校验用 scripts/check_versions.py。
+
+**现在是 RC 阶段**（从 `v1.0.5-RC1` 起）：每完成一个交付单元 RC 位进一位，规则同 Alpha（满 10 进 patch 回 RC1），
+阶段只许往前走；`RC10 → 1.0.6-RC1`，转正时去掉后缀。见上一节的表。

@@ -8,7 +8,7 @@
 1. 读本文件 + `docs/decisions.md` + `排期-v0.1.md`，确认当前处在哪个 Sprint、该 Sprint 的完成定义。
 1.1 **任何 UI 改动必须先读 `docs/design-spec.md`**（v2 全覆盖版）：它规定了颜色令牌、尺度刻度（间距 / 控件高度 / 圆角 / 字号）、对齐规则、三种分隔线、图标、动效、状态矩阵，以及 31 条元素覆盖矩阵和每轮验收清单。**新增界面元素必须先在规范 §10 加一行再写代码**，否则视为规范缺口。界面文件和 `app.js` 里不许出现硬编码色值，也不许出现刻度外的裸数字，改完两个脚本都要跑：`python scripts/check_design_tokens.py`、`python scripts/check_ui_scale.py`。
 2. 取**下一个未完成的最小交付单元**（一次只做一件，能一小时左右收口最好）。
-3. 实现 → 自测 → 提交 → 版本 Alpha 进位。四件事缺一不可。
+3. 实现 → 自测 → 提交 → 版本进位。四件事缺一不可。
 4. 把当轮结论写进 `docs/autopilot-log.md`（日期、做了什么、验证证据、下一步）。
 
 ## 二、完成的判定（Definition of Done，每轮都适用）
@@ -17,7 +17,7 @@
 - 前端改动必须用 Chrome 无头 `--dump-dom` 或截图确认没有 JS 报错（标题里出现 `ERR:` 即为失败）。
 - 涉及真实窗口的改动，实机启动一次并截屏，确认没有视觉塌陷。
 - 提交信息用 `type(scope): 摘要`，正文写清验证方式。
-- 版本：每完成一个交付单元进一位 Alpha。写入用 `python scripts/set_version.py`，校验用 `python scripts/check_versions.py`。
+- 版本：每完成一个交付单元预发布位进一位（Alpha 阶段进 AlphaN，RC 阶段进 RCN）。写入用 `python scripts/set_version.py`，校验用 `python scripts/check_versions.py`。**现在是 RC 阶段**：只修 Bug，不加功能。
 - 未验证的能力必须在提交正文与日志里写明"未验证"，不许含糊成"已完成"。
 - **写给人看的东西要用第一人称。** CHANGELOG、发布说明、autopilot-log 的行文一律站在使用者这一侧说话（"我把导入收进下拉里了"），不许写成第三方播报（"本次为用户优化了…"）。原因很简单：对读的人而言，写这些字的不是别人，就是他自己。
 

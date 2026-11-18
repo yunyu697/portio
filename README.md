@@ -109,8 +109,14 @@ node --check ui/app.js          # 前端语法门禁
 python scripts/check_design_tokens.py   # 界面不许出现硬编码色值
 ```
 
-改完代码想确认"这一版能不能发"，照 [`docs/rc-checklist.md`](docs/rc-checklist.md) 过一遍：
-§1 是本机一条命令一项的自动化，§2 是得真人点一遍的，§4 写明哪些必须有服务器才验得了。
+改完代码想确认"这一版能不能发"，一条命令就够：
+
+```bash
+python scripts/rc.py            # 跑完 docs/rc-checklist.md §1 的 11 项，逐项 PASS / FAIL / SKIP
+python scripts/rc.py --fast     # 只改了前端时跳过 cargo test
+```
+
+`rc-checklist.md` 里 §2 是得真人点一遍的，§4 写明哪些必须有服务器才验得了。
 
 出本地安装包：
 

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""把同一个版本号写进三处清单文件，避免手工改漏。
+"""把同一个版本号写进清单文件，避免手工改漏。
 
-规则见 docs/versioning.md：每一步交付完成后 Alpha 位进一，
-即 v1.0.0-Alpha1 → -Alpha2 → ... ；Alpha 满 10 则进到下一个 patch 重新从 Alpha1 开始。
+规则见 docs/versioning.md：每完成一个交付单元，预发布位进一位——
+Alpha 阶段 v1.0.0-Alpha1 → -Alpha2 → …；RC 阶段 v1.0.5-RC1 → -RC2 → …；
+任一阶段满 10 则进到下一个 patch、重新从 1 开始；转正时去掉后缀。
 
 用法：
     python scripts/set_version.py 1.0.0-Alpha3
+    python scripts/set_version.py 1.0.5-RC1
 """
 
 from __future__ import annotations
