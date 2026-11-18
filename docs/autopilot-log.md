@@ -114,3 +114,11 @@
 - 验证：`json.load` 校验配置合法，`bundle` 下已无那两个键；`cargo` 构建 + NSIS 打包 exit=0；`/S` 静默安装 1.0.2-Alpha5（6.2 秒），安装前后 `explorer.exe` 启动时间均为 11:33:07（没有被重启），`_iconhook.log` 时间戳 11:33:06 未变（钩子确实没执行），安装目录 exe 版本读回 1.0.2-Alpha5；`check_versions.py` OK。
 - 未验证 / 已知代价：覆盖安装后桌面图标可能仍是旧画法，要等资源管理器自己刷新缓存；真实 SSH/SFTP 端到端仍缺测试主机与凭据。
 - 下一步：S6 会话导入器（从 OpenSSH `~/.ssh/config` 导入，主机 / 端口 / 用户 / 私钥路径映射），先做解析与单测。
+## 2026-11-18 · v1.0.2-Alpha6 · S6 第一单元：从 ~/.ssh/config 导入主机
+
+- 解析器 `crates/core/src/sshconfig.rs`：`Host` 块 → `SessionRecord`，映射 HostName / User / Port / IdentityFile；别名当备注名；有 IdentityFile 记 `auth=key` 并把 `~` 按传入的 home 展开；通配符块（`Host *`、`web-*`）、`Match` 块、缺用户名的块跳过并计数；支持 `Key=Value`、行内注释、引号内 `#`、同端点去重。
+- 外壳层 `crates/app/src/session_store.rs`：新命令 `sessions_import_ssh_config(path?)`，读 `~/.ssh/config`（可传自定义路径）→ 与磁盘清单合并 → 仅在真有新增时原子写回；抽出可单测的 `import_into_store()`，命令层只剩找路径/读/写。
+- 前端：会话栏搜索框下加虚线按钮「导入 ~/.ssh/config」，导入后直接用返回的整份 JSON 刷新内存与列表，提示「导入 N 台主机，跳过 M 项」。
+- 验证：`cargo test -p portio-core` 29 passed（新增 9 条）；`cargo test -p portio-app` 3 passed（合并计数 / 重复导入幂等 / 缺文件报错且不污染清单）；`cargo check -p portio-app` 通过；`node --check ui/app.js` 通过；无头 `dump-dom` 标题 `Portio`（无 `ERR:`）且存在 `#btn-import-ssh`；`_s6_import.png` 2× 截图确认按钮位置与虚线样式；打包 exit=0，`check_versions.py` OK v1.0.2-Alpha6。
+- 未验证：桌面版里点按钮的 IPC 往返与 toast 文案（无头环境不能 invoke）；本机没有 `~/.ssh/config`（只有 known_hosts），真实文件导入没跑；Xshell / WinSCP 自有格式未做。
+- 下一步：Xshell / WinSCP 会话文件导入，或先回 S7 补快速连接模板（`docs/backlog.md` 里已记按版本命名 ico 的发布物料改进）。
