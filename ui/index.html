@@ -36,6 +36,10 @@
   .tbtn svg{width:15px;height:15px;display:block;stroke:currentColor;fill:none;stroke-width:1.6;
     stroke-linecap:round;stroke-linejoin:round}
   .tbtn.icon-only{width:34px;padding:0}
+  /* 主题按钮：深色显示月亮、浅色显示太阳；两枚图标都按 24 格中心对齐，避免一高一低 */
+  .tbtn svg.i-sun{display:none}
+  [data-theme="light"] #btn-theme svg.i-moon{display:none}
+  [data-theme="light"] #btn-theme svg.i-sun{display:block}
   /* 滚动条：细条＋主题色，默认那种白底宽槽在深色面板上太抢眼，也太占地 */
   *{scrollbar-width:thin;scrollbar-color:var(--surface-3) transparent}
   *::-webkit-scrollbar{width:6px;height:6px}
@@ -245,11 +249,12 @@
   <header class="titlebar" data-tauri-drag-region>
     <div class="brand" data-tauri-drag-region>
       <img src="mark.svg" alt="Portio" data-tauri-drag-region>
-      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.2-Alpha1</span>
+      <b data-tauri-drag-region>Portio</b><span class="ver">1.0.2-Alpha2</span>
     </div>
     <div class="tabs" id="tabs"></div>
     <button class="tbtn icon-only" id="btn-theme" aria-label="切换主题" title="切换主题（深色 / 浅色 / 跟随系统）">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 0 1-9-9Z"/></svg>
+      <svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.1"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.4 5.4l1.7 1.7M16.9 16.9l1.7 1.7M18.6 5.4l-1.7 1.7M7.1 16.9l-1.7 1.7"/></svg>
+      <svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.8 5a6.6 6.6 0 1 0 8 8 9 9 0 0 1-8-8Z"/></svg>
     </button>
     <button class="tbtn icon-only" id="btn-density" aria-label="切换密度" title="切换密度：标准 / 紧凑">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h10M4 17h16"/></svg>

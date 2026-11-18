@@ -400,6 +400,9 @@ function 初次提示() {}
 
 // ---------- 启动：恢复用户上次调好的尺寸 ----------
 applyTheme(localStorage.getItem("portio.theme") ?? "dark");
+// #theme-light / #theme-dark：截图核验主题图标时直接锁定主题，不用靠点按钮
+if (location.hash === "#theme-light") applyTheme("light");
+if (location.hash === "#theme-dark") applyTheme("dark");
 applyDensity(localStorage.getItem("portio.density") ?? "standard");
 applySidebar(readNum(PREF.sidebar.key, 264));
 if (sidebarFolded) applyFold(true);

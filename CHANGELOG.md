@@ -5,6 +5,74 @@
 
 ## [Unreleased]
 
+## 各版本的更新内容（GitHub Release 文案直接取自本节）
+
+> 规则：**先写更新内容，再打包**。每个版本一个 `## [版本] - 日期` 小节，发布时整段复制到 GitHub Release 即可。
+> 只写用户能感知的变化；内部重构放 `### Changed`，未验证的能力写进 `### Known limitations`。
+
+## [1.0.2-Alpha2] - 2026-11-18
+
+### Fixed
+- 启动时不再弹出控制台黑窗：`main.rs` 改为无条件 `#![windows_subsystem = "windows"]`。Tauri 模板只在非 debug 构建里关控制台，而我们发的是 `--debug` 包，所以之前每次启动都会多一个黑窗。
+- 主题按钮在亮暗主题下改用不同图标（深色月亮 / 浅色太阳），并按 24 格中心重画，与密度、设置、快捷键三枚图标对齐。
+
+### Added
+- `#theme-dark` / `#theme-light` 深链：截图核验主题图标时直接锁定主题，不必靠点按钮。
+
+### Changed
+- CHANGELOG 改为"每版一节、可直接作为 GitHub Release 文案"；排期文档新增第 10 节进度看板。
+
+## [1.0.2-Alpha1] - 2026-11-18
+
+### Added
+- 远端文件重命名 `sftp_rename(id, from, to)`、本地文件重命名 `local_rename(from, to)`，两套右键菜单各加"重命名"（弹窗预填当前名字，没改或取消则不动）。
+
+### Known limitations
+- 真实 SFTP 会话下的改名未验证（缺测试主机与凭据）。
+
+## [1.0.1-Alpha5 … Alpha10] - 2026-11-18
+
+> 这十次进位都集中在"把界面和安装包做到能给外人看"上，合并成一节记录。
+
+### Added
+- `scripts/refresh-icon-cache.ps1`：停 Explorer → 删 `iconcache_*.db` 分片 → 重启 Explorer → `ie4uinit -show`。
+- NSIS `NSIS_HOOK_POSTINSTALL` 安装钩子：装完自动刷一次图标缓存，脚本随包安装到 `%LOCALAPPDATA%\Portio\scripts\`，执行留痕写 `_iconhook.log`。
+- 五处右键菜单：终端面板、远端文件行、本地文件行、会话行、标签页。
+- 会话栏搜索框（主机 / 用户 / 备注）。
+
+### Changed
+- 应用图标改为无底板图形（去底板、描边、投影），并按 Windows 桌面实际显示校准内容占比（宽 97.9% / 高 88.2%），解决"图标比别人小一圈"。
+- 会话列表按"最近使用 / 更早"分组。
+
+### Fixed
+- 安装钩子用 Windows PowerShell 5.1 跑 UTF-8 无 BOM 脚本导致的中文注释乱码 → ParserError，脚本改存 UTF-8 带 BOM。
+- `.tbtn svg{display:block}` 特异性压过 `.i-sun{display:none}` 导致日月同显的问题（选择器提到 `.tbtn svg.i-sun`）。
+
+## [1.0.1-Alpha4] - 2026-11-18
+
+### Added
+- 会话列表分组：最近使用 / 更早。
+
+### Changed
+- 应用图标重出为无底板版（Apple 图标规范的 80.5% 内容区比例）。
+
+## [1.0.1-Alpha3] - 2026-11-18
+
+### Fixed
+- 圆角尺度统一：补齐 `tokens.css` 里缺失的 `--r-4 / --r-6 / --r-8 / --r-12`。变量未定义使整条 `border-radius` 声明失效，表现为"主窗口有圆角、其它元素全是直角"。
+- 主题按钮的月牙 path 几何偏右上，与另三个图标不对齐。
+
+### Added
+- 会话栏搜索（`Ctrl+F` 聚焦，按主机 / 用户 / 备注过滤）。
+
+## [1.0.1-Alpha2] - 2026-11-18
+
+### Changed
+- 标题栏四个文字按钮改成图标：主题、密度、设置、快捷键。
+- 滚动条改为 6px 细条＋主题色，替换系统默认宽滚动条。
+- 会话栏支持完全折叠，折叠态在左缘留一个动态显示的把手。
+
+
 ## [1.0.0-Alpha7] - 2026-11-18
 
 ### Added
