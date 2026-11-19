@@ -1481,3 +1481,53 @@ Release 里能看到真包。这一步会动远端（推 tag、建 Release），
 - 本轮没出包，可下载的仍是 `v1.0.5-RC8`；文档里已经写明"RC4 起前端改过，包要重新打"。
 - 三平台包仍未在真机装过；真服务器相关的 B1–B9 依旧一项没做。
 
+
+## 2026-11-19 · v1.0.6-RC4 · 把 RC4 发出去：三平台包上架（本轮不进位）
+
+上一轮修完分屏下的查找 Bug，日志里就写了"下一轮该出包了"。这一轮只做这一件事：把 RC4 真的发出去，
+让别人能下载到。
+
+**做了什么**
+
+1. `python scripts\check_versions.py` → `OK v1.0.6-RC4`，推 `v1.0.6-RC4` tag（tag 必须等于仓库版本，
+   否则 `scripts/release_gate.py` 会判失败退出）。
+2. 发版工作流 `44469913056` 跑完：`gate` 判定 `publish=true` / `prerelease=true`（RC 走预发布，不进 Latest），
+   然后 `windows-x64` / `macos-universal` / `linux-x64` 三个 build 全 success。
+3. Release 已建：**`Portio 1.0.6-RC4`**，`isPrerelease: true`、`isDraft: false`，四个资产都在——
+   `Portio_1.0.6-RC4_x64-setup.exe` 3349729 B、`Portio_1.0.6-RC4_universal.dmg` 9456257 B、
+   `Portio_1.0.6-RC4_amd64.deb` 4939024 B、`Portio_1.0.6-RC4_amd64.AppImage` 83134968 B。
+4. 本地也打了一份对照包（`tauri build --debug --bundles nsis`，53.41s）：`Portio_1.0.6-RC4_x64-setup.exe`
+   4548074 B —— 比 CI 那份大，因为 debug 不剥符号；两份都可装，正式下发用 CI 那份。
+5. 文档对齐（四处说的都变成"最新一批包就是 RC4"）：README 版本段、`docs/release-notes.md` 当前状态与两处产物名、
+   `docs/site/index.html` 安装段的示例文件名、`docs/press-kit.md` 下载表（连体积一起写实）。
+   `docs/rc-checklist.md` 的「最近一次整跑」改成 RC4 / 17 项，§7 记录表补 RC4 那一行（含打包结果）。
+
+**验证证据**
+
+- `gh run view 44469913056` → 四个 job 全 `success`；`gh release view v1.0.6-RC4` → 四资产、`prerelease:true`、`draft:false`。
+- 本地实机启动新构建的 `target\debug\portio-app.exe`：进程存活 6 秒无崩溃（`alive=True`）。
+  **截屏没截到窗口**：桌面处于锁屏状态，抓屏抓到的是锁屏壁纸（`_rc4_real.png` 4508544 B），
+  所以"窗口在真机上长什么样"这一眼仍未做。
+- 文档站无头（上一轮那套 7 条断言）在本次改动后重跑仍全 PASS。
+
+**为什么本轮不进位**
+
+本轮没有改产品代码，只是把 RC4 这版发出去。tag 必须等于仓库里的版本号，所以版本停在 `v1.0.6-RC4`。
+如果为了"每轮进一位"改成 RC5，仓库就会领先于刚发出去的包，对外反而说不清"你下的到底是哪版"。
+下一个真正改了东西的单元再进位（那一步会是 RC5）。
+
+**下一步**
+
+1. 真窗口点检：把 RC4 的安装包装上，实机打开、分屏、点格换焦点试一遍查找（就是上一轮修的那个 Bug），
+   顺手给桌面截一张（这台机器锁屏时截不到窗口，得等能解锁的时候）。
+2. `docs/rc-checklist.md` 的 M1–M12 人工项与 B1–B9 真服务器项依旧没跑；无 SSH 服务器这条阻塞没解。
+3. 清单 §5 的 C1–C3（三平台签名证书 / 自动更新端点 / 崩溃上报）与 C6（许可证选型）仍在等人给。
+4. 历史版本 tag 要不要补打，等用户拍板。
+
+**未验证项**
+
+- macOS universal dmg 与 Linux deb / AppImage 仍只到"CI 构建通过"，**未在真机装过**。
+- Windows 包能装能跑（历次验过），但 RC4 这一版没重新装一遍 —— 本轮只做了进程启动存活检查。
+- 真实窗口视觉确认（锁屏挡住了），未做。
+- 无 SSH 服务器与凭据 → 真实登录、PTY、tmux、SFTP 传输一律未验证（长期阻塞）。
+
