@@ -61,12 +61,11 @@ jobs:
           - name: windows-x64
             os: windows-latest
             args: --bundles nsis
-          - name: macos-arm64
+          # macos-13 已退役（没有可用 runner，作业会永远排队把所有 run 拖成 pending），
+          # 所以 mac 只留一个作业，用 universal 二进制同时覆盖 Apple Silicon 与 Intel。
+          - name: macos-universal
             os: macos-latest
-            args: --bundles dmg
-          - name: macos-x64
-            os: macos-13
-            args: --bundles dmg
+            args: --target universal-apple-darwin --bundles dmg
           - name: linux-x64
             os: ubuntu-22.04
             args: --bundles deb,appimage
@@ -85,7 +84,10 @@ jobs:
         if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - name: macOS 两个架构都要装（打 universal 包）
+        if: matrix.name == 'macos-universal'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
       - run: npm ci
       - name: 打包并挂到 Release
         uses: tauri-apps/tauri-action@v0
