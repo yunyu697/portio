@@ -11,6 +11,25 @@
 > 只写用户能感知的变化；内部重构放 `### Changed`，未验证的能力写进 `### Known limitations`。
 > 口吻：站在用这个软件的人这一侧说话（"我把 X 改成 Y"），不写成第三方播报。
 
+## [1.0.6-RC3] - 2026-11-19
+
+上一轮留下的尾巴：对外三处（README / 发布说明 / 文档站）跟到了 RC1，但物料页还指着 RC8、版本写 RC10，
+而且进位后这三处又落后了一版。这一版把对外文字一次性对齐到同一个版本。
+
+### Changed
+
+- `docs/press-kit.md` 的「现在可以下载什么」段：标题版本改成当前版本，表格补全 Linux 两个真实产物名
+  （`Portio_1.0.5-RC8_amd64.deb` / `.AppImage`），加一句 Release 页入口；"未签名""未在真机装过"一处没删。
+- README / `docs/release-notes.md` / `docs/site/index.html` / `docs/press-kit.md` 的版本串统一到当前版本；
+  "只改物料没重新打包"那句把 RC1、RC2、RC3 也算进去，不再只写 RC9 / RC10。
+- `docs/release-notes.md`「版本号怎么读」原来写"第 1 个候选版"，进位后对不上，改成按轮次读：
+  1.0.6 这轮的第 N 个候选版。
+
+### Known limitations
+
+- 仍然只有 `v1.0.5-RC8` 一份可下载的包；RC9 起这几版二进制没变，所以对外只能引导到 RC8。
+- 文档站只在本机 Chrome 无头里验过，没有线上地址。
+
 ## [1.0.6-RC2] - 2026-11-19
 
 「Alpha 只打 tag、RC 才发包」这条规则以前只活在 `release.yml` 里的一段内联 bash 里：本地跑不了、

@@ -3,7 +3,7 @@
 给谁看的：写 README、发 Release、发帖、做介绍页时从这里取文案，**中文一份、英文一份，事实口径统一**。
 截图在 [`docs/shots/`](shots/)，规格统一为 1180×690 逻辑尺寸、2 倍像素密度（PNG 2360×1380），深浅各一套。
 
-> 写这一页时遵守一条：不吹没做到的事。凡是标了「未签名」「内测」「仅 Windows 出过安装包」的地方都不要删——
+> 写这一页时遵守一条：不吹没做到的事。凡是标了「未签名」「未在真机装过」「未验证」的地方都不要删——
 > 删了短一截好看，但用户装不上时会记得是谁说的。
 
 ---
@@ -57,15 +57,18 @@ down, files go up. The name is **port + io** — an SSH port, and the doorway da
 
 出图脚本：`python scripts/shots.py`（先查 `<title>` 有没有 `ERR:`，再校验 2360×1380，任一门不过即 FAIL）。
 
-## 现在可以下载什么（截至 `v1.0.5-RC10`）
+## 现在可以下载什么（截至 `v1.0.6-RC3`）
+
+最新一份可下载的包是 `v1.0.5-RC8` 那次打的（从 [Releases](https://github.com/yunyu697/portio/releases) 下）。
+RC9、RC10、1.0.6-RC1、1.0.6-RC2、1.0.6-RC3 这五版只动过物料、文档与脚本，二进制与 RC8 一致，所以没有新包。
 
 | 平台 | 产物 | 状态 |
 | --- | --- | --- |
 | Windows x64 | `Portio_1.0.5-RC8_x64-setup.exe`（NSIS） | 能装、能跑；未签名 |
 | macOS（Apple Silicon + Intel） | `Portio_1.0.5-RC8_universal.dmg` | CI 构建通过，**未在真机装过**；未签名 |
-| Linux x64 | `.deb` / `.AppImage` | CI 构建通过，**未在真机装过** |
+| Linux x64 | `Portio_1.0.5-RC8_amd64.deb` / `Portio_1.0.5-RC8_amd64.AppImage` | CI 构建通过，**未在真机装过** |
 
-规则：**RC 及以后发包，Alpha 只打 tag**。RC9 / RC10 这两版只改了物料与出图脚本，二进制与 RC8 相同，所以没有新包。
+规则：**RC 及以后发包，Alpha 只打 tag**。tag 必须等于仓库里的版本号，对不上就不进打包流程。
 
 ## 不要这么说（红线）
 
