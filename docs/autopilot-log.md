@@ -2438,3 +2438,14 @@ Chrome 无头探针漏写 `--dump-dom` 时，**stdout 与 stderr 都是空的、
 - 自定义④ 四单元收完（启动时显隐 / 权限列 / 开局格数 / 面板宽度两层），这一段可以合上。
 - 下一轮取 S13–S14 发布工程里能自己做的：文档站补这一版、press-kit 数字同步，或清单 §2 里还剩的人工项里挑一项能在无头环境验证的。
 - 仍卡外部条件：无 SSH 服务器（B1–B9 全挂在这里）、签名证书 / 更新端点 / 崩溃上报（C1–C3）、许可证（C6）。
+
+**发版补记（同轮晚些时候写完）**
+
+- Release run `44596899518` 四项全 success（gate / windows-x64 / macos-universal / linux-x64，macOS 这次没被取消）。
+- Release `Portio 1.0.7-RC8`（`prerelease: true`、非草稿）四资产：
+  exe **3375150** B / dmg **9510808** B / deb **4959920** B / AppImage **83143160** B。
+- main CI `44596888277` success；提交 `b1722d4` 已 push main，tag `v1.0.7-RC8` 已推。
+- 本地 Windows 包（`CARGO_TARGET_DIR=D:\portio-target` + `TEMP/TMP=D:\portio-tmp`）：
+  `Portio_1.0.7-RC8_x64-setup.exe` **4580142** B，已复制到 `new-chat\` 根目录交付。
+- 对外文案同步：README 版本段、`docs/release-notes.md` 当前状态、`docs/press-kit.md` 下载表（实际字节数）、
+  `docs/site/index.html` 版本串、`docs/rc-checklist.md` §7 RC8 行。

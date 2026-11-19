@@ -1,0 +1,6 @@
+docs(release): RC8 对外文案、下载表字节数与日志补记同步
+
+验证：check_versions.py OK v1.0.7-RC8；Release run 44596899518 四项全 success（gate / windows-x64 / macos-universal / linux-x64）；
+main CI 44596888277 success；Release Portio 1.0.7-RC8（prerelease、非草稿）四资产
+exe 3375150 B / dmg 9510808 B / deb 4959920 B / AppImage 83143160 B；本地 NSIS 包 4580142 B 已复制到 new-chat 根目录。
+文档只改版本串、下载表数字与记录表，均按 Release 实查值回填。
