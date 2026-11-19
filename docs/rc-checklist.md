@@ -12,7 +12,7 @@
 | ✗ | 已知缺口：代码里就没有，或明知不合格 |
 | 🚫 | 卡外部条件：缺服务器 / 缺证书 / 缺平台机器，写清差什么 |
 
-**最近一次整跑**：2026-11-19 · `v1.0.7-RC1` · `python scripts/rc.py` → 20 通过 / 0 失败 / 0 跳过（137.6s）；
+**最近一次整跑**：2026-11-19 · `v1.0.7-RC2` · `python scripts/rc.py` → 21 通过 / 0 失败 / 0 跳过（67.4s）；
 人工项与真服务器项仍未跑（见 §7）。
 
 ---
@@ -191,4 +191,5 @@ foreach ($frag in "", "#split-test", "#clip-test", "#fold-test") {
 | 2026-11-19 | `v1.0.6-RC9` | `scripts/rc.py` → **20 通过 / 0 失败 / 0 跳过**，116.6s（`cargo test --workspace` 95 passed，多出的是三条「读日志尾巴」单测：损坏文件里坏字节前后完好的行都要拿到、只取最后 N 行与边界、文件不存在读成空）；反向验证：改回 `read_to_string` → FAIL 并点名「坏字节前面完好的行没拿到：""」。另补跑 `cargo fmt --all` 与 `clippy -D warnings`（消掉 run 44505662151 那条 CI 红）；三平台包 `Portio 1.0.6-RC9`（exe 3358660 B / dmg 9470390 B / deb 4945780 B / AppImage 83147256 B，`prerelease: true`） | 未跑 | 未跑 | 只造过损坏内容，真实磁盘坏块没模拟；只剩 `.log.1` 时读不到内容未改；真机窗口没点 |
 | 2026-11-19 | `v1.0.6-RC10` | `scripts/rc.py` → **20 通过 / 0 失败 / 0 跳过**，86.2s（`cargo test --workspace` 96 passed，多出的是「定位日志文件」那条：含空格/中文路径都只在引号内，且旧写法确实把 `/select,` 括进引号）；反向验证：改回 `.arg(format!("/select,{}", …))` → FAIL 并打出真实命令行 `"/select,C:\\Users\\Tyler Zhang\\…"`。三平台包 `Portio 1.0.6-RC10`（exe 3358285 B / dmg 9470333 B / deb 4944570 B / AppImage 83134968 B，`prerelease: true`）；main CI run 44518756656 五项全 success | 未跑 | 未跑 | 资源管理器窗口没实机确认（桌面锁着）；mac/linux 那条定位路径没动 |
 | 2026-11-19 | `v1.0.7-RC1` | `scripts/rc.py` → **20 通过 / 0 失败 / 0 跳过**，137.6s（`cargo test --workspace` 97 passed，多出的是「轮转后读日志」那条：只剩 `.1` / 当前文件 0 字节都读到旧内容，当前文件有新内容则只读它）；反向验证：回落那支短路 → FAIL 点名「当前文件不存在时该读 .1：""」。三平台包 `Portio 1.0.7-RC1`（exe 3357107 B / dmg 9473551 B / deb 4942768 B / AppImage 83134968 B，`prerelease: true`）；main CI run 44530131804 五项全 success | 未跑 | 未跑 | 真实轮转没在窗口里点过；「定位日志文件」仍定位当前文件 |
+| 2026-11-19 | `v1.0.7-RC2` | `scripts/rc.py` → **21 通过 / 0 失败 / 0 跳过**，67.4s（新增 A21 `#accent-test` 1.5s）；反向验证：把 `root.dataset.accent = want` 改成恒等 `"teal"`（只记 localStorage、界面没换）→ FAIL 并点出 8 条，含「换色后 data-accent 是 azure："teal" ≠ "azure"」「ANSI 绿不跟着主色变：true ≠ false」。check_design_tokens / check_ui_scale / node --check 均 OK。三平台包 `Portio 1.0.7-RC2`（exe 3359627 B / dmg 9477429 B / deb 4946390 B / AppImage 83143160 B，`prerelease: true`）；main CI run 44535030414 五项全 success | 未跑 | 未跑 | 真窗口里没点过（桌面锁着）；六套色在真实终端滚动内容上的观感只看静态截图 |
 每一轮 RC 回归跑完，在表格里加一行；过不了的那几项写进下一轮的「下一步」。
