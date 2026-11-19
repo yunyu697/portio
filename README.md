@@ -115,7 +115,7 @@
 
 版本号形如 `v1.0.6-RC6`：`Alpha` 阶段每完成一个交付单元进一位、满 10 进 patch 回 `Alpha1`；
 进 RC 后功能冻结、只修 Bug，进位规则不变（满 10 进 patch 回 `RC1`）；不带后缀就是正式版。
-当前在 **v1.0.6-RC6**，三平台最新包就是 RC6 这一批（`Portio 1.0.6-RC6`，预发布）；
+当前在 **v1.0.6-RC7**，三平台最新包就是 RC7 这一批（`Portio 1.0.6-RC7`，预发布）；
 RC9、RC10 与 1.0.6 的 RC1–RC3 只改物料、文档与脚本，所以没有单独出包。
 逐版更新内容见 [CHANGELOG.md](CHANGELOG.md)，使用说明见 [`docs/site/index.html`](docs/site/index.html)。
 

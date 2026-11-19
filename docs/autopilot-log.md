@@ -1681,3 +1681,82 @@ sessionStore.records = [{ ...rec, last: Date.now() }, ...next].slice(0, 40);
 - macOS dmg 与 Linux deb / AppImage 只到"CI 构建通过"，**未在真机装过**。
 - 无 SSH 服务器与凭据 → 真实登录、PTY、tmux、SFTP 传输一律未验证（长期阻塞）。
 
+
+## 2026-11-19 · v1.0.6-RC7 · 「主机密钥变了」这句提示，其实一直没送出去
+
+上一轮日志留给这一轮的是 M12（设置 → 已知主机：列出、删除、删除后重连走首次信任）。
+打开那段代码顺着走一遍，发现一件更难看的事：**界面一直在等一个从来没被发出来的信号。**
+
+**发现的 Bug**
+
+`ui/app.js` 里有两处靠 `raw.includes("HOSTKEY_CHANGED")` 分辨"密钥变了"和其它连接失败
+（终端里那段红字、连接面板的 catch 分支），文案写得很清楚：
+
+> 记录：SHA256:xxx
+> 本次：SHA256:yyy
+> 如果你确认服务器重装过，去「设置 → 已知主机」删掉这台机器的记录，再连一次就会重新信任。
+
+可是这个前缀根本没被发出来过。`crates/app/src/sessions.rs` 只在 `kh.verify(...)` **之后**
+看到 `HostKeyVerdict::Changed` 才拼 `HOSTKEY_CHANGED|…`；而指纹对不上时 `SshSession::connect`
+在握手阶段就把连接拒了（`SshError::HostKeyMismatch`），那半段代码永远走不到。
+人真正看到的只有 `主机密钥校验失败：记录的是 X，服务器给的是 Y`——知道出事了，却不知道下一步干什么。
+
+**改法**
+
+- `crates/ssh`：`SshError::HostKeyMismatch` 从 `String` 改成带 `expected` / `actual` 的结构变体；
+  新增 `hostkey_changed_tag()` 统一产出 `HOSTKEY_CHANGED|记录|本次`。做成方法而不是让 app 层去拆
+  错误字符串——以后改中文文案也不会把界面契约拆坏。
+- `crates/app`：建连失败统一走新抽出的 `connect_error_text()`；`verify` 之后那支保留为兜底并注明
+  "正常路径走不到这里"。
+- 校验标准一点没松：删记录只是让这台主机重新走一次首次信任；重新信任之后再换第三把钥匙，照样报变更
+  （这条写进了单测）。
+
+**新增 A20 `#hosts-test`（已知主机面板）**
+
+M12 的"能看见的那半句"按顺序走一遍：三条记录画三行、计数「3 条」；长指纹只露前 10 位加省略号、
+全文挂 `title`；删掉 `h.example.com:2222` 之后同一台机器的 `:22` 还在（**端口是键的一部分**）、
+计数变「2 条」、回执文案对；IPv6 主机 `[::1]` 整串显示也能删；删空之后没有行、计数写「无」、
+空态那句解释在；再喂一批能正常长回来。
+
+顺带把核验页的删除行为做实：`#hosts-demo` / `#hosts-test` 没有后端，删除就删内存里那几条，
+不像以前只是点了没反应——否则"点完少一行、计数跟着变"这条路一次都没被真走过。
+
+**Rust 侧四条单测**
+
+1. `lib.rs`：变更错误能变成三段式标记，且只有变更错误带标记（超时 / 认证失败 / 通道断开都不许带）。
+2. `sessions.rs`（app）：`connect_error_text` 对变更给前缀、对其它错误保留自己的中文措辞。
+3. `known_hosts`：`forget_makes_the_next_connection_first_seen_again`——有记录时 `fingerprint_of` 带旧指纹；
+   删掉之后必须变回 `None`（否则"点完删除仍连不上且不知为何"）；随后同一台换钥匙来连算 `FirstSeen`；
+   再换第三把钥匙来，仍然报 `Changed`。
+4. `known_hosts`：`forget_only_touches_the_port_it_names`——忘掉某台机器的 2222，它的 22 必须还在。
+
+**验证证据**
+
+- **反向验证（两处，都改回老写法再跑）**
+  1. `connect_error_text` 改回 `e.to_string()` → app crate 那条断言 FAIL：
+     `三段式：主机密钥校验失败：记录的是 SHA256:OLD，服务器给的是 SHA256:NEW`。
+  2. 核验删除改回"只按 host 删" → A20 FAIL 并点名
+     `同机另一端口还在：false ≠ true`、`计数跟着变："1 条" ≠ "2 条"`、`删掉一条后剩两行：1 ≠ 2`。
+  两处还原后立刻 OK（`HOSTS-SELFTEST-OK`）。
+- **整跑**：`python scripts/rc.py` → **20 通过 / 0 失败 / 0 跳过**，83.8s
+  （A1 `cargo test --workspace` **90 passed**，比上轮 84 条多出的正是这四 + 两处新增）。
+- 守卫：`check_design_tokens.py` / `check_ui_scale.py` OK、`node --check ui/app.js` 通过、`check_versions.py` → `OK v1.0.6-RC7`。
+- **发版**：推 `v1.0.6-RC7` tag → run `44494644638`：gate 判发包，三平台 build 全 success；Release
+  **`Portio 1.0.6-RC7`**（`prerelease: true`）四资产：exe 3358391 B / dmg 9472094 B / deb 4947594 B / AppImage 83139064 B。
+- 本地对照包 `tauri build --debug --bundles nsis` → `Portio_1.0.6-RC7_x64-setup.exe` 4555374 B。
+
+**下一步**
+
+1. M12 只剩"真机上点一遍"的手感；M7 / M8 也是纯手感。清单 §2 的人工项到这里已无自动化余地。
+2. 下一个可推的单元：清单 §4 的 B1–B9 全部需要真服务器（阻塞），§5 的 C1–C3 需要用户给证书/端点。
+   剩下能自己做的，是 §3 里几条与"打包 / 升级 / 日志"相关的收尾——下一轮去 §3 挑一条。
+3. 等用户给的仍是：三平台签名证书、自动更新端点、崩溃上报（C1–C3）与许可证选型（C6）。
+
+**未验证项**
+
+- 真·主机密钥变更要有服务器换钥匙才能走通；这轮只有单测与错误映射，**没有实测**。
+- "删记录 → 重连"整条要真机 + 真服务器；这里只到协议层与面板层。
+- 桌面锁着（`LogonUI.exe` 在跑），真窗口点检仍没做。
+- macOS dmg 与 Linux deb / AppImage 只到"CI 构建通过"，**未在真机装过**。
+- 无 SSH 服务器与凭据 → 真实登录、PTY、tmux、SFTP 传输一律未验证（长期阻塞）。
+
