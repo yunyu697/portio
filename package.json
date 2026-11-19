@@ -1,7 +1,7 @@
 {
   "name": "portio",
   "private": true,
-  "version": "1.0.6-RC4",
+  "version": "1.0.6-RC5",
   "description": "SSH terminal + SFTP file manager in one window",
   "license": "MIT",
   "scripts": {

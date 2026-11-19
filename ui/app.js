@@ -1341,22 +1341,22 @@ async function refreshRemember() {
 
 function openConnect(prefill = null) {
   const el = (id) => document.getElementById(id);
-  if (prefill) {
-    el("f-host").value = prefill.host ?? "";
-    el("f-port").value = String(prefill.port ?? 22);
-    el("f-user").value = prefill.user ?? "";
-    el("f-auth").value = prefill.auth === "key" ? "key" : "password";
-    el("f-key").value = prefill.keyfile ?? "";
-    el("f-password").value = "";
-    el("field-key").hidden = prefill.auth !== "key";
-    el("field-password").hidden = prefill.auth === "key";
-  } else {
-    el("f-user").value = localStorage.getItem("portio.user") ?? "";
-    el("f-host").value = "";
-    el("f-password").value = "";
-  }
+  // 六项一律重写一遍：只写"有预填的"那几项，会让上一次的端口 / 认证方式 / 私钥路径留在框里，
+  // 点「新建连接」时看到的还是上一台机器的参数（端口 2222、认证还停在密钥），
+  // 一不小心就带着别人的私钥路径去连新主机。
+  const auth = prefill?.auth === "key" ? "key" : "password";
+  el("f-host").value = prefill ? (prefill.host ?? "") : "";
+  el("f-port").value = String(prefill?.port ?? 22);
+  el("f-user").value = prefill
+    ? (prefill.user ?? "")
+    : (localStorage.getItem("portio.user") ?? "");
+  el("f-auth").value = auth;
+  el("f-key").value = prefill?.keyfile ?? "";
+  el("f-password").value = "";
+  el("field-key").hidden = auth !== "key";
+  el("field-password").hidden = auth === "key";
   modal.classList.add("open");
-  (prefill?.auth === "key" ? el("f-host") : el("f-password")).focus();
+  (auth === "key" ? el("f-host") : el("f-password")).focus();
   refreshRemember();
 }
 
@@ -3409,5 +3409,133 @@ if (location.hash === "#density-test") {
       bad.push(`量密度的过程抛了异常：${err && err.message ? err.message : err}`);
     }
     finish();
+  })();
+}
+
+// ---------- 无头自检：#connect-entry-test（三类连接入口，外加"新建连接必须从空白起"） ----------
+// 清单 §2 的 M2 要求"新建连接 / 快速连接一行回车 / 双击会话"三条路都能走到连接面板、字段带对。
+// 这三条路最终都落在 openConnect() 上，所以这里按入口一条条点，读面板六个字段。
+// 顺带钉死一条容易被忽略的：改过一台密钥登录的会话之后，点「新建连接」必须回到空白——
+// 端口回 22、认证回口令、私钥路径清空，两个字段框的显示也跟着换回来。
+if (location.hash === "#connect-entry-test") {
+  (function connectEntryTest() {
+    const bad = [];
+    const seen = {};
+    const el = (id) => document.getElementById(id);
+    const readPanel = () => ({
+      open: modal.classList.contains("open"),
+      host: el("f-host").value,
+      port: el("f-port").value,
+      user: el("f-user").value,
+      auth: el("f-auth").value,
+      key: el("f-key").value,
+      pwd: el("f-password").value,
+      keyShown: el("field-key").hidden === false,
+      pwdShown: el("field-password").hidden === false,
+    });
+    function expect(tag, got, want) {
+      if (JSON.stringify(got) !== JSON.stringify(want)) {
+        bad.push(`${tag}：${JSON.stringify(got)} ≠ ${JSON.stringify(want)}`);
+      }
+    }
+    function reset() {
+      modal.classList.remove("open");
+      sessionStore.records = [];
+      renderSessions();
+    }
+
+    try {
+      // ① 先弄脏：按"密钥 + 2222 端口"的旧会话打开面板，再关掉
+      openConnect({
+        host: "old.example.com",
+        port: 2222,
+        user: "root",
+        auth: "key",
+        keyfile: "C:/Users/me/.ssh/id_ed25519",
+      });
+      reset();
+      el("btn-new").click();
+      const fresh = readPanel();
+      seen.fresh = fresh;
+      expect("新建连接 开面板", fresh.open, true);
+      expect("新建连接 主机清空", fresh.host, "");
+      expect("新建连接 端口回 22", fresh.port, "22");
+      expect("新建连接 认证回口令", fresh.auth, "password");
+      expect("新建连接 私钥路径清空", fresh.key, "");
+      expect("新建连接 私钥框收起", fresh.keyShown, false);
+      expect("新建连接 口令框露出", fresh.pwdShown, true);
+      expect("新建连接 口令框清空", fresh.pwd, "");
+
+      // ② 快速连接：一行写完回车
+      reset();
+      el("quick-input").value = "deploy@10.0.8.12:2222";
+      el("quick-input").dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      );
+      const quick = readPanel();
+      seen.quick = quick;
+      expect("快速连接 开面板", quick.open, true);
+      expect("快速连接 主机", quick.host, "10.0.8.12");
+      expect("快速连接 端口", quick.port, "2222");
+      expect("快速连接 用户", quick.user, "deploy");
+      expect("快速连接 认证", quick.auth, "password");
+      expect("快速连接 口令框露出", quick.pwdShown, true);
+
+      // ③ 双击会话（口令认证那台；密钥认证双击是直接连，不进面板）
+      reset();
+      sessionStore.records = [
+        {
+          name: "svc-01",
+          user: "ops",
+          host: "svc-01.internal",
+          port: 8022,
+          auth: "password",
+        },
+      ];
+      renderSessions();
+      const row = Array.from(document.querySelectorAll(".sess-row")).find((r) =>
+        r.title.includes("ops@svc-01.internal"),
+      );
+      if (!row) {
+        bad.push("双击会话这条测不到：列表里找不到 ops@svc-01.internal 那一行");
+      } else {
+        row.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+        const sess = readPanel();
+        seen.sess = sess;
+        expect("双击会话 开面板", sess.open, true);
+        expect("双击会话 主机", sess.host, "svc-01.internal");
+        expect("双击会话 端口", sess.port, "8022");
+        expect("双击会话 用户", sess.user, "ops");
+        expect("双击会话 认证", sess.auth, "password");
+        expect("双击会话 口令框露出", sess.pwdShown, true);
+      }
+
+      // ④ 快速连接认括号里的 IPv6（顺手钉住解析不把冒号当端口分隔）
+      reset();
+      el("quick-input").value = "ssh://ops@[fe80::1]:2200";
+      el("btn-quick").click();
+      const v6 = readPanel();
+      seen.ipv6 = v6;
+      expect("IPv6 快速连接 主机", v6.host, "fe80::1");
+      expect("IPv6 快速连接 端口", v6.port, "2200");
+      expect("IPv6 快速连接 用户", v6.user, "ops");
+
+      // ⑤ 空输入不该开面板（只弹一句提示）
+      reset();
+      el("quick-input").value = "   ";
+      el("btn-quick").click();
+      expect("空输入 不开面板", readPanel().open, false);
+    } catch (err) {
+      bad.push(`走连接入口的过程抛了异常：${err && err.message ? err.message : err}`);
+    }
+
+    // 收拾现场：清掉塞进去的会话、关掉面板、清空快速连接框
+    sessionStore.records = [];
+    renderSessions();
+    modal.classList.remove("open");
+    el("quick-input").value = "";
+    document.title = bad.length
+      ? `CONNECT-ENTRY-SELFTEST-FAIL ${JSON.stringify(bad)} ${JSON.stringify(seen)}`
+      : `CONNECT-ENTRY-SELFTEST-OK ${JSON.stringify(seen)}`;
   })();
 }
