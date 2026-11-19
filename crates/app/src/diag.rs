@@ -4,8 +4,9 @@
 //! 也不会因为某条异常自带换行把整个文件撑乱。满 1 MiB 轮转成 `portio.log.1`（只留一份）。
 
 use serde::Serialize;
+use std::cell::Cell;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Manager;
 
@@ -13,8 +14,22 @@ const MAX_FILE_BYTES: u64 = 1 << 20; // 1 MiB
 const MAX_MESSAGE_CHARS: usize = 4000;
 const TAIL_LIMIT: usize = 200;
 
-/// 崩溃钩子里会写日志；写日志本身再 panic 就会递归。用这个闸门挡一层。
-static IN_HOOK: AtomicBool = AtomicBool::new(false);
+/// 写日志的串行闸：一条写完才轮到下一条，免得两条日志的字在文件里插成一团。
+static WRITE_LOCK: Mutex<()> = Mutex::new(());
+
+thread_local! {
+    /// 「这个线程已经在写日志」：崩溃钩子里会写日志，写日志本身再 panic 就会递归。
+    /// 这个是**按线程**算的——别的线程在写，不该把这一条丢掉。
+    static INSIDE_WRITE: Cell<bool> = const { Cell::new(false) };
+}
+
+struct InsideGuard;
+
+impl Drop for InsideGuard {
+    fn drop(&mut self) {
+        INSIDE_WRITE.with(|f| f.set(false));
+    }
+}
 
 pub fn log_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path()
@@ -133,19 +148,30 @@ pub fn append_line(file: &Path, line: &str) -> Result<(), String> {
         .map_err(|e| format!("写日志失败：{e}"))
 }
 
-/// 写一条日志。任何失败都咽掉——记录日志这件事本身不该把应用带崩。
-pub fn write_entry(app: &tauri::AppHandle, level: &str, source: &str, message: &str) {
-    if IN_HOOK.swap(true, Ordering::SeqCst) {
-        return; // 已经在一个失败的写日志调用里，别再往下钻
+/// 写一条日志。
+///
+/// 两道闸各管一件事：
+///
+/// - **同线程重入**直接放过：崩溃钩子里写日志、写日志本身又炸了，再往下钻会无限递归。
+/// - **跨线程**排队：前端一次抛一串错误、几个 tokio 任务同时报错，谁都不许被丢，也不许把字插到别人行中间。
+///
+/// 任何失败都咽掉——记录日志这件事本身不该把应用带崩。
+pub fn write_entry_to(file: &Path, level: &str, source: &str, message: &str) {
+    if INSIDE_WRITE.with(|f| f.replace(true)) {
+        return; // 这个线程已经在写（多半是写日志自己炸了、钩子又来一遍）
     }
-    let result = log_file(app).and_then(|p| {
-        append_line(
-            &p,
-            &format_line(&iso8601_utc(now_secs()), level, source, message),
-        )
-    });
-    IN_HOOK.store(false, Ordering::SeqCst);
-    let _ = result;
+    let _depth = InsideGuard;
+    let _serial = WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner()); // 前一个写的人炸了也要继续写
+    let _ = append_line(
+        file,
+        &format_line(&iso8601_utc(now_secs()), level, source, message),
+    );
+}
+
+pub fn write_entry(app: &tauri::AppHandle, level: &str, source: &str, message: &str) {
+    if let Ok(path) = log_file(app) {
+        write_entry_to(&path, level, source, message);
+    }
 }
 
 /// 装一个 panic 钩子：Rust 侧崩溃（含 tokio 任务里的 panic）都会先落一行日志，再走原来的钩子。
@@ -333,6 +359,92 @@ mod tests {
         let bak = backup_path(&file);
         assert!(bak.exists(), "轮转后的备份应当存在");
         assert!(std::fs::metadata(&bak).unwrap().len() >= MAX_FILE_BYTES);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 别的线程在写日志时，这一条不许被丢掉。
+    ///
+    /// 以前用一个进程级的 `AtomicBool` 挡重入：只要有人在写就把后来的整条扔掉，
+    /// 于是"前端一次抛一串错误"或"一个任务正在报错、另一个任务刚好崩了"的时候，
+    /// 后面的行（包括崩溃那一条）是静默消失的。
+    #[test]
+    fn concurrent_writers_never_lose_a_line() {
+        const THREADS: usize = 8;
+        const PER_THREAD: usize = 120;
+
+        let dir = std::env::temp_dir().join(format!("portio-diag-conc-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let file = dir.join("portio.log");
+
+        let mut handles = Vec::new();
+        for t in 0..THREADS {
+            let file = file.clone();
+            handles.push(std::thread::spawn(move || {
+                for i in 0..PER_THREAD {
+                    write_entry_to(&file, "error", "ui", &format!("t{t}-{i}"));
+                }
+            }));
+        }
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        let raw = std::fs::read_to_string(&file).unwrap();
+        let lines: Vec<&str> = raw.lines().collect();
+        assert_eq!(
+            lines.len(),
+            THREADS * PER_THREAD,
+            "并发写日志丢了行：只落下来 {} / {}",
+            lines.len(),
+            THREADS * PER_THREAD
+        );
+
+        // 每一条都必须完整地落在自己那一行里（不许两条日志的字插在一起）
+        let mut seen: Vec<String> = Vec::new();
+        for line in &lines {
+            assert!(
+                line.contains(" [ERROR] [ui] "),
+                "行格式坏了（时间戳 / 级别 / 来源没有各自归位）：{line}"
+            );
+            assert_eq!(
+                line.matches("[ERROR]").count(),
+                1,
+                "一行里塞了不止一条日志：{line}"
+            );
+            let msg = line.rsplit(' ').next().unwrap();
+            seen.push(msg.to_string());
+        }
+        seen.sort();
+        seen.dedup();
+        assert_eq!(seen.len(), THREADS * PER_THREAD, "出现了重复或残缺的日志内容");
+        for t in 0..THREADS {
+            for i in 0..PER_THREAD {
+                let want = format!("t{t}-{i}");
+                assert!(seen.contains(&want), "丢了这一条：{want}");
+            }
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 同一线程里重入（写日志自己 panic → 钩子再写一遍）必须直接放过，不能递归、也不能把闸卡死。
+    #[test]
+    fn reentry_on_the_same_thread_is_skipped_and_the_gate_resets() {
+        let dir = std::env::temp_dir().join(format!("portio-diag-reent-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let file = dir.join("portio.log");
+
+        // 手工把"这个线程正在写"点亮，模拟重入现场
+        INSIDE_WRITE.with(|f| f.set(true));
+        write_entry_to(&file, "error", "rust-panic", "递归进来的那条不该落盘");
+        assert!(!file.exists(), "重入时不应该再写一条");
+
+        // 闸放开之后必须立刻恢复，否则后面所有日志都会静默消失
+        INSIDE_WRITE.with(|f| f.set(false));
+        write_entry_to(&file, "info", "app", "闸放开之后的这一条");
+        let raw = std::fs::read_to_string(&file).unwrap();
+        assert!(raw.contains("闸放开之后的这一条"), "闸没复位：{raw}");
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
