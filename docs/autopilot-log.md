@@ -2664,4 +2664,16 @@ S13–S14 交付就是文档站点。而它恰好落后两版：离线说明页 
 - 这轮核的是「界面有没有话说」，不是「文件真的过去了」：仍无可用 SSH 测试服务器，
   真实的磁盘满 / 断线 / 权限不足端到端没验；替身抛的是构造出来的错，不是真后端回包。
 - 真窗口里连点两下「刷新」看失败提示的手感没看过（桌面仍锁屏）。
+**同轮补记（发布之后）**
+
+- 提交 `b770d14`（代码 + 闸 + 版本 + CHANGELOG + 清单 + 规范）与 `a3db61e`（对外四处 + 当轮记录）已 push main，
+  tag `v1.0.7-RC10` 已推。
+- main CI run `44626556370` **六项全 success**；Release run `44626566615` **gate + 三平台 build 四项全 success**
+  （macOS 这轮也没被取消）。
+- Release `Portio 1.0.7-RC10`：`prerelease:true`、`draft:false`，四资产
+  exe 3380140 B / dmg 9518705 B / deb 4963836 B / AppImage 83147256 B
+  （对照 RC9：3377665 / 9513942 / 4963350 / 83147256；exe 多了约 2.4 KB，就是这一轮的代码）。
+- 本地 NSIS 包同轮构建：`D:\portio-target\debug\bundle\nsis\Portio_1.0.7-RC10_x64-setup.exe` 4586319 B
+  → 已复制到 `…\new-chat\Portio_1.0.7-RC10_x64-setup.exe` 交付。
+- 物料页下载表的字节数已回填成 Release 上的真值。
 
