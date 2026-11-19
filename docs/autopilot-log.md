@@ -2382,3 +2382,14 @@ Chrome 无头探针漏写 `--dump-dom` 时，**stdout 与 stderr 都是空的、
 - 无 SSH 服务器：四格里连主机时"每格一条 PTY、口令从加密凭据取"这条路没端到端验证过。
 - 「第二个标签仍一格」是按一次性标记断言的；真实使用里连主机开新标签那条路径（`createTab` 而非
   `createLocalTab`）也未经实机验证，只是读代码确认它不碰这个标记。
+
+**发版补记（同轮晚些时候写完）**
+
+- Release run `44587528236` **首跑四项全 success**（gate / windows-x64 / macos-universal / linux-x64）。
+- Release `Portio 1.0.7-RC7`（`prerelease: true`、非草稿）四资产：
+  exe **3371429** B / dmg **9507487** B / deb **4958050** B / AppImage **83147256** B。
+- main CI `44587514954` success。
+- 本地 Windows 包同样打了一份（`CARGO_TARGET_DIR=D:\portio-target` + `TEMP/TMP=D:\portio-tmp`）：
+  `Portio_1.0.7-RC7_x64-setup.exe` **4581282** B，已复制到 `new-chat\` 根目录交付。
+- 对外文案同步：README 版本段、`docs/release-notes.md` 当前状态、`docs/press-kit.md` 下载表（实际字节数）、
+  `docs/site/index.html` 版本串、`docs/rc-checklist.md` §7 行的四资产字节数。
