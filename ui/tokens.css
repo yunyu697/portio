@@ -60,6 +60,29 @@ html[data-theme="light"]{
 }
 
 html[data-density="compact"]{ --row:24px; }
+/* 密度第三档「宽松」：只改 --row 一处，所有行高元素（标题条、文件栏、文件行、传输行）跟着走。
+   三档 24 / 28 / 32，等距 4px，量起来才不会有"某处用了别的数"的错位。 */
+html[data-density="comfortable"]{ --row:32px; }
+
+/* ---------- 界面字号（两档） ----------
+   界面文字只有两档：默认（下面这套）与大一号。
+   整块重定义 --fs-* 而不是给某个面板单独改字号——界面的字号体系是"一整套刻度"，
+   只放大正文会跟标题脱档。终端字号另有一套（存 localStorage，见 ui/app.js），
+   两套互不影响：调界面字号不许把终端里的字挤小。 */
+html[data-ui-font="large"]{
+  --fs-11:12px; --fs-12:13px; --fs-13:14px; --fs-14:15px; --fs-16:18px; --fs-20:22px;
+}
+
+/* ---------- 等宽字体（终端字体族） ----------
+   --mono 同时是界面里的小号等宽（路径、指纹、版本号）与终端字体。
+   不设 data-mono 就是「自动」：沿用 :root 那串（JetBrains 装了就用，没装顺次回落）。
+   选了具体一家就只留那一家的族名，装不上时仍然由末尾的 monospace 兜住——
+   宁可字丑一点，也不许回落到比例字体（终端里列会全部错位）。 */
+html[data-mono="jetbrains"]{ --mono:"JetBrains Mono","Cascadia Mono",Consolas,monospace; }
+html[data-mono="cascadia"]{ --mono:"Cascadia Mono","Cascadia Code",Consolas,monospace; }
+html[data-mono="consolas"]{ --mono:Consolas,"Cascadia Mono",monospace; }
+html[data-mono="system"]{ --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace; }
+
 
 /* ---------- 强调色（强调色预置） ----------
    界面主色可换：每套只改「跟主色一起走的四个令牌」——

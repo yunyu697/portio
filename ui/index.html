@@ -495,7 +495,7 @@
         <rect x="11.2" y="16.1" width="4.2" height="1.5" rx=".75" fill="var(--mark-accent)" opacity=".5"/>
         <rect x="15.4" y="11.3" width="3.6" height="1.4" rx=".7" fill="var(--mark-accent)"/>
       </svg>
-      <b data-tauri-drag-region>Portio</b><span class="ver" data-tauri-drag-region>1.0.7-RC3</span>
+      <b data-tauri-drag-region>Portio</b><span class="ver" data-tauri-drag-region>1.0.7-RC4</span>
     </div>
     <!-- 标签条本身就是标题栏里最大的一片空白，之前没挂 drag 区域，
          于是整条中间地段都点不动窗口。挂上后：空白处可拖、可双击最大化，标签项照常点击。 -->
@@ -699,10 +699,19 @@
           <p class="hint">主色只管界面（按钮、选中、把手、光标）；终端里红绿黄蓝的语义色不跟着变。</p>
         </div>
         <div class="field">
+          <label>界面字号</label>
+          <div class="seg" id="seg-ui-font">
+            <button data-v="standard">标准</button>
+            <button data-v="large">大一号</button>
+          </div>
+          <p class="hint">只影响界面文字（会话名、按钮、路径）。终端里的字由下面「终端字号」单独管。</p>
+        </div>
+        <div class="field">
           <label>界面密度</label>
           <div class="seg" id="seg-density">
-            <button data-v="standard">标准</button>
             <button data-v="compact">紧凑</button>
+            <button data-v="standard">标准</button>
+            <button data-v="comfortable">宽松</button>
           </div>
         </div>
         <div class="field">
@@ -717,8 +726,19 @@
         </div>
         <div class="field">
           <label>终端字号 <b id="font-val">13</b></label>
-          <input type="range" id="set-font" min="11" max="18" step="1" value="13">
+          <input type="range" id="set-font" min="9" max="24" step="1" value="13">
         </div>
+        <div class="field">
+          <label>等宽字体</label>
+          <div class="seg" id="seg-mono">
+            <button data-v="auto">自动</button>
+            <button data-v="jetbrains">JetBrains</button>
+            <button data-v="cascadia">Cascadia</button>
+            <button data-v="consolas">Consolas</button>
+          </div>
+          <p class="hint">机器上没装这一家时，按次序回落到别的等宽字体；绝不会回落到比例字体（那会让终端每一列都错位）。</p>
+        </div>
+
         <div class="field">
           <label>终端滚动缓冲</label>
           <div class="seg" id="seg-scroll">

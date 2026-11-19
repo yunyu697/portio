@@ -197,9 +197,12 @@ function applyTheme(pref) {
   // 浏览器里直接打开 ui/index.html 时没有 bridge，静默跳过。
   if (bridge) bridge.invoke("ui_theme_set", { theme: root.dataset.theme }).catch(() => {});
 }
+const DENSITIES = ["compact", "standard", "comfortable"];
+const DENSITY_NAME = { compact: "紧凑", standard: "标准", comfortable: "宽松" };
 function applyDensity(density) {
-  root.dataset.density = density;
-  localStorage.setItem("portio.density", density);
+  // 三档：紧凑 24 / 标准 28 / 宽松 32（--row 只有这一处在 tokens.css 里换）
+  root.dataset.density = DENSITIES.includes(density) ? density : "standard";
+  localStorage.setItem("portio.density", root.dataset.density);
   syncSegs();
 }
 // ---------- 强调色 ----------
@@ -248,9 +251,11 @@ window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", ()
   if ((localStorage.getItem("portio.theme") ?? "dark") === "system") applyTheme("system");
 });
 document.getElementById("btn-density").addEventListener("click", () => {
-  const next = root.dataset.density === "compact" ? "standard" : "compact";
+  // 标题栏那颗是"再紧一档 / 再松一档"的一键循环：紧凑 → 标准 → 宽松 → 紧凑。
+  const cur = DENSITIES.includes(root.dataset.density) ? root.dataset.density : "standard";
+  const next = DENSITIES[(DENSITIES.indexOf(cur) + 1) % DENSITIES.length];
   applyDensity(next);
-  toast(next === "compact" ? "已切换到紧凑密度" : "已切换到标准密度");
+  toast(`已切换到${DENSITY_NAME[next]}密度`);
 });
 
 // ---------- 终端配色 ----------
@@ -276,12 +281,63 @@ function applyTerm(id) {
   eachTerm((t) => { t.options.theme = terminalTheme(); });
   syncSegs();
 }
+// ---------- 字号 / 字体 / 密度 ----------
+// 三件事分属两套尺度，别搅在一起：
+//   界面字号（两档：标准 / 大一号）→ 换 tokens.css 里那一整套 --fs-*，只动界面文字；
+//   终端字号（9–24，滑杆）→ 只动 xterm 的 options.fontSize，界面一个字都不许变；
+//   等宽字体（自动 / JetBrains / Cascadia / Consolas）→ 换 --mono，界面小号等宽与终端一起换。
+// 早先只有终端字号一条滑杆，界面字号全按 tokens 里的 11–20 定死——"看得清"这件事对不同屏幕
+// 上是两回事：高分屏嫌小、老显示器嫌大，界面和终端还常常不是一个方向，所以这两档必须分开。
+const UI_FONT_KEY = "portio.uiFont";
+const UI_FONTS = ["standard", "large"];
+const UI_FONT_NAME = { standard: "标准", large: "大一号" };
+function readUiFont() {
+  const v = localStorage.getItem(UI_FONT_KEY);
+  return UI_FONTS.includes(v) ? v : "standard";
+}
+function applyUiFont(id) {
+  const want = UI_FONTS.includes(id) ? id : "standard";
+  localStorage.setItem(UI_FONT_KEY, want);
+  if (want === "standard") {
+    delete root.dataset.uiFont; // 默认档不留属性，省得以后加第三档时被 old 值压着
+  } else {
+    root.dataset.uiFont = want;
+  }
+  // 界面字号不带动终端，但界面变宽变窄会改终端可用格数，得重新量一次
+  if (term) fitQuietly();
+  syncSegs();
+}
+const MONO_KEY = "portio.mono";
+const MONOS = ["auto", "jetbrains", "cascadia", "consolas"];
+const MONO_NAME = { auto: "自动", jetbrains: "JetBrains", cascadia: "Cascadia", consolas: "Consolas" };
+function readMono() {
+  const v = localStorage.getItem(MONO_KEY);
+  return MONOS.includes(v) ? v : "auto";
+}
+// xterm 的 fontFamily 要的是真族名串，不是 "var(--mono)"：直接把令牌解析出来给它。
+// 令牌末尾一律带 monospace，装不上时仍然落在等宽字体上——比例字体会让终端每一列错位。
+function termFont() {
+  const stack = cssToken("--mono").trim();
+  return stack || "ui-monospace, Consolas, monospace";
+}
+function applyMono(id) {
+  const want = MONOS.includes(id) ? id : "auto";
+  localStorage.setItem(MONO_KEY, want);
+  if (want === "auto") {
+    delete root.dataset.mono;
+  } else {
+    root.dataset.mono = want;
+  }
+  eachTerm((t) => { t.options.fontFamily = termFont(); });
+  if (term) fitQuietly();
+  syncSegs();
+}
 // ---------- 设置 ----------
 const FONT_KEY = "portio.fontSize";
 const SCROLL_KEY = "portio.scrollback";
 function readFontSize() {
   const n = Number(localStorage.getItem(FONT_KEY));
-  return Number.isFinite(n) && n >= 11 && n <= 18 ? n : 13;
+  return Number.isFinite(n) && n >= 9 && n <= 24 ? n : 13;
 }
 function readScrollback() {
   const n = Number(localStorage.getItem(SCROLL_KEY));
@@ -309,6 +365,8 @@ function markSeg(id, value) {
 function syncSegs() {
   markSeg("seg-theme", localStorage.getItem("portio.theme") ?? "dark");
   markSeg("seg-density", root.dataset.density ?? "standard");
+  markSeg("seg-ui-font", readUiFont());
+  markSeg("seg-mono", readMono());
   markSeg("seg-scroll", readScrollback());
   markSeg("seg-term", readTerm());
   syncAccentDots();
@@ -401,6 +459,16 @@ if (location.hash === "#term-demo" || location.hash === "#term-demo-light") {
   if (location.hash === "#term-demo-light") applyTheme("light");
   toggleSettings(true);
 }
+// 核验用：界面字号「大一号」+ 终端字号 18 + 宽松密度，三个一起摆出来给截图看
+// （#font-demo / #font-demo-light）。它们各自是独立的设置，这里只是把它们同时调到明显位置。
+if (location.hash === "#font-demo" || location.hash === "#font-demo-light") {
+  applyUiFont("large");
+  setFontSize(18);
+  applyDensity("comfortable");
+  applyMono("consolas");
+  if (location.hash === "#font-demo-light") applyTheme("light");
+  toggleSettings(true);
+}
 document.getElementById("btn-settings").addEventListener("click", () => toggleSettings());
 document.getElementById("btn-set-close").addEventListener("click", () => toggleSettings(false));
 settingsModal.addEventListener("click", (e) => {
@@ -413,6 +481,18 @@ document.getElementById("seg-theme").addEventListener("click", (e) => {
 document.getElementById("seg-density").addEventListener("click", (e) => {
   const btn = e.target.closest("button");
   if (btn) applyDensity(btn.dataset.v);
+});
+document.getElementById("seg-ui-font").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  applyUiFont(btn.dataset.v);
+  toast(`界面字号：${UI_FONT_NAME[btn.dataset.v] ?? UI_FONT_NAME.standard}`);
+});
+document.getElementById("seg-mono").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  applyMono(btn.dataset.v);
+  toast(`等宽字体：${MONO_NAME[btn.dataset.v] ?? MONO_NAME.auto}`);
 });
 document.getElementById("acc-row").addEventListener("click", (e) => {
   const dot = e.target.closest(".acc-dot");
@@ -824,6 +904,8 @@ if (location.hash === "#theme-dark") applyTheme("dark");
 applyDensity(localStorage.getItem("portio.density") ?? "standard");
 applyAccent(readAccent());
 applyTerm(readTerm());
+applyUiFont(readUiFont());
+applyMono(readMono());
 applySidebar(readNum(PREF.sidebar.key, 264));
 if (sidebarFolded) applyFold(true);
 applySplit(Math.min(PREF.split.max, Math.max(PREF.split.min, readNum(PREF.split.key, 0.5))));
@@ -1016,7 +1098,7 @@ function makeCell(tab, sid = null) {
   el.dataset.cell = String(cellId);
   tab.grid.appendChild(el);
   const t = new Terminal({
-    fontFamily: "var(--mono), Consolas, monospace",
+    fontFamily: termFont(),
     fontSize: readFontSize(),
     lineHeight: 1.25,
     cursorBlink: true,
@@ -3360,16 +3442,16 @@ if (location.hash === "#find-pane-test") {
   })();
 }
 
-// ---------- 无头自检：#density-test（密度两档：标准 / 紧凑） ----------
-// 设置里能切"标准"与"紧凑"两档，差别只在 --row（28 / 24）：面板标题条、文件栏、文件行、
+// ---------- 无头自检：#density-test（密度三档：紧凑 / 标准 / 宽松） ----------
+// 设置里能切三档，差别只在 --row（24 / 28 / 32）：面板标题条、文件栏、文件行、
 // 传输行都跟着变高。这里量的是"切完高度一定对、位置一点也不许动"：
-//   ① 每档 --row 读出来的值与档位对得上（28 / 24）；
+//   ① 每档 --row 读出来的值与档位对得上（24 / 28 / 32），相邻两档正好差 4px；
 //   ② 八处行高元素（会话栏标题、终端标题条、文件标题条、两个文件栏、一条文件行、传输标题条、一条传输行）
-//      高度都严丝合缝等于 --row；
-//   ③ 同一个元素在标准与紧凑之间差的正好是 4px（不多不少）——差多了说明某处用了别的数；
+//      高度在三档里都严丝合缝等于 --row；
+//   ③ 同一个元素在相邻两档之间差的正好是 4px（不多不少）——差多了说明某处用了别的数；
 //   ④ 切档只许改高度，左右位置与宽度一点都不许动（横向错位是这类 bug 最常见的样子）；
 //   ⑤ 切完窗口不横向溢出、导入菜单不溢出会话栏；
-//   ⑥ 设置里的分段控件跟着走，两档来回切都能回到标准。
+//   ⑥ 设置里的分段控件跟着走，三档来回切都能回到标准。
 // 需要人手动塞一条文件行与一条传输行进来量，量完再拿掉。
 if (location.hash === "#density-test") {
   (function densityTest() {
@@ -3456,13 +3538,17 @@ if (location.hash === "#density-test") {
     try {
       const std = measure("standard");
       const cmp = measure("compact");
+      const wide = measure("comfortable"); // 第三档「宽松」：多一档就必须多量一遍，别只量两档
       seen.standard = std;
       seen.compact = cmp;
-      seen.delta = { row: Math.round((std.row - cmp.row) * 2) / 2 };
+      seen.comfortable = wide;
+      seen.delta = { row: Math.round((std.row - cmp.row) * 2) / 2, wide: Math.round((wide.row - std.row) * 2) / 2 };
 
       if (std.row !== 28) bad.push(`标准档 --row 是 ${std.row}px，应为 28px`);
       if (cmp.row !== 24) bad.push(`紧凑档 --row 是 ${cmp.row}px，应为 24px`);
-      if (seen.delta.row !== 4) bad.push(`两档只该差 4px，实际差 ${seen.delta.row}px`);
+      if (wide.row !== 32) bad.push(`宽松档 --row 是 ${wide.row}px，应为 32px`);
+      if (seen.delta.row !== 4) bad.push(`紧凑与标准只该差 4px，实际差 ${seen.delta.row}px`);
+      if (seen.delta.wide !== 4) bad.push(`标准与宽松只该差 4px，实际差 ${seen.delta.wide}px`);
 
       const keys = Object.keys(std.items);
       if (keys.length < landmarks.length) {
@@ -3478,13 +3564,23 @@ if (location.hash === "#density-test") {
         if (Math.abs(a.h - std.row) > 0.6) bad.push(`${key} 标准档高 ${a.h}px，应等于 --row ${std.row}px`);
         if (Math.abs(b.h - cmp.row) > 0.6) bad.push(`${key} 紧凑档高 ${b.h}px，应等于 --row ${cmp.row}px`);
         if (Math.abs((a.h - b.h) - 4) > 0.6) bad.push(`${key} 两档高度差 ${Math.round((a.h - b.h) * 2) / 2}px，应正好 4px`);
+        // 第三档「宽松」也要逐处核一遍：加一档最容易漏改某处写死的行高
+        const w = wide.items[key];
+        if (!w) {
+          bad.push(`${key} 在宽松档量不到`);
+          continue;
+        }
+        if (Math.abs(w.h - wide.row) > 0.6) bad.push(`${key} 宽松档高 ${w.h}px，应等于 --row ${wide.row}px`);
+        if (Math.abs((w.h - a.h) - 4) > 0.6) bad.push(`${key} 标准→宽松差 ${Math.round((w.h - a.h) * 2) / 2}px，应正好 4px`);
+        if (Math.abs(a.left - w.left) > 1) bad.push(`${key} 切到宽松档后左右动了 ${a.left} → ${w.left}`);
+        if (Math.abs(a.w - w.w) > 1) bad.push(`${key} 切到宽松档后宽度变了 ${a.w} → ${w.w}`);
         // 切档只许改高度：横向一动就说明有东西重排了
         if (Math.abs(a.left - b.left) > 1) bad.push(`${key} 切档后左右动了 ${a.left} → ${b.left}`);
         if (Math.abs(a.w - b.w) > 1) bad.push(`${key} 切档后宽度变了 ${a.w} → ${b.w}`);
       }
 
       // 段落控件得跟着走（设置面板打开状态下才量得到，无头里它一直在 DOM 里）
-      for (const d of ["standard", "compact"]) {
+      for (const d of ["compact", "standard", "comfortable"]) {
         applyDensity(d);
         const on = document.querySelector('#seg-density button.on');
         if (!on) bad.push(`${d} 档下设置里的密度控件没有选中项`);
@@ -4133,4 +4229,161 @@ if (location.hash.startsWith("#term-palette")) {
     if (!term) return;
     term.write("\r\n\x1b[0m前台八色（30–37）\r\n" + fgLine + "\r\n\r\n底色八色（40–47）\r\n" + bgLine + "\r\n");
   }, 400);
+}
+
+// ---------- 无头自检：#font-test（界面字号 / 终端字号 / 等宽字体 / 密度三档） ----------
+// 这四件事最怕的是"牵一发而动全身"：调界面字号把终端里的字挤小、换字体只换了 CSS
+// 而 xterm 还拿旧族名在量格子、密度多一档却把某处行高写成别的数。
+// 所以每一条都拿"改前 / 改后"互相比，并且必须落到**真终端对象**（xterm 不认 CSS 变量）：
+//   ① 出厂态：没有 data-ui-font、没有 data-mono；终端 13px、族名是那串默认（含 JetBrains Mono）；
+//   ② 界面字号「大一号」：--fs-13 从 13px 变 14px、真元素算出来的字号也跟着变大，而终端字号一动不动；
+//   ③ 终端字号 18：真终端 18px，界面 --fs-13 一动不动（两套互不带动）；
+//   ④ 字号越界（30 / 8）读回默认 13；下界 9 认；
+//   ⑤ 换 Consolas：data-mono 落上、真终端族名以 Consolas 打头、末尾仍有 monospace 兜底（绝不落比例字体）；
+//   ⑥ 认不出的字体名不留痕，回「自动」（属性消失）；
+//   ⑦ 密度三档 24 / 28 / 32，两两差正好 4px，且设置里的 seg 跟着走；
+//   ⑧ 换字体之后界面小号等宽的令牌也换了（界面与终端用的是同一个 --mono，不许只换一半）。
+if (location.hash === "#font-test") {
+  (function fontTest() {
+    const bad = [];
+    const seen = {};
+    const byId = (id) => document.getElementById(id);
+    const tok = (name) => getComputedStyle(root).getPropertyValue(name).trim();
+    const px = (v) => Math.round(parseFloat(v) * 2) / 2;
+    function expect(what, got, want) {
+      if (JSON.stringify(got) !== JSON.stringify(want)) {
+        bad.push(`${what}：${JSON.stringify(got)} ≠ ${JSON.stringify(want)}`);
+      }
+    }
+    function expectDiff(what, got, want) {
+      if (JSON.stringify(got) === JSON.stringify(want)) {
+        bad.push(`${what}：${JSON.stringify(got)} 与 ${JSON.stringify(want)} 撞了，应该不同`);
+      }
+    }
+    function onSeg(id) {
+      const box = byId(id);
+      return box ? [...box.querySelectorAll("button.on")].map((b) => b.dataset.v) : [];
+    }
+    let real = null;
+    eachTerm((t) => { if (!real) real = t; });
+    if (!real) {
+      document.title = `FONT-SELFTEST-FAIL ${JSON.stringify(["没抓到一个真终端对象，后面全都核不了"])}`;
+      return;
+    }
+    // 界面文字真算出来的字号：拿设置面板里那颗 seg 按钮量（它 font:inherit，跟着 --fs-13 走）
+    const uiProbe = () => px(getComputedStyle(byId("seg-ui-font").querySelector("button")).fontSize);
+
+    const prevUiFont = readUiFont();
+    const prevMono = readMono();
+    const prevFont = readFontSize();
+    const prevDensity = root.dataset.density ?? "standard";
+    try {
+      // ① 出厂态：清掉三项选择，看默认落到哪
+      localStorage.removeItem(UI_FONT_KEY);
+      localStorage.removeItem(MONO_KEY);
+      localStorage.removeItem(FONT_KEY);
+      applyUiFont(readUiFont());
+      applyMono(readMono());
+      setFontSize(readFontSize());
+      expect("没选过时没有 data-ui-font", root.dataset.uiFont, undefined);
+      expect("没选过时没有 data-mono", root.dataset.mono, undefined);
+      expect("出厂态界面字号令牌是 13px", tok("--fs-13"), "13px");
+      expect("出厂态终端字号是 13", real.options.fontSize, 13);
+      seen.autoFont = String(real.options.fontFamily);
+      if (!String(real.options.fontFamily).includes("JetBrains Mono")) {
+        bad.push(`出厂态终端族名里没有 JetBrains Mono：${JSON.stringify(real.options.fontFamily)}`);
+      }
+      const uiBefore = uiProbe();
+
+      // ② 界面字号大一号：界面变大，终端不动
+      applyUiFont("large");
+      expect("选了「大一号」后 data-ui-font 是 large", root.dataset.uiFont, "large");
+      expect("「大一号」把 --fs-13 抬到 14px", tok("--fs-13"), "14px");
+      const uiAfter = uiProbe();
+      expectDiff("界面上真算出来的字号确实变大了", uiAfter, uiBefore);
+      if (uiAfter <= uiBefore) bad.push(`界面字号没变大：${uiBefore}px → ${uiAfter}px`);
+      expect("界面字号放大后终端字号一动不动", real.options.fontSize, 13);
+      applyUiFont("standard");
+      expect("切回「标准」后属性消失", root.dataset.uiFont, undefined);
+      expect("切回「标准」后 --fs-13 回到 13px", tok("--fs-13"), "13px");
+
+      // ③ 终端字号 18：终端变大，界面不动
+      setFontSize(18);
+      expect("终端字号真的变成 18px", real.options.fontSize, 18);
+      expect("落盘记下了终端字号", localStorage.getItem(FONT_KEY), "18");
+      expect("终端字号变大后界面 --fs-13 一动不动", tok("--fs-13"), "13px");
+
+      // ④ 越界与下界
+      localStorage.setItem(FONT_KEY, "30");
+      expect("终端字号 30 超出上限，读回默认 13", readFontSize(), 13);
+      localStorage.setItem(FONT_KEY, "8");
+      expect("终端字号 8 低于下限，读回默认 13", readFontSize(), 13);
+      localStorage.setItem(FONT_KEY, "9");
+      expect("终端字号下界 9 是认的", readFontSize(), 9);
+      setFontSize(readFontSize());
+
+      // ⑤ 换 Consolas：族名当场挂到真终端上，且末尾有 monospace 兜底
+      applyMono("consolas");
+      expect("选了 Consolas 后 data-mono 是 consolas", root.dataset.mono, "consolas");
+      const ff = String(real.options.fontFamily);
+      if (!ff.startsWith("Consolas")) bad.push(`真终端的族名没以 Consolas 打头：${JSON.stringify(ff)}`);
+      if (!ff.endsWith("monospace")) bad.push(`族名末尾没有 monospace 兜底，可能落到比例字体：${JSON.stringify(ff)}`);
+      expect("界面小号等宽的令牌也跟着换了", tok("--mono"), termFont());
+
+      // ⑥ Cascadia 与 Consolas 不是同一串；认不出的名字不留痕
+      applyMono("cascadia");
+      if (!String(real.options.fontFamily).includes("Cascadia Mono")) {
+        bad.push(`换成 Cascadia 后真终端族名没跟上：${JSON.stringify(real.options.fontFamily)}`);
+      }
+      expectDiff("Cascadia 与 Consolas 的族名不同", String(real.options.fontFamily), ff);
+      applyMono("comic");
+      expect("认不出的字体名不留属性", root.dataset.mono, undefined);
+      expect("认不出的字体名读成「自动」", readMono(), "auto");
+      if (!termFont().endsWith("monospace")) bad.push(`「自动」档的族名末尾也不是 monospace：${JSON.stringify(termFont())}`);
+
+      // ⑦ 密度三档
+      const rows = {};
+      for (const d of ["compact", "standard", "comfortable"]) {
+        applyDensity(d);
+        void document.body.offsetHeight; // 强制重排再读令牌
+        rows[d] = px(tok("--row"));
+        const on = onSeg("seg-density");
+        if (on.length !== 1 || on[0] !== d) bad.push(`${d} 档下密度 seg 选中的是 ${JSON.stringify(on)}`);
+      }
+      expect("紧凑档 --row 应为 24px", rows.compact, 24);
+      expect("标准档 --row 应为 28px", rows.standard, 28);
+      expect("宽松档 --row 应为 32px", rows.comfortable, 32);
+      if (px(rows.standard - rows.compact) !== 4) {
+        bad.push(`紧凑 → 标准 差 ${px(rows.standard - rows.compact)}px，应正好 4px`);
+      }
+      if (px(rows.comfortable - rows.standard) !== 4) {
+        bad.push(`标准 → 宽松 差 ${px(rows.comfortable - rows.standard)}px，应正好 4px`);
+      }
+
+      // ⑧ seg 选中项与落盘
+      applyUiFont("large");
+      expect("界面字号 seg 选中的只有「大一号」", onSeg("seg-ui-font"), ["large"]);
+      expect("界面字号落盘", localStorage.getItem(UI_FONT_KEY), "large");
+      applyMono("consolas");
+      expect("等宽字体 seg 选中的只有 Consolas", onSeg("seg-mono"), ["consolas"]);
+      expect("等宽字体落盘", localStorage.getItem(MONO_KEY), "consolas");
+
+      seen.uiBefore = uiBefore;
+      seen.uiAfter = uiAfter;
+      seen.fontSize = readFontSize();
+      seen.row = rows;
+    } catch (err) {
+      bad.push(`走字号 / 字体 / 密度的过程抛了异常：${err && err.message ? err.message : err}`);
+    } finally {
+      // 收拾现场：三项都还原成进来时的样子
+      applyUiFont(prevUiFont);
+      applyMono(prevMono);
+      setFontSize(prevFont);
+      applyDensity(prevDensity);
+    }
+
+    document.title = bad.length
+      ? `FONT-SELFTEST-FAIL ${JSON.stringify(bad)} ${JSON.stringify(seen)}`
+      : `FONT-SELFTEST-OK ${JSON.stringify(seen)}`;
+  })();
 }
