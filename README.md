@@ -113,7 +113,9 @@
 | v0.3 文件双栏 | SFTP、传输队列、断点续传 |
 | v0.4 打磨发布 | 主题全量、签名、自动更新、文档站 |
 
-版本号形如 `v1.0.5-Alpha1`：每完成一个交付单元 Alpha 进一位，满 10 进 patch 回 Alpha1。
+版本号形如 `v1.0.6-RC1`：`Alpha` 阶段每完成一个交付单元进一位、满 10 进 patch 回 `Alpha1`；
+进 RC 后功能冻结、只修 Bug，进位规则不变（满 10 进 patch 回 `RC1`）；不带后缀就是正式版。
+当前在 **v1.0.6-RC1**，三平台最新安装包仍是 `v1.0.5-RC8`（RC9 / RC10 只改物料与文档，没有重新打包）。
 逐版更新内容见 [CHANGELOG.md](CHANGELOG.md)，使用说明见 [`docs/site/index.html`](docs/site/index.html)。
 
 ## 开发
