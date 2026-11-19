@@ -250,6 +250,28 @@ pub fn diag_tail(app: tauri::AppHandle, lines: Option<usize>) -> Result<String, 
     Ok(read_tail_file(&path, want))
 }
 
+/// Windows 上「在资源管理器里选中这个文件」要交给它的原始命令行是
+/// `/select,"C:\Users\A B\AppData\...\portio.log"`——引号必须只包住路径本身。
+///
+/// 旧写法是 `.arg(format!("/select,{}", path))`，参数里一带空格，Rust 就把**整个参数**
+/// （连 `/select,` 一起）括进引号，资源管理器拿到的开关名变成 `/select,C:\Users\Tyler`，
+/// 于是去选一个不存在的路径。用户名含空格（`C:\Users\Tyler Zhang\…`）是最常见的一种，
+/// 这类机器上这个按钮一直是哑的。路径里不可能出现 `"`（Windows 不允许），所以不必转义。
+#[cfg(target_os = "windows")]
+pub fn select_arg(path: &Path) -> String {
+    format!("/select,\"{}\"", path.display())
+}
+
+/// 交给资源管理器的那条命令，生产路径与测试用的是同一处。
+#[cfg(target_os = "windows")]
+fn reveal_command(path: &Path) -> std::process::Command {
+    use std::os::windows::process::CommandExt;
+    let mut cmd = std::process::Command::new("explorer.exe");
+    // 用 raw_arg 逐字送过去：explorer 不按常规的引号规则解析，交给它自己拼会被改坏
+    cmd.raw_arg(select_arg(path));
+    cmd
+}
+
 /// 在文件管理器里定位日志文件（用户点按钮才触发，不自动弹窗）。
 #[tauri::command]
 pub fn diag_reveal(app: tauri::AppHandle) -> Result<(), String> {
@@ -265,8 +287,7 @@ pub fn diag_reveal(app: tauri::AppHandle) -> Result<(), String> {
     }
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("explorer.exe")
-            .arg(format!("/select,{}", path.display()))
+        reveal_command(&path)
             .spawn()
             .map_err(|e| format!("打开资源管理器失败：{e}"))?;
     }
@@ -546,5 +567,46 @@ mod tests {
         let file = dir.join("portio.log");
         assert_eq!(read_tail_file(&file, 40), "");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 资源管理器要的开关是 `/select,"<路径>"`：引号只包路径，`/select,` 留在外面。
+    ///
+    /// 旧写法把 `/select,<路径>` 当一个普通参数交给 `Command::arg`，路径一带空格
+    /// （`C:\Users\Tyler Zhang\…` 就是这种机器）Rust 就把整段括进引号，开关名被吃成
+    /// `/select,C:\Users\Tyler`，于是这个按钮在含空格的用户名下一直是哑的。
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn select_arg_keeps_the_switch_outside_the_quotes() {
+        let spaced = Path::new(r"C:\Users\Tyler Zhang\AppData\Local\portio\logs\portio.log");
+        assert_eq!(
+            select_arg(spaced),
+            r#"/select,"C:\Users\Tyler Zhang\AppData\Local\portio\logs\portio.log""#
+        );
+        // 中文目录名同样只在引号里面
+        assert_eq!(
+            select_arg(Path::new(r"D:\日志 目录\portio.log")),
+            "/select,\"D:\\日志 目录\\portio.log\""
+        );
+
+        // 旧的调用形态：整个参数被括起来，引号落在 /select 前面
+        let old = format!(
+            "{:?}",
+            std::process::Command::new("explorer.exe").arg(format!("/select,{}", spaced.display()))
+        );
+        assert!(
+            old.contains("\"/select,"),
+            "旧写法应当把 /select, 一起括进引号（这才是那个 Bug）：{old}"
+        );
+
+        // 新形态：/select, 在引号外面（走生产代码那条构造）
+        let new = format!("{:?}", reveal_command(spaced));
+        assert!(
+            new.contains("/select,\""),
+            "新写法应当让 /select, 留在引号外：{new}"
+        );
+        assert!(
+            !new.contains("\"/select,"),
+            "新写法不该把 /select, 括进引号：{new}"
+        );
     }
 }
