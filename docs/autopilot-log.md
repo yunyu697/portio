@@ -2320,3 +2320,14 @@ Chrome 无头探针漏写 `--dump-dom` 时，**stdout 与 stderr 都是空的、
 - 无 SSH 服务器：真实远端目录里权限串长短不一（`-rw-r--r--`、`lrwxrwxrwx`、`drwx------`）时的视觉对齐只在无头页面用一条假行量过。
 - 1024 窄窗藏列只核了"不横向溢出"，没在真实文件多的目录里看省略号停在哪。
 
+**发版补记（同轮晚些时候写完）**
+
+- Release run `44576133068` **首跑四项全 success**（gate / windows-x64 / macos-universal / linux-x64），
+  这回 macOS 没再被取消。
+- Release `Portio 1.0.7-RC6`（`prerelease: true`、非草稿）四资产：
+  exe **3372544** B / dmg **9502433** B / deb **4957370** B / AppImage **83147256** B。
+- 本地 Windows 包同样打了一份：`D:\portio-target` 增量 + `TEMP/TMP=D:\portio-tmp`，
+  `Portio_1.0.7-RC6_x64-setup.exe` **4582076** B，已复制到 `new-chat\` 根目录交付。
+- 对外文案同步：README 版本段、`docs/release-notes.md` 当前状态、`docs/press-kit.md` 下载表（实际字节数）、
+  `docs/site/index.html` 五处版本串、`docs/rc-checklist.md` §7 行的四资产字节数。
+- 排期 `排期-v0.1.md` 的「续 20」段改 RC6，记录表追加一行。
