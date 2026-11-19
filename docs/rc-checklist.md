@@ -12,7 +12,7 @@
 | ✗ | 已知缺口：代码里就没有，或明知不合格 |
 | 🚫 | 卡外部条件：缺服务器 / 缺证书 / 缺平台机器，写清差什么 |
 
-**最近一次整跑**：2026-11-20 · `v1.0.7-RC10` · `python scripts/rc.py --fast` → 29 通过 / 0 失败 / 1 跳过（A1 跳过，本轮没动 Rust）；同日早些时候 `v1.0.7-RC9` 跑过**全量**（含 A1）：29 通过 / 0 失败 / 0 跳过；
+**最近一次整跑**：2026-11-20 · `v1.0.8-RC1` · `python scripts/rc.py`（全量，含 A1）→ **30 通过 / 0 失败 / 0 跳过，171.5s**；同日更早 `v1.0.7-RC10` 跑过全量（29 通过 / 0 跳过）；
 人工项与真服务器项仍未跑（见 §7）。
 
 ---
@@ -34,8 +34,8 @@
 | A7 | 分屏状态机 | 无头打开 `ui/index.html#split-test` | 标题 `SELFTEST-OK` | ✅ |
 | A8 | 复制粘贴按键映射 | 无头打开 `ui/index.html#clip-test` | 标题 `CLIP-SELFTEST-OK 10` | ✅ 10/10 |
 | A9 | 文件面板折叠 | 无头打开 `ui/index.html#fold-test` | 标题 `FOLD-SELFTEST-OK`，且折叠态 `files` 宽 = 0、把手 = 10、回展开 = 原宽 | ✅（open 360/340/9 → fold 480/0/10 → back 360/340） |
-| A10 | 启动不带控制台黑窗 | 读 `target/debug/portio-app.exe` 的 PE `OptionalHeader+68` | `Subsystem = 2`（GUI） | ✅ |
-| A11 | 安装包体积与文件名 | 打包后 `Get-ChildItem target\debug\bundle\nsis\*.exe` | 文件名带当轮版本、约 4.3 MiB | ◻ 每次打包后看 |
+| A10 | 启动不带控制台黑窗 | 读 `portio-app.exe` 的 PE `OptionalHeader+68`；找 exe 时仓库 `target/debug` 与 `CARGO_TARGET_DIR/debug` 都看、取 mtime 最新那份（改前只盯仓库 target，本机构建落在 D 盘时就判的是上一次的旧 exe） | `Subsystem = 2`（GUI），并打印判定用的是哪个目录 | ✅ Subsystem=2 ← D:\portio-target\debug |
+| A11 | 安装包是本版本的那个、体积像话 | `python scripts/rc.py`（内部按界面里的版本号找 `Portio_<当前版本>_x64-setup.exe`：bundle/nsis、仓库根、`CARGO_TARGET_DIR` 三处） | 找到同名文件且体积落在 2–30 MiB；**找不到就 SKIP 并点名眼前的旧包**，不拿旧包充数（改前取 mtime 最新的那个，2026-11-20 全量回归拿着两个版本前的 RC3 包就判过了） | ✅ 改后单测 9 条 |
 | A12 | 九处面板右键菜单 | 无头打开 `ui/index.html#ctx-test` | 标题 `CTX-SELFTEST-OK 9`：每处都拦住浏览器默认菜单，且开的是自己那份（条目文字逐条比对） | ✅ 9/9 |
 | A13 | 窄窗几何 | `python scripts/rc.py`（内部用 `--window-size` 跑 1024 / 900 两档） | 两档标题都是 `NARROW-SELFTEST-OK`：导入下拉整条留在 180 宽的侧栏里、条目文字被裁住、抽屉收起正好一行高（正文 0）、文件面板折叠后终端吃满整列、设置卡与「完成」按钮全在窗里、整页无横向滚动、右键菜单贴右缘会内收 | ✅ 1024 / 900 |
 | A14 | 深浅两套主题几何与对比度 | 无头打开 `ui/index.html#theme-test` | 标题 `THEME-SELFTEST-OK`：11 个分区在两套主题下左上角与宽高完全一致（`worstShift 0`）、主题按钮的太阳/月亮图标按主题互换、六组令牌对比度都在下限之上（分隔线 ≥1.25、强线 ≥1.5、正文 ≥10、次要 ≥4.5、弱化 ≥2.9） | ✅ worstShift 0 |

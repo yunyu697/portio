@@ -30,7 +30,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 UI = ROOT / "ui"
-APP_EXE = ROOT / "target" / "debug" / "portio-app.exe"
 BUNDLE_DIR = ROOT / "target" / "debug" / "bundle" / "nsis"
 
 PASS, FAIL, SKIP = "PASS", "FAIL", "SKIP"
@@ -212,10 +211,31 @@ def a_page(chrome: str | None, profile: str, frag: str, expect: str,
     return PASS, f"title = {title}"
 
 
+def app_exe_dirs() -> list[Path]:
+    dirs = [ROOT / "target" / "debug"]
+    target = os.environ.get("CARGO_TARGET_DIR")
+    if target:
+        dirs.append(Path(target) / "debug")
+    return dirs
+
+
+def find_app_exe(dirs: list[Path]) -> Path | None:
+    """挑最新的那份 portio-app.exe。
+
+    C 盘紧的时候构建会落到 `CARGO_TARGET_DIR`（本机是 D 盘），只盯仓库里的 target
+    就会拿着上一次留下的旧 exe 去判「启动带不带控制台」——和 A11 拿旧包充数同一种毛病。
+    """
+    hits = [d / "portio-app.exe" for d in dirs if (d / "portio-app.exe").is_file()]
+    if not hits:
+        return None
+    return max(hits, key=lambda q: q.stat().st_mtime)
+
+
 def a10_pe_subsystem() -> tuple[str, str]:
-    if not APP_EXE.exists():
-        return SKIP, "还没构建 target/debug/portio-app.exe（先 npm run build 或 tauri build）"
-    with APP_EXE.open("rb") as f:
+    exe = find_app_exe(app_exe_dirs())
+    if exe is None:
+        return SKIP, "还没构建 portio-app.exe（先 npm run build 或 tauri build）"
+    with exe.open("rb") as f:
         head = f.read(0x400)
     if head[:2] != b"MZ":
         return FAIL, "不是有效的 PE 文件"
@@ -225,21 +245,47 @@ def a10_pe_subsystem() -> tuple[str, str]:
     subsystem = struct.unpack_from("<H", head, e_lfanew + 4 + 20 + 68)[0]
     if subsystem != 2:
         return FAIL, f"Subsystem={subsystem}，GUI 应为 2（否则启动会带控制台黑窗）"
-    return PASS, "Subsystem=2（GUI，启动不带控制台）"
+    return PASS, f"Subsystem=2（GUI，启动不带控制台）← {exe.parent}"
 
 
-def a11_bundle() -> tuple[str, str]:
-    if not BUNDLE_DIR.exists():
-        return SKIP, "还没打过 NSIS 包"
-    exes = sorted(BUNDLE_DIR.glob("*.exe"), key=lambda p: p.stat().st_mtime, reverse=True)
-    if not exes:
-        return SKIP, "bundle/nsis 里没有 exe"
-    newest = exes[0]
+def current_version() -> str:
+    """界面标题栏里那个版本串——所有判据跟它同一个口径。"""
+    m = re.search(r'<span class="ver"[^>]*>(.*?)</span>', (UI / "index.html").read_text(encoding="utf-8"))
+    return m.group(1).strip() if m else ""
+
+
+def check_bundle(ver: str, dirs: list[Path]) -> tuple[str, str]:
+    """按当前版本号找安装包：只认 Portio_<当前版本>_x64-setup.exe。
+
+    这里原来取「目录里 mtime 最新的那个 .exe」，于是仓库根上留着一个两个版本前的包
+    也能让这项判过——这一项就退化成「本地有没有留下过安装包」，而不是
+    「当前版本的包在不在、体积像不像话」。版本号对不上就 SKIP 并点名旧包，别报 PASS。
+    """
+    ver = (ver or "").strip()
+    if not ver:
+        return FAIL, "读不出界面里的版本号，没法判断该认哪一个包"
+    want = f"Portio_{ver}_x64-setup.exe"
+    hits = [d / want for d in dirs if (d / want).is_file()]
+    if not hits:
+        stale = sorted({q.name for d in dirs if d.is_dir() for q in d.glob("Portio_*.exe")})
+        tail = ""
+        if stale:
+            tail = "；这些是旧包、不算：" + "、".join(stale[:3]) + ("…" if len(stale) > 3 else "")
+        return SKIP, f"还没构建 {ver} 的安装包（要 {want}）{tail}"
+    newest = max(hits, key=lambda q: q.stat().st_mtime)
     size = newest.stat().st_size
     mib = size / 1024 / 1024
     if mib < 2 or mib > 30:
         return FAIL, f"{newest.name} 体积 {mib:.2f} MiB 不在 2–30 MiB 的合理区间"
-    return PASS, f"{newest.name} {size} 字节（{mib:.2f} MiB）"
+    return PASS, f"{newest.name} {size} 字节（{mib:.2f} MiB）← {newest.parent}"
+
+
+def a11_bundle() -> tuple[str, str]:
+    dirs = [BUNDLE_DIR, ROOT]
+    target = os.environ.get("CARGO_TARGET_DIR")
+    if target:
+        dirs.append(Path(target) / "debug" / "bundle" / "nsis")
+    return check_bundle(current_version(), dirs)
 
 
 # ---------- 主流程 --------------------------------------------------------
@@ -260,8 +306,8 @@ def main(argv: list[str]) -> int:
         ("A7", "#split-test = SELFTEST-OK", True),
         ("A8", "#clip-test = CLIP-SELFTEST-OK 10", True),
         ("A9", "#fold-test = FOLD-SELFTEST-OK", True),
-        ("A10", "portio-app.exe 子系统 = GUI", True),
-        ("A11", "NSIS 安装包体积与文件名", True),
+        ("A10", "portio-app.exe 子系统 = GUI（沿 CARGO_TARGET_DIR 找这一轮构建出来的那份）", True),
+        ("A11", "NSIS 安装包体积与文件名（只认当前版本的 Portio_<版本>_x64-setup.exe，旧包不算）", True),
         ("A12", "#ctx-test = CTX-SELFTEST-OK 9（九处面板右键菜单）", True),
         ("A13", "#narrow-test 两档窄窗（1024 / 900）几何", True),
         ("A14", "#theme-test = THEME-SELFTEST-OK（深浅两套几何一致 + 令牌对比度）", True),

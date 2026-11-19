@@ -2677,3 +2677,41 @@ S13–S14 交付就是文档站点。而它恰好落后两版：离线说明页 
   → 已复制到 `…\new-chat\Portio_1.0.7-RC10_x64-setup.exe` 交付。
 - 物料页下载表的字节数已回填成 Release 上的真值。
 
+## 2026-11-20 · v1.0.8-RC1 · 回归别拿旧东西充数
+
+**做了什么**
+
+上一轮全量回归时，A11「安装包」那一项拿着仓库根上两个版本前的 `Portio_1.0.7-RC3_x64-setup.exe` 就判了过——
+它取的是「打包目录里 mtime 最新的 `.exe`」，所以那一项其实在问「我本地有没有留下过安装包」，
+不是「这一版的包在不在」。顺着这条线又撞出第二处：A10 死盯 `target/debug/portio-app.exe`，
+而本机构建落在 `CARGO_TARGET_DIR`（D 盘），它一直在读上一次留下的旧 exe 判「带不带控制台」。
+
+- A11 改成按界面里的版本号找 `Portio_<当前版本>_x64-setup.exe`，bundle/nsis、仓库根、`CARGO_TARGET_DIR/debug/bundle/nsis`
+  三处都看；找不到就 **SKIP 并点名眼前的旧包**，不报 PASS。
+- A10 改成 `app_exe_dirs()` + `find_app_exe()`：两个构建目录里取 mtime 最新的那份，PASS 时把用的目录一起打出来。
+- 两件事都抽成可测的纯函数，新增 `scripts/test_rc_artifacts.py` 13 条单测（旧包不算 / 无包 SKIP / 仓库根的包也认 /
+  体积越界 FAIL / 版本串读不出要 FAIL / 两份取新 / 构建目录跟着 `CARGO_TARGET_DIR` 走）。
+
+**验证证据**
+
+- `python -m unittest scripts.test_rc_artifacts` → **13 通过**；另跑 `test_check_site` + `test_release_gate` + `test_version` 共 41 条全过。
+- 反向验证两条：① `check_bundle` 退回「目录里随便一个 `Portio_*.exe`」→ `FAIL: test_only_old_packages_do_not_pass`
+  `AssertionError: 'PASS' != 'SKIP'`；② `find_app_exe` 退回「取第一个」→ `FAIL: test_newest_build_wins`
+  点出拿到的是仓库里那份旧 exe。两处都还原后回 OK。
+- `python scripts/rc.py`（**全量，含 A1**）→ **30 通过 / 0 失败 / 0 跳过，171.5s**；
+  A11 实跑 `Portio_1.0.8-RC1_x64-setup.exe 4585453 字节（4.37 MiB）← D:\portio-target\debug\bundle\nsis`，
+  A10 实跑 `Subsystem=2 ← D:\portio-target\debug`（这证明它这次真读的是本轮构建的那份）。
+- 本地 NSIS 包同轮构建：`tauri build --debug --bundles nsis` 退出码 0，2m23s 编译完、出包 4.37 MiB。
+- `check_versions.py` → `OK v1.0.8-RC1`；`check_site.py` → `OK 16 项设置 / 40 个档位，版本 v1.0.8-RC1`；
+  `cargo check --workspace` 9.69s 通过；`node --check ui/app.js` 通过。
+
+**下一步**
+
+- 打 tag `v1.0.8-RC1`、push、等三平台包；Release 出来后回填物料页下载表的字节数、交付本地包。
+- backlog 里等用户拍板的仍挂着（「用默认」要不要连分栏/抽屉给档位、默认宽度是否放开任意像素）；真窗口点检仍卡在锁屏。
+
+**未验证**
+
+- A10 / A11 只证明「产物在、名字对、体积像话」，不证明包能启动、不证明界面是这一版——真机装一遍没做（桌面锁屏）。
+- 这一轮没动产品代码，所以「装上新包连一台机器」这类端到端仍然和之前一样：无 SSH 测试服务器，未验证。
+
