@@ -2519,3 +2519,11 @@ S13–S14 交付就是文档站点。而它恰好落后两版：离线说明页 
   （「用默认」要不要连分栏 / 抽屉也给几档、默认宽度是否放开任意像素）。
 - 仍卡外部：无 SSH 服务器（B1–B9）、签名证书 / 更新端点 / 崩溃上报（C1–C3）、许可证（C6）、
   真窗口点检（桌面长期锁屏）。
+
+**同轮补记（提交之后）**
+
+- 提交 `36348d0` 已 push main；main CI run `44607672769` **六项全 success**
+  （fmt / clippy / test / version rule / build(ubuntu) / build(windows) / build(macos)）。
+- 版本停在 `v1.0.7-RC8`，`check_versions.py` → `OK v1.0.7-RC8`；没有新 tag、没有新 Release，
+  下载页上的包仍是 RC8 那一批——页面与包仍是同一版。
+
