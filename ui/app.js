@@ -253,6 +253,29 @@ document.getElementById("btn-density").addEventListener("click", () => {
   toast(next === "compact" ? "已切换到紧凑密度" : "已切换到标准密度");
 });
 
+// ---------- 终端配色 ----------
+// 跟界面主题解耦：不选（auto）就沿用界面深浅那套 --term-*/--ansi-*；
+// 选了预设就把这九个令牌整体换成那一家，界面切深浅不再带动它（值全在 tokens.css 末段）。
+// 光标不在预设里——它永远跟主色（--term-cursor 归强调色管）。
+const TERM_KEY = "portio.termTheme";
+const TERMS = ["auto", "dracula", "solarized", "nord"];
+const TERM_NAME = { auto: "跟界面", dracula: "Dracula", solarized: "Solarized", nord: "Nord" };
+function readTerm() {
+  const v = localStorage.getItem(TERM_KEY);
+  return TERMS.includes(v) ? v : "auto";
+}
+function applyTerm(id) {
+  const want = TERMS.includes(id) ? id : "auto"; // 认不出的值回"跟界面"，别让终端留一套没人认得的色
+  localStorage.setItem(TERM_KEY, want);
+  if (want === "auto") {
+    delete root.dataset.term; // 去掉属性才回到界面那套，写成 data-term="auto" 会一直压着浅色档
+  } else {
+    root.dataset.term = want;
+  }
+  // xterm 不跟 CSS 变量活，换完令牌必须把主题重挂一遍
+  eachTerm((t) => { t.options.theme = terminalTheme(); });
+  syncSegs();
+}
 // ---------- 设置 ----------
 const FONT_KEY = "portio.fontSize";
 const SCROLL_KEY = "portio.scrollback";
@@ -287,6 +310,7 @@ function syncSegs() {
   markSeg("seg-theme", localStorage.getItem("portio.theme") ?? "dark");
   markSeg("seg-density", root.dataset.density ?? "standard");
   markSeg("seg-scroll", readScrollback());
+  markSeg("seg-term", readTerm());
   syncAccentDots();
   const font = document.getElementById("set-font");
   if (font) font.value = String(readFontSize());
@@ -371,6 +395,12 @@ if (location.hash === "#accent-demo" || location.hash === "#accent-demo-light") 
   if (location.hash === "#accent-demo-light") applyTheme("light");
   toggleSettings(true);
 }
+// 核验用：换个终端配色给截图看（#term-demo / #term-demo-light）
+if (location.hash === "#term-demo" || location.hash === "#term-demo-light") {
+  applyTerm("nord");
+  if (location.hash === "#term-demo-light") applyTheme("light");
+  toggleSettings(true);
+}
 document.getElementById("btn-settings").addEventListener("click", () => toggleSettings());
 document.getElementById("btn-set-close").addEventListener("click", () => toggleSettings(false));
 settingsModal.addEventListener("click", (e) => {
@@ -393,6 +423,12 @@ document.getElementById("acc-row").addEventListener("click", (e) => {
 document.getElementById("seg-scroll").addEventListener("click", (e) => {
   const btn = e.target.closest("button");
   if (btn) setScrollback(Number(btn.dataset.v));
+});
+document.getElementById("seg-term").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  applyTerm(btn.dataset.v);
+  toast(`终端配色：${TERM_NAME[btn.dataset.v] ?? TERM_NAME.auto}`);
 });
 document.getElementById("set-font").addEventListener("input", (e) => setFontSize(Number(e.target.value)));
 document.getElementById("hosts-list").addEventListener("click", async (e) => {
@@ -787,6 +823,7 @@ if (location.hash === "#theme-light") applyTheme("light");
 if (location.hash === "#theme-dark") applyTheme("dark");
 applyDensity(localStorage.getItem("portio.density") ?? "standard");
 applyAccent(readAccent());
+applyTerm(readTerm());
 applySidebar(readNum(PREF.sidebar.key, 264));
 if (sidebarFolded) applyFold(true);
 applySplit(Math.min(PREF.split.max, Math.max(PREF.split.min, readNum(PREF.split.key, 0.5))));
@@ -3955,4 +3992,145 @@ if (location.hash === "#accent-test") {
       ? `ACCENT-SELFTEST-FAIL ${JSON.stringify(bad)} ${JSON.stringify(seen)}`
       : `ACCENT-SELFTEST-OK ${JSON.stringify(seen)}`;
   })();
+}
+
+// ---------- 自检：终端配色方案（A22 / #term-theme-test）----------
+// 验的是"终端配色真的跟界面主题解耦了"，而不是"按钮点了会变色"：
+// ① 默认是「跟界面」、html 上没有 data-term 压着；
+// ② 选 Nord 后终端九色成套换（底 / 字 / 选区 + ANSI 八色一起），且终端底色与界面底色不同源；
+// ③ 这时把界面切浅色，终端那套色一动不动；
+// ④ 回「跟界面」后属性消失、终端底色回到界面那套；⑤ 认不出的值回「跟界面」；
+// ⑥ 真终端对象的 theme 也换了（xterm 不认 CSS 变量，只认 options.theme）；
+// ⑦ 强调色与终端配色互不干扰：换主色不动 Nord 的 ANSI 绿，光标仍跟主色走。
+// 期望值一律拿"改前 / 改后"互相比，不写死色值——写死就等于把配色又钉回代码里，
+// 而这里的规矩是配色只许住 tokens.css。
+if (location.hash === "#term-theme-test") {
+  (function termThemeTest() {
+    const bad = [];
+    const seen = {};
+    const byId = (id) => document.getElementById(id);
+    const tok = (name) => getComputedStyle(root).getPropertyValue(name).trim();
+    function expect(what, got, want) {
+      if (JSON.stringify(got) !== JSON.stringify(want)) {
+        bad.push(`${what}：${JSON.stringify(got)} ≠ ${JSON.stringify(want)}`);
+      }
+    }
+    function expectDiff(what, got, want) {
+      if (JSON.stringify(got) === JSON.stringify(want)) {
+        bad.push(`${what}：${JSON.stringify(got)} 与 ${JSON.stringify(want)} 撞了，应该不同`);
+      }
+    }
+    function onSeg() {
+      return [...byId("seg-term").querySelectorAll("button.on")].map((b) => b.dataset.v);
+    }
+    // 抓一个真终端对象来核，别只看 CSS 变量
+    let real = null;
+    eachTerm((t) => { if (!real) real = t; });
+
+    const prevTheme = localStorage.getItem("portio.theme") ?? "dark";
+    const prevTerm = readTerm();
+    const prevAccent = readAccent();
+    try {
+      // ① 起点：固定深色、清掉选择，终端跟界面同源
+      applyTheme("dark");
+      localStorage.removeItem(TERM_KEY);
+      applyTerm(readTerm());
+      expect("没选过时是「跟界面」", readTerm(), "auto");
+      expect("没选过时 html 上没有 data-term", root.dataset.term, undefined);
+      const autoBg = tok("--term-bg");
+      const autoGreen = tok("--ansi-green");
+      const darkUiBg = tok("--bg");
+      expectDiff("跟界面时终端底色本来就和界面底色不同（终端是黑底画布）", autoBg, darkUiBg);
+
+      // ② 选 Nord：九色成套换
+      applyTerm("nord");
+      expect("选了 Nord 后 data-term 是 nord", root.dataset.term, "nord");
+      expect("落盘记下了终端配色", localStorage.getItem(TERM_KEY), "nord");
+      const nordBg = tok("--term-bg");
+      const nordGreen = tok("--ansi-green");
+      const nordFg = tok("--term-fg");
+      expectDiff("终端背景真的换了（不再是界面那套）", nordBg, autoBg);
+      expectDiff("ANSI 绿也成套换了", nordGreen, autoGreen);
+      expectDiff("前景跟着换（只换底不换字会看不清）", nordFg, tok("--term-bg"));
+
+      // ⑥ 真终端对象当场就该被重挂（xterm 不认 CSS 变量，只认 options.theme）。
+      // 这一条必须查在切主题之前：applyTheme 里也会顺手重挂一遍，放在后面就查不出
+      // "applyTerm 自己忘了挂"这个 bug（反向验证时确实被盖住过一次）。
+      if (!real) {
+        bad.push("没抓到一个真终端对象，没法核 options.theme");
+      } else {
+        const theme = real.options.theme ?? {};
+        expect("真终端的背景就是 Nord 的底", theme.background, nordBg);
+        expect("真终端的绿就是 Nord 的绿", theme.green, nordGreen);
+        // 光标归强调色管，不归终端预设管
+        expect("真终端光标跟主色走", theme.cursor, tok("--accent"));
+      }
+
+      // ③ 界面切浅色：终端那套一动不动
+      applyTheme("light");
+      const lightUiBg = tok("--bg");
+      expectDiff("界面底色确实变浅了", lightUiBg, darkUiBg);
+      expect("界面切浅色后终端配色还是 Nord", root.dataset.term, "nord");
+      expect("界面切浅色后终端背景一动不动", tok("--term-bg"), nordBg);
+      expect("界面切浅色后 ANSI 绿一动不动", tok("--ansi-green"), nordGreen);
+      expectDiff("终端底色没跟着界面变浅", tok("--term-bg"), lightUiBg);
+
+      // 三套预设确实互不相同（不是同一个色板换个名字）
+      applyTerm("dracula");
+      expectDiff("Dracula 的底与 Nord 的底不同", tok("--term-bg"), nordBg);
+      expectDiff("Dracula 的绿与 Nord 的绿不同", tok("--ansi-green"), nordGreen);
+
+      // ④ 回「跟界面」：属性消失，终端跟回界面（此刻界面是浅色）
+      applyTerm("auto");
+      expect("回「跟界面」后 data-term 没了", root.dataset.term, undefined);
+      const lightAutoBg = tok("--term-bg");
+      expectDiff("跟回浅色界面后终端底色变了", lightAutoBg, nordBg);
+      applyTheme("dark");
+      expect("跟回深色界面后终端底色就是原来的值", tok("--term-bg"), autoBg);
+
+      // ⑤ 认不出的值别留在机器上
+      localStorage.setItem(TERM_KEY, "monokai");
+      expect("认不出的终端配色读成「跟界面」", readTerm(), "auto");
+
+      // ⑦ 两套互不干扰：换主色不动 Nord 的 ANSI 绿，但光标跟着主色
+      applyTerm("nord");
+      const beforeAccent = tok("--accent");
+      applyAccent("azure");
+      expectDiff("主色确实换了", tok("--accent"), beforeAccent);
+      expect("换主色后 Nord 的 ANSI 绿没变", tok("--ansi-green"), nordGreen);
+      expect("换主色后终端光标就是主色", tok("--term-cursor"), tok("--accent"));
+      expect("seg 里选中的只有 Nord 一颗", onSeg(), ["nord"]);
+
+      seen.term = readTerm();
+      seen.termBg = nordBg;
+      seen.ansiGreen = nordGreen;
+      seen.autoBg = autoBg;
+    } catch (err) {
+      bad.push(`走终端配色设置的过程抛了异常：${err && err.message ? err.message : err}`);
+    } finally {
+      // 收拾现场：还原主题、终端配色与主色
+      applyTheme(prevTheme);
+      applyAccent(prevAccent);
+      applyTerm(prevTerm);
+    }
+
+    document.title = bad.length
+      ? `TERM-THEME-SELFTEST-FAIL ${JSON.stringify(bad)} ${JSON.stringify(seen)}`
+      : `TERM-THEME-SELFTEST-OK ${JSON.stringify(seen)}`;
+  })();
+}
+
+// 核验用：把 ANSI 八色真写进终端，一眼看出这套配色长什么样（#term-palette / #term-palette-solarized /
+// #term-palette-auto）。只给截图与人工比对用，不参与任何逻辑。
+if (location.hash.startsWith("#term-palette")) {
+  const pick = location.hash === "#term-palette-solarized" ? "solarized"
+    : location.hash === "#term-palette-auto" ? "auto" : "nord";
+  applyTerm(pick);
+  const names = ["黑", "红", "绿", "黄", "蓝", "紫", "青", "白"];
+  const fgLine = names.map((n, i) => `\x1b[${30 + i}m${n} ${30 + i}\x1b[0m`).join("  ");
+  const bgLine = names.map((n, i) => `\x1b[${40 + i}m  ${n}  ${40 + i}  \x1b[0m`).join(" ");
+  setTimeout(() => {
+    if (!term) return;
+    term.write("\r\n\x1b[0m前台八色（30–37）\r\n" + fgLine + "\r\n\r\n底色八色（40–47）\r\n" + bgLine + "\r\n");
+  }, 400);
 }

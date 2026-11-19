@@ -495,7 +495,7 @@
         <rect x="11.2" y="16.1" width="4.2" height="1.5" rx=".75" fill="var(--mark-accent)" opacity=".5"/>
         <rect x="15.4" y="11.3" width="3.6" height="1.4" rx=".7" fill="var(--mark-accent)"/>
       </svg>
-      <b data-tauri-drag-region>Portio</b><span class="ver" data-tauri-drag-region>1.0.7-RC2</span>
+      <b data-tauri-drag-region>Portio</b><span class="ver" data-tauri-drag-region>1.0.7-RC3</span>
     </div>
     <!-- 标签条本身就是标题栏里最大的一片空白，之前没挂 drag 区域，
          于是整条中间地段都点不动窗口。挂上后：空白处可拖、可双击最大化，标签项照常点击。 -->
@@ -704,6 +704,16 @@
             <button data-v="standard">标准</button>
             <button data-v="compact">紧凑</button>
           </div>
+        </div>
+        <div class="field">
+          <label>终端配色</label>
+          <div class="seg" id="seg-term">
+            <button data-v="auto">跟界面</button>
+            <button data-v="dracula">Dracula</button>
+            <button data-v="solarized">Solarized</button>
+            <button data-v="nord">Nord</button>
+          </div>
+          <p class="hint">选了预设之后，界面切深浅都不再带动终端——终端那套色自己站住。光标始终跟主色走。</p>
         </div>
         <div class="field">
           <label>终端字号 <b id="font-val">13</b></label>

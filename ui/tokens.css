@@ -108,3 +108,25 @@ html[data-accent="lime"]{
 html[data-theme="light"][data-accent="lime"]{
   --accent:#5f8f2a; --on-accent:#ffffff; --mark-accent:#5f8f2a; --term-cursor:#5f8f2a;
 }
+
+/* ---------- 终端配色预置（html[data-term="<名字>"]）----------
+   不设 data-term 就是"跟界面"：终端沿用上面深浅两套里的 --term-* / --ansi-*。
+   一旦选了预设，终端八色 + 背景/前景/选区整体换成那一家，**界面切深浅都不再带动它**
+   ——这是"终端配色与界面主题解耦"的意思。
+   注意：--term-cursor 不在这里换，它归强调色管（光标是主色的投影）。
+   每套必须成套换：只换背景不换前景，浅底配浅字直接看不清。 */
+html[data-term="dracula"]{
+  --term-bg:#282a36; --term-fg:#f8f8f2; --term-selection:#44475a;
+  --ansi-black:#21222c; --ansi-red:#ff5555; --ansi-green:#50fa7b; --ansi-yellow:#f1fa8c;
+  --ansi-blue:#bd93f9; --ansi-magenta:#ff79c6; --ansi-cyan:#8be9fd; --ansi-white:#f8f8f2;
+}
+html[data-term="solarized"]{
+  --term-bg:#002b36; --term-fg:#93a1a1; --term-selection:#073642;
+  --ansi-black:#073642; --ansi-red:#dc322f; --ansi-green:#859900; --ansi-yellow:#b58900;
+  --ansi-blue:#268bd2; --ansi-magenta:#d33682; --ansi-cyan:#2aa198; --ansi-white:#eee8d5;
+}
+html[data-term="nord"]{
+  --term-bg:#2e3440; --term-fg:#d8dee9; --term-selection:#434c5e;
+  --ansi-black:#3b4252; --ansi-red:#bf616a; --ansi-green:#a3be8c; --ansi-yellow:#ebcb8b;
+  --ansi-blue:#81a1c1; --ansi-magenta:#b48ead; --ansi-cyan:#88c0d0; --ansi-white:#e5e9f0;
+}
