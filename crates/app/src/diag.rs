@@ -209,18 +209,45 @@ pub fn diag_info(app: tauri::AppHandle) -> Result<DiagInfo, String> {
     })
 }
 
+/// 从一段字节里取最后 `want` 行。
+///
+/// 不按 UTF-8 整体解码，而是按行切、逐行容错解码：日志里混进一个坏字节（半截写入、别的程序
+/// 往这个文件里写过东西、磁盘出错），**前面的行照样能拿到**，坏字节就地变成 `�`。
+/// 旧写法用 `read_to_string` 读整份，一个坏字节就让整段变成空串——日志坏掉的时候，
+/// 恰恰是我最需要把它交出去的时候。
+pub fn tail_of(bytes: &[u8], want: usize) -> String {
+    let mut parts: Vec<&[u8]> = bytes.split(|b| *b == b'\n').collect();
+    // 文件以换行结尾时最后那一段是空的，不算一行
+    while parts.last().is_some_and(|p| p.is_empty()) {
+        parts.pop();
+    }
+    let want = want.max(1);
+    let skip = parts.len().saturating_sub(want);
+    let mut out = String::new();
+    for (i, part) in parts[skip..].iter().enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        let decoded = String::from_utf8_lossy(part);
+        out.push_str(decoded.trim_end_matches('\r'));
+    }
+    out
+}
+
+/// 读文件的最后 `want` 行；文件不存在或读不动就当没有内容（不弹错）。
+pub fn read_tail_file(file: &Path, want: usize) -> String {
+    match std::fs::read(file) {
+        Ok(bytes) => tail_of(&bytes, want),
+        Err(_) => String::new(),
+    }
+}
+
 /// 读日志尾巴（最多 200 行），「复制诊断信息」用它。
 #[tauri::command]
 pub fn diag_tail(app: tauri::AppHandle, lines: Option<usize>) -> Result<String, String> {
     let path = log_file(&app)?;
-    let raw = match std::fs::read_to_string(&path) {
-        Ok(t) => t,
-        Err(_) => return Ok(String::new()),
-    };
     let want = lines.unwrap_or(40).clamp(1, TAIL_LIMIT);
-    let all: Vec<&str> = raw.lines().collect();
-    let start = all.len().saturating_sub(want);
-    Ok(all[start..].join("\n"))
+    Ok(read_tail_file(&path, want))
 }
 
 /// 在文件管理器里定位日志文件（用户点按钮才触发，不自动弹窗）。
@@ -445,6 +472,70 @@ mod tests {
         let raw = std::fs::read_to_string(&file).unwrap();
         assert!(raw.contains("闸放开之后的这一条"), "闸没复位：{raw}");
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 文件里混进坏字节时，前面完好的行必须照样拿得到。
+    ///
+    /// 旧写法 `read_to_string` 读整份文件，遇到一个非法 UTF-8 字节就整段返回空——
+    /// 于是"日志坏了"这件事本身把证据也一起吞掉了。
+    #[test]
+    fn a_damaged_log_still_yields_the_intact_lines() {
+        let dir = std::env::temp_dir().join(format!("portio-diag-damaged-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("portio.log");
+
+        let mut bytes: Vec<u8> = Vec::new();
+        for i in 0..5 {
+            bytes.extend_from_slice(format!("2026-11-19T10:00:0{i}Z [ERROR] [ui] 第{i}条\n").as_bytes());
+        }
+        // 半截写入 + 一坨非 UTF-8（0xFF / 孤立的续字节 / NUL）
+        bytes.extend_from_slice(b"2026-11-19T10:00:06Z [ERROR] [ui] \xff\xfe\x00\x80\x81 tail\r\n");
+        bytes.extend_from_slice(format!("2026-11-19T10:00:07Z [INFO] [app] 最后一条").as_bytes());
+        std::fs::write(&file, &bytes).unwrap();
+
+        let text = read_tail_file(&file, 200);
+        assert!(
+            text.contains("[ERROR] [ui] 第3条"),
+            "坏字节前面完好的行没拿到：{text:?}"
+        );
+        assert!(
+            text.contains("[ERROR] [ui] 第0条"),
+            "最前面那一条也该在（没超出 want 就别裁）：{text:?}"
+        );
+        assert!(
+            text.contains("[INFO] [app] 最后一条"),
+            "坏字节后面正常的行没拿到：{text:?}"
+        );
+        assert!(
+            text.contains('\u{FFFD}'),
+            "坏字节应该就地变成替换字符，而不是把整行吞掉：{text:?}"
+        );
+        assert!(!text.contains('\r'), "CRLF 里的 \\r 不该留在输出里：{text:?}");
+        assert_eq!(text.lines().count(), 7, "行数不对：{text:?}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tail_of_keeps_only_the_last_lines_and_handles_edges() {
+        let raw = b"a\nb\nc\nd\n";
+        assert_eq!(tail_of(raw, 2), "c\nd");
+        assert_eq!(tail_of(raw, 99), "a\nb\nc\nd");
+        assert_eq!(tail_of(raw, 1), "d");
+        assert_eq!(tail_of(b"", 5), "");
+        assert_eq!(tail_of(b"\n\n\n", 3), "");
+        assert_eq!(tail_of(b"only-one-line", 3), "only-one-line");
+        assert_eq!(tail_of(b"a\r\nb\r\n", 1), "b");
+    }
+
+    #[test]
+    fn a_missing_log_reads_as_empty() {
+        let dir = std::env::temp_dir().join(format!("portio-diag-missing-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let file = dir.join("portio.log");
+        assert_eq!(read_tail_file(&file, 40), "");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
