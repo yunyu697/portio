@@ -10,6 +10,7 @@
 > 完整使用说明在 [`docs/site/index.html`](docs/site/index.html)（一页、离线、不用联网就能打开）。
 > 下面这份是速览；两处不一致时以那一页为准。
 > 发版文案在 [`docs/release-notes.md`](docs/release-notes.md)，整段可贴到 Release。
+> 对外介绍（中文 / English 两份）与截图在 [`docs/press-kit.md`](docs/press-kit.md)。
 
 ## 下载
 
