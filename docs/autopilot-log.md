@@ -2069,3 +2069,65 @@ explorer 不按常规引号规则解析，交给系统再拼一遍会被改坏�
 - 六套色在真实终端滚动内容上的观感（大量 ANSI 上色时为不为难眼睛）只看了静态截图。
 - mac / linux 包仍只到"CI 构建通过"；无 SSH 服务器与凭据 → 真实登录、PTY、SFTP 一律未验证（长期阻塞）。
 
+
+## 2026-11-19 · v1.0.7-RC3 · 自定义第二单元：终端配色跟界面主题解耦
+
+上一版把主色打通了，但终端那套色还跟界面主题绑在一起——界面切浅色，终端也得跟着变白。
+这轮把终端配色单独拎出来：**换终端主题，界面纹丝不动；换界面深浅，终端纹丝不动。**
+
+**做了什么**
+
+- `ui/tokens.css` 末段开 `html[data-term="<名字>"]` 三套预设：Dracula / Solarized / Nord。
+  每套**成套换九个令牌**：`--term-bg`、`--term-fg`、`--term-selection` 加 ANSI 八色。
+  只换底不换字那种事没干——浅底配浅字等于让人瞎。
+- 不设 `data-term` 就是「跟界面」：沿用界面深浅那两套 `--term-*` / `--ansi-*`，等于原来那套观感。
+- 设置面板加「终端配色」一行四档（跟界面 / Dracula / Solarized / Nord），复用 `.seg` 形态；
+  落盘 `portio.termTheme`，认不出的值回「跟界面」。
+- 规则写进规范 §10 #42：**预设档里不许放 `--term-cursor`**。光标永远跟主色走（它归强调色管），
+  否则用户会以为"我换了个终端配色，光标颜色怎么也变了"。
+- 「跟界面」这一档是 `delete root.dataset.term`，不是写成 `data-term="auto"`——写 auto 属性一直在，
+  浅色档就永远回不去（这个坑我自己踩了一版才看见，反向验证②就是它）。
+- 新增演示钩子 `#term-demo` / `#term-demo-light` 与 `#term-palette` / `#term-palette-solarized` /
+  `#term-palette-auto`（把 ANSI 八色真写进终端给截图比对，不参与任何逻辑）。
+
+**验证证据**
+
+- **新增自检 A22 `#term-theme-test`**（`ui/app.js` + `scripts/rc.py` 分派链 A21 之后 + `rc-checklist` §1 一行）。
+  九条判据：① 默认「跟界面」且 `html` 上没有 `data-term`；② 选 Nord 后底/字/ANSI 绿成套换、底色与界面底色不同源；
+  ③ 界面切浅色后终端那套一动不动（同时确认界面底色确实变浅了）；④ **真终端对象的 `options.theme` 当场就是 Nord**；
+  ⑤ Dracula 与 Nord 两套真的不同；⑥ 回「跟界面」后属性消失、深色下终端底色回到原值；⑦ 认不出的值读成「跟界面」；
+  ⑧ 换主色不动 Nord 的 ANSI 绿、光标仍跟主色；⑨ seg 里只有 Nord 一颗选中。
+  期望值一律拿"改前 / 改后"互相比，不写死色值——写死就等于把配色又钉回代码里，而这里的规矩是配色只许住 `tokens.css`。
+- **反向验证两条，都翻红并点名**：
+  ① 去掉 `eachTerm((t) => { t.options.theme = terminalTheme(); })`（CSS 换了、真终端没换）→
+  FAIL「真终端的背景就是 Nord 的底：\"#090c10\" ≠ \"#2e3440\"」「真终端的绿就是 Nord 的绿：\"#2fb39a\" ≠ \"#a3be8c\"」；
+  ② 把 `delete root.dataset.term` 改成 `dataset.term = "auto"` →
+  FAIL「没选过时 html 上没有 data-term：\"auto\" ≠ undefined」。还原后 OK。
+  中间踩到一个真问题：第④条一开始查在「切浅色主题」之后，而 `applyTheme` 里也会顺手重挂一遍终端主题，
+  结果把"applyTerm 自己忘了挂"这个 bug 盖住了（改坏①第一次跑居然 PASS）——已把这条判据挪到切主题之前。
+- **整跑**：`python scripts/rc.py` → **22 通过 / 0 失败 / 0 跳过**（50.4s，A22 1.2s）；
+  `node --check ui/app.js`、`check_design_tokens.py`、`check_ui_scale.py`、`cargo fmt --all --check` 全 OK。
+  第一版自检里写了 9 处字面色值，被 `check_design_tokens.py` 当场拦下（配色的规矩是"只许住 tokens.css"），已全改成令牌互比。
+- **截图核验**（无头 1180×690@2x，把 ANSI 八色真写进终端）：
+  `_term_nord.png`（Nord 的板岩底 + 低饱和八色）、`_term_solarized.png`（Solarized 的深青底）、
+  `_term_auto.png`（跟界面那套近黑底），三套肉眼可分；`_term_dark.png` / `_term_light.png` 是设置面板里的这一行。
+- **CI**：main run `44540966932` success。
+- **发版**：`v1.0.7-RC3` → run `44540983130` gate + 三平台 build 四项全 success；
+  Release `Portio 1.0.7-RC3`（`prerelease: true`）四资产：exe 3363277 B / dmg 9483460 B /
+  deb 4947522 B / AppImage 83143160 B；本地对照包 4568370 B。
+
+**下一步**
+
+1. 自定义③**字号 / 字体 / 密度**：界面字号与终端字号分开调（终端 9–24、界面 11–16 两档）；
+   等宽字体可选（JetBrains Mono / Cascadia Mono / Consolas / 系统 mono，重建终端才彻底生效）；
+   密度补第三档「宽松」（`html[data-density="comfortable"]{--row:32px}`，同时要改 `#density-test` 那条"两档只差 4px"的判据）。
+2. 之后是自定义④布局与面板。
+
+**未验证项**
+
+- 真窗口里没点过这两行设置（桌面锁着，`LogonUI` 在跑），只做了无头截图。
+- 无 SSH 服务器与凭据 → 真实会话里大量 ANSI 内容（`ls --color`、`git diff`、`htop`）下的观感未验证。
+- 三套外来配色只做了深色版；Solarized Light 这类浅色变体没做（记在 backlog）。
+- Release 里 AppImage 与 RC2 的字节数完全一样（83143160 B），像是构建缓存复用了上一轮产物；
+  没影响这一版（Linux 包本来就没装过真机），但下次动 Linux 打包时要核一下是不是真重建了。
+
