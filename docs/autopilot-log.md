@@ -1531,3 +1531,81 @@ Release 里能看到真包。这一步会动远端（推 tag、建 Release），
 - 真实窗口视觉确认（锁屏挡住了），未做。
 - 无 SSH 服务器与凭据 → 真实登录、PTY、tmux、SFTP 传输一律未验证（长期阻塞）。
 
+
+## 2026-11-19 · v1.0.6-RC5 · 「新建连接」会把上一台机器的参数留下来（顺手把 M2 自动化）
+
+前一轮把 RC4 的包发了出去，日志里留的第一条待办是"真窗口点检"。这一轮桌面依然锁着
+（`LogonUI.exe` 在跑），所以换个能一次收口的：把清单 §2 的 M2（三类连接入口）自动化，
+过程中拿出一个真 Bug。
+
+**发现的 Bug**
+
+`openConnect()` 原来只有"有预填"那半支在赋值，空白那半支只清了主机、口令两项：
+
+```js
+} else {
+  el("f-user").value = localStorage.getItem("portio.user") ?? "";
+  el("f-host").value = "";
+  el("f-password").value = "";
+}
+```
+
+于是这样一条路就出事了：右键一台**密钥登录、端口 2222** 的会话 → 编辑连接参数（面板填满、认证切成密钥、
+私钥路径填上）→ 关掉 → 点「新建连接」。按不懂技术的使用者的理解，这里该是干净的空白表单；
+实际看到的是端口 `2222`、认证停在 `key`、私钥框里还躺着上一台机器（甚至上一台**服务器**）的私钥路径。
+不说会连错机器，至少会带着别人的私钥路径去试。RC 阶段正好只修 Bug，这就是该修的那一类。
+
+**改法**
+
+`openConnect()` 里把六项一律每次都写一遍（主机 / 端口 / 用户名 / 认证 / 私钥路径 / 口令），
+两个字段框的显隐也按 `auth` 算一次，不再分两支各写一半。以后面板再加字段，也不会漏清。
+
+**新增回归 A18 `#connect-entry-test`**
+
+M2 原来写在"需要人点"的清单里，但它要验的全是逻辑（面板开没开、字段对不对），无头完全做得掉：
+
+1. 先把面板弄脏（按密钥 + 2222 打开），关掉，再点「新建连接」→ 读六个字段；
+2. 快速连接框写 `deploy@10.0.8.12:2222`，回车 → 主机 / 端口 / 用户 / 认证全比对；
+3. 双击**口令认证**那台会话（密钥认证双击是直连、不进面板）→ 字段带对；
+4. `ssh://ops@[fe80::1]:2200` → 主机 `fe80::1`、端口 `2200`（顺手钉住括号 IPv6 不被冒号切错）；
+5. 空输入只提示、不开面板。
+
+为此沿用前面几轮的写法：把自检块塞进 `ui/app.js`、按 hash 触发、结果写 `<title>`；
+`scripts/rc.py` 里加 A18 并分派到 `#connect-entry-test`（1180×690、8s 虚拟时间）。
+`docs/rc-checklist.md` §1 补 A18 行、段首改 A1–A18，§2 的 M2 从 `◻` 改成 `✅ 自动化`。
+
+**验证证据**
+
+- **反向验证（先证它能抓 Bug）**：把 `openConnect` 换回老写法再跑 A18 → 标题变
+  `CONNECT-ENTRY-SELFTEST-FAIL`，`新建连接`那组**5 条断言**全炸并逐条点名：
+  `端口回 22："2222" ≠ "22"`、`认证回口令："key" ≠ "password"`、
+  `私钥路径清空："C:/Users/me/.ssh/id_ed25519" ≠ ""`、`私钥框收起：true ≠ false`、`口令框露出：false ≠ true`。
+  换回修好的版本，同一页立刻 `CONNECT-ENTRY-SELFTEST-OK`。
+- **整跑**：`python scripts/rc.py` → **18 通过 / 0 失败 / 0 跳过**，117.2s
+  （A1 `cargo test --workspace` 82 passed 也在里面；A11 认到新包 `Portio_1.0.6-RC5_x64-setup.exe` 4.34 MiB）。
+- 守卫：`check_versions.py` → `OK v1.0.6-RC5`、`check_design_tokens.py` / `check_ui_scale.py` 都 OK、`node --check` 通过。
+- **发版**：推 `v1.0.6-RC5` tag → run `44477846989`：`gate` 判 `publish=true` / `prerelease=true`，
+  `windows-x64` / `linux-x64` / `macos-universal` 三个 build 全 success。
+  Release **`Portio 1.0.6-RC5`**（`prerelease: true`、`draft: false`）四资产：
+  `Portio_1.0.6-RC5_x64-setup.exe` 3352875 B、`Portio_1.0.6-RC5_universal.dmg` 9460253 B、
+  `Portio_1.0.6-RC5_amd64.deb` 4940892 B、`Portio_1.0.6-RC5_amd64.AppImage` 83134968 B。
+- 本地另打一份对照包（`tauri build --debug --bundles nsis`，44.29s）：`Portio_1.0.6-RC5_x64-setup.exe`
+  4555570 B（debug 不剥符号，比 CI 大），已放到 `new-chat\` 根，正式下发用 CI 那份。
+- 文档同步：README 版本段、`docs/release-notes.md`（当前状态 + 两处产物名）、`docs/site/index.html`
+  四处版本串与安装段示例名、`docs/press-kit.md` 下载表（连体积一起换到 RC5）。
+  `docs/rc-checklist.md` 的「最近一次整跑」改 RC5 / 18 项，§7 补 RC5 行。
+
+**下一步**
+
+1. 真窗口点检（仍缺）：装上 `Portio_1.0.6-RC5_x64-setup.exe`，打开 → 分屏 → 点别的格换焦点 → `Ctrl+F`；
+   再走一遍"编辑一台密钥会话 → 关掉 → 新建连接"，看表单是不是真的干净了。锁屏时截不到窗口，得等能解锁。
+2. 清单里还剩下的自动化机会：M3（会话增删改与分组落盘，可以靠重开页面模拟）、M12（已知主机删除后重连走首次信任，
+   这半截在 Rust 侧能测）。M7 复制粘贴与 M8 分屏仍是"真键盘手感"，留给人。
+3. 等用户给的仍是那几项：三平台签名证书、自动更新端点、崩溃上报（C1–C3）与许可证选型（C6）。
+
+**未验证项**
+
+- A18 只在无头里跑过，真实窗口点着看的那一遍未做（截屏时桌面锁着）。
+- macOS universal dmg 与 Linux deb / AppImage 只到"CI 构建通过"，**未在真机装过**。
+- 无 SSH 服务器与凭据 → 真实登录、PTY、tmux、SFTP 传输一律未验证（长期阻塞）。
+

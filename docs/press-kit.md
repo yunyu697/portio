@@ -57,16 +57,17 @@ down, files go up. The name is **port + io** — an SSH port, and the doorway da
 
 出图脚本：`python scripts/shots.py`（先查 `<title>` 有没有 `ERR:`，再校验 2360×1380，任一门不过即 FAIL）。
 
-## 现在可以下载什么（截至 `v1.0.6-RC4`）
+## 现在可以下载什么（截至 `v1.0.6-RC5`）
 
-最新一批包是 `v1.0.6-RC4`（预发布，从 [Releases](https://github.com/yunyu697/portio/releases) 下）。
-RC9、RC10 与 1.0.6 的 RC1–RC3 只动过物料、文档与脚本，没单独出包；RC4 修了分屏下的查找 Bug，才有了新一批。
+最新一批包是 `v1.0.6-RC5`（预发布，从 [Releases](https://github.com/yunyu697/portio/releases) 下）。
+RC9、RC10 与 1.0.6 的 RC1–RC3 只动过物料、文档与脚本，没单独出包；RC4 修了分屏下的查找 Bug、
+RC5 修了「新建连接」带着上一台机器端口与私钥路径的问题，这两版各有自己的包。
 
 | 平台 | 产物 | 状态 |
 | --- | --- | --- |
-| Windows x64 | `Portio_1.0.6-RC4_x64-setup.exe`（NSIS，3349729 B） | 能装、能跑；未签名 |
-| macOS（Apple Silicon + Intel） | `Portio_1.0.6-RC4_universal.dmg`（9456257 B） | CI 构建通过，**未在真机装过**；未签名 |
-| Linux x64 | `Portio_1.0.6-RC4_amd64.deb`（4939024 B） / `Portio_1.0.6-RC4_amd64.AppImage`（83134968 B） | CI 构建通过，**未在真机装过** |
+| Windows x64 | `Portio_1.0.6-RC5_x64-setup.exe`（NSIS，3352875 B） | 能装、能跑；未签名 |
+| macOS（Apple Silicon + Intel） | `Portio_1.0.6-RC5_universal.dmg`（9460253 B） | CI 构建通过，**未在真机装过**；未签名 |
+| Linux x64 | `Portio_1.0.6-RC5_amd64.deb`（4940892 B） / `Portio_1.0.6-RC5_amd64.AppImage`（83134968 B） | CI 构建通过，**未在真机装过** |
 
 规则：**RC 及以后发包，Alpha 只打 tag**。tag 必须等于仓库里的版本号，对不上就不进打包流程。
 
