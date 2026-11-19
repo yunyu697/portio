@@ -36,14 +36,23 @@ pub fn sessions_write(app: tauri::AppHandle, json: String) -> Result<String, Str
     // 写之前先过一遍解析：宁可拒绝，也不把坏数据落盘
     let store = SessionStore::from_json(&json).map_err(|e| e.to_string())?;
     let path = store_path(&app)?;
+    write_store_atomic(&path, &store)?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+/// 原子落盘：先写 `sessions.json.tmp`，再改名成正式文件。
+///
+/// 分出这一步是为了能脱离 Tauri 单测——目录、改名、残留这几件事，
+/// 只有真往磁盘写一遍才验得出来。
+fn write_store_atomic(path: &std::path::Path, store: &SessionStore) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("建目录失败：{e}"))?;
     }
     let tmp = path.with_extension("json.tmp");
     let text = store.to_json();
     fs::write(&tmp, text.as_bytes()).map_err(|e| format!("写临时文件失败：{e}"))?;
-    fs::rename(&tmp, &path).map_err(|e| format!("替换清单文件失败：{e}"))?;
-    Ok(path.to_string_lossy().to_string())
+    fs::rename(&tmp, path).map_err(|e| format!("替换清单文件失败：{e}"))?;
+    Ok(())
 }
 
 /// 清单文件到底在哪，前端拿去显示给用户，方便自己备份。
@@ -334,6 +343,99 @@ mod tests {
         let mut f = fs::File::create(&cfg).unwrap();
         f.write_all(text.as_bytes()).unwrap();
         (dir.clone(), cfg)
+    }
+
+    #[test]
+    fn atomic_write_lands_clean_file_and_creates_dir() {
+        let dir = std::env::temp_dir().join(format!(
+            "portio_store_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let path = dir.join("nested").join(FILE_NAME); // 目录故意还不存在
+
+        let mut store = SessionStore::new();
+        store.records.push(portio_core::SessionRecord {
+            host: "web-01.prod".into(),
+            port: 22,
+            user: "deploy".into(),
+            auth: "key".into(),
+            keyfile: Some("~/.ssh/id_ed25519".into()),
+            name: None,
+            last_used: 1_763_000_000_000,
+        });
+        store.records.push(portio_core::SessionRecord {
+            host: "db-01.prod".into(),
+            port: 2222,
+            user: "dba".into(),
+            auth: "password".into(),
+            keyfile: None,
+            name: None,
+            last_used: 0,
+        });
+
+        write_store_atomic(&path, &store).unwrap();
+
+        assert!(path.exists(), "目录不在时要顺手建出来");
+        let text = fs::read_to_string(&path).unwrap();
+        let back = SessionStore::from_json(&text).unwrap();
+        assert_eq!(back.records.len(), 2, "两条都要在");
+        assert_eq!(
+            back.records[0].last_used, 1_763_000_000_000,
+            "最近用过的时间戳不能在半路丢掉"
+        );
+        assert_eq!(back.records[0].key(), "deploy@web-01.prod:22");
+        assert!(
+            !path.with_extension("json.tmp").exists(),
+            "改完名之后不该留下临时文件"
+        );
+
+        // 再写一次：整份替换，不叠加、不留旧行
+        let mut one = SessionStore::new();
+        one.records.push(portio_core::SessionRecord {
+            host: "only.example".into(),
+            port: 22,
+            user: "ops".into(),
+            auth: "password".into(),
+            keyfile: None,
+            name: None,
+            last_used: 5,
+        });
+        write_store_atomic(&path, &one).unwrap();
+        let back2 = SessionStore::from_json(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(back2.records.len(), 1, "覆盖写只该剩最后那份");
+        assert_eq!(back2.records[0].host, "only.example");
+        assert!(!path.with_extension("json.tmp").exists());
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn bad_json_is_rejected_before_touching_disk() {
+        // sessions_write 先解析再落盘：坏数据根本走不到 write_store_atomic，
+        // 所以磁盘上原来那份好文件必须原封不动。
+        let dir = std::env::temp_dir().join(format!(
+            "portio_store_bad_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(FILE_NAME);
+        let good = "{\"version\":1,\"records\":[{\"host\":\"keep.example\",\"port\":22,\"user\":\"ops\"}]}";
+        fs::write(&path, good.as_bytes()).unwrap();
+
+        assert!(
+            SessionStore::from_json("{ 这不是 JSON }").is_err(),
+            "坏 JSON 必须在校验那步就被拒"
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), good, "旧文件不该被动过");
+        fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

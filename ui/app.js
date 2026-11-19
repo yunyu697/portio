@@ -1383,10 +1383,16 @@ function persistSessions() {
     .invoke("sessions_write", { json: JSON.stringify(sessionStore) })
     .catch((err) => toast(`会话清单没存住：${explainError("sessions_write", String(err))}`));
 }
+// 时间字段跟磁盘那头叫同一个名字（`last_used`，见 crates/core/src/store.rs）。
+// 早先这边写的是 `last`、后端按 `last_used` 读，落盘一次就把"最近用过"抹成 0——
+// 重开之后列表全挤进「更早」，`最近使用` 一组空着。读的时候两名字都认，老文件不至于炸。
+function lastUsed(s) {
+  return Number(s.last_used ?? s.last ?? 0) || 0;
+}
 function saveSession(rec) {
   const key = sessionKey(rec);
   const next = sessionStore.records.filter((s) => sessionKey(s) !== key);
-  sessionStore.records = [{ ...rec, last: Date.now() }, ...next].slice(0, 40);
+  sessionStore.records = [{ ...rec, last_used: Date.now() }, ...next].slice(0, 40);
   persistSessions();
   renderSessions();
 }
@@ -1486,8 +1492,8 @@ function renderSessions() {
       )
     : all;
   // 最近用过的排前面：运维真正在敲的是那两三台机器，不该埋在列表深处
-  const list = [...matched].sort((a, b) => (b.last ?? 0) - (a.last ?? 0));
-  const recent = list.filter((s) => s.last).slice(0, 5);
+  const list = [...matched].sort((a, b) => lastUsed(b) - lastUsed(a));
+  const recent = list.filter((s) => lastUsed(s)).slice(0, 5);
   const older = list.filter((s) => !recent.includes(s));
   sidebar.querySelectorAll(".sess-row, .sess-group").forEach((el) => el.remove());
   document.getElementById("session-count").textContent = q
@@ -1944,7 +1950,7 @@ if (location.hash.startsWith("#sess-demo") || location.hash.startsWith("#import-
   saveSession({ host: "web-01.example.com", port: 22, user: "deploy", auth: "key", keyfile: "~/.ssh/id_ed25519" });
   saveSession({ host: "10.0.8.12", port: 2222, user: "root", auth: "password" });
   // 再塞一条"从没用过"的记录，好核对"更早"这组标题
-  sessionStore.records.push({ host: "db-02.internal", port: 22, user: "dba", auth: "password", last: 0 });
+  sessionStore.records.push({ host: "db-02.internal", port: 22, user: "dba", auth: "password", last_used: 0 });
   persistSessions();
   renderSessions();
   const q = new URLSearchParams(location.hash.slice(1)).get("q");
@@ -3537,5 +3543,178 @@ if (location.hash === "#connect-entry-test") {
     document.title = bad.length
       ? `CONNECT-ENTRY-SELFTEST-FAIL ${JSON.stringify(bad)} ${JSON.stringify(seen)}`
       : `CONNECT-ENTRY-SELFTEST-OK ${JSON.stringify(seen)}`;
+  })();
+}
+
+// ---------- 无头自检：#sessions-test（会话增删改、分组、搜索，以及落盘读回来还认不认"最近用过"） ----------
+// 清单 §2 的 M3（会话增删改与分组）里，逻辑部分无头全做得掉：加一条、改参数、分到分组、折叠、移出、解散、删掉、
+// 搜一下。唯一不能在这里验的是"真写进 sessions.json"，那半边由 crates/app/src/session_store.rs 的单测兜。
+// 这里另外钉住一个真 Bug：时间字段这边写的是 `last`、后端按 `last_used` 读，落盘一次就把"最近用过"抹成 0，
+// 重开之后列表全挤进「更早」、「最近使用」一组空着。
+if (location.hash === "#sessions-test") {
+  (function sessionsTest() {
+    const bad = [];
+    const seen = {};
+    const el = (id) => document.getElementById(id);
+    const groupsBackup = localStorage.getItem(GROUPS_KEY);
+    const foldBackup = localStorage.getItem(GFOLD_KEY);
+    const heads = () =>
+      Array.from(document.querySelectorAll(".sidebar .sess-group")).map((h) => ({
+        tag: h.dataset.group || "",
+        text: (h.textContent || "").replace(/[▾▸]/g, "").replace(/\s+/g, ""),
+        folded: h.classList.contains("folded"),
+      }));
+    const rows = () => Array.from(document.querySelectorAll(".sidebar .sess-row"));
+    const rowKeys = () => rows().map((r) => (r.title || "").split(" ·")[0]);
+    function expect(tag, got, want) {
+      if (JSON.stringify(got) !== JSON.stringify(want)) {
+        bad.push(`${tag}：${JSON.stringify(got)} ≠ ${JSON.stringify(want)}`);
+      }
+    }
+    function reset() {
+      sessionStore.records = [];
+      localStorage.removeItem(GROUPS_KEY);
+      localStorage.removeItem(GFOLD_KEY);
+      el("sess-search").value = "";
+      renderSessions();
+    }
+
+    try {
+      // ① 增：三条不同机器，最近存的排最前
+      reset();
+      saveSession({ host: "web-01.prod", port: 22, user: "deploy", auth: "key", keyfile: "~/.ssh/id_ed25519" });
+      saveSession({ host: "db-01.prod", port: 2222, user: "dba", auth: "password" });
+      saveSession({ host: "stage-01", port: 22, user: "qa", auth: "password" });
+      expect("加了三条就是三条", sessionStore.records.length, 3);
+      expect("最近存的排最前", sessionStore.records[0].host, "stage-01");
+      expect("列表行数", rows().length, 3);
+      seen.add = rowKeys();
+
+      // ② 改：同一台机器同一个账号再存一次，不新增一条，内容换成新的并排到最前
+      saveSession({ host: "web-01.prod", port: 22, user: "deploy", auth: "key", keyfile: "/home/deploy/.ssh/id_ed25519_v2" });
+      expect("改参数不新增一条", sessionStore.records.length, 3);
+      expect("改完排到最前", sessionStore.records[0].host, "web-01.prod");
+      expect(
+        "私钥路径换成新的",
+        sessionStore.records[0].keyfile,
+        "/home/deploy/.ssh/id_ed25519_v2",
+      );
+      expect("改完列表还是三行", rows().length, 3);
+
+      // ③ 口令绝不进清单（记进 sessions.json 的是"怎么连"，口令走另一套加密文件）
+      const leaky = sessionStore.records.filter((s) => s.password || s.pwd || s.passphrase);
+      expect("清单里没有口令字段", leaky.length, 0);
+
+      // ④ 上限：40 条，再存就把最久没用的挤掉
+      reset();
+      for (let i = 0; i < 45; i += 1) {
+        saveSession({ host: `h${i}.example`, port: 22, user: "ops", auth: "password" });
+      }
+      expect("清单封顶 40 条", sessionStore.records.length, 40);
+      expect("最老的被挤掉", sessionStore.records.some((s) => s.host === "h0.example"), false);
+      expect("最新的还在", sessionStore.records.some((s) => s.host === "h44.example"), true);
+
+      // ⑤ 分到分组：两组建起来，组头按名字排序、计数对，行数不变
+      reset();
+      saveSession({ host: "web-01.prod", port: 22, user: "deploy", auth: "password" });
+      saveSession({ host: "db-01.prod", port: 2222, user: "dba", auth: "password" });
+      saveSession({ host: "stage-01", port: 22, user: "qa", auth: "password" });
+      setGroups("deploy@web-01.prod:22", "生产");
+      setGroups("dba@db-01.prod:2222", "生产");
+      setGroups("qa@stage-01:22", "测试");
+      renderSessions();
+      const byTag = () => Object.fromEntries(heads().map((h) => [h.tag, h]));
+      expect("组头正好两组", Object.keys(byTag()).sort(), ["测试", "生产"].sort());
+      expect("生产组计数", byTag()["生产"].text, "生产2");
+      expect("测试组计数", byTag()["测试"].text, "测试1");
+      expect("分完组行数不变", rows().length, 3);
+      seen.groups = heads();
+
+      // ⑥ 折叠：组头带上 folded、组员行收起；折叠状态进 localStorage（重开还收着）
+      toggleFold("生产");
+      expect("生产组折起来", byTag()["生产"].folded, true);
+      expect("折起来后只剩测试组那一行", rows().length, 1);
+      expect(
+        "折叠状态确实记进 localStorage",
+        JSON.parse(localStorage.getItem(GFOLD_KEY) || "[]"),
+        ["生产"],
+      );
+      toggleFold("生产");
+      expect("展开回来三行都在", rows().length, 3);
+      expect("展开后 folded 摘掉", byTag()["生产"].folded, false);
+
+      // ⑦ 移出分组：那台机器落回「未分组」组头
+      setGroups("qa@stage-01:22", "");
+      renderSessions();
+      const tagsNow = heads().map((h) => h.tag);
+      expect("移出后多出一个未分组", tagsNow.includes("未分组"), true);
+      expect("未分组里正好那一台", heads().find((h) => h.tag === "未分组").text, "未分组1");
+
+      // ⑧ 解散分组：右键那项做的就是"把这一组里每台的标签清掉再重画"。
+      //    清到最后一个命名组也没了，列表就回到「最近使用 / 更早」——这正是产品该有的样子。
+      for (const s of sessionStore.records) {
+        if (groupsOf(sessionKey(s)) === "生产") setGroups(sessionKey(s), "");
+      }
+      renderSessions();
+      const after = heads().map((h) => h.tag);
+      expect("解散生产组后没有命名组了", after.includes("生产"), false);
+      expect("解散后回到最近使用", after.includes("最近使用"), true);
+      expect("解散后行数还是三行", rows().length, 3);
+      for (const s of sessionStore.records) setGroups(sessionKey(s), "");
+      renderSessions();
+      expect("全部清干净后更好是空的", heads().map((h) => h.tag).includes("未分组"), false);
+
+      // ⑨ 删：一条记录从清单和列表里一起消失
+      removeSession("dba@db-01.prod:2222");
+      expect("删掉一条剩两条", sessionStore.records.length, 2);
+      expect("列表也跟着少一行", rows().length, 2);
+      expect("删掉那台不再出现在列表里", rowKeys().includes("dba@db-01.prod:2222"), false);
+
+      // ⑩ 搜索：命中才留、计数写成"命中/总数"，清空复原
+      el("sess-search").value = "web";
+      renderSessions();
+      expect("搜索后只剩一条", rows().length, 1);
+      expect("计数写成命中/总数", el("session-count").textContent, "1/2");
+      el("sess-search").value = "zzz";
+      renderSessions();
+      expect("搜不到时列表清空", rows().length, 0);
+      el("sess-search").value = "";
+      renderSessions();
+      expect("清空搜索复原", rows().length, 2);
+
+      // ⑪ 重开还认"最近用过"：磁盘上那份用的是 last_used（Rust 侧字段名），读回来必须还能分「最近使用 / 更早」
+      reset();
+      sessionStore.records = [
+        { host: "new.example", port: 22, user: "ops", auth: "password", last_used: 1763000000000 },
+        { host: "old.example", port: 22, user: "ops", auth: "password", last_used: 0 },
+      ];
+      renderSessions();
+      const labels = heads().map((h) => h.tag || (h.text || "").replace(/\d+$/, ""));
+      expect("磁盘上的 last_used 认得出最近使用", labels.includes("最近使用"), true);
+      expect("没用过的归到更早", labels.includes("更早"), true);
+      expect("最近的排在第一行", rowKeys()[0], "ops@new.example:22");
+      // 老文件里的 `last` 也认（迁移期间两种写法都可能出现）
+      reset();
+      sessionStore.records = [
+        { host: "legacy.example", port: 22, user: "ops", auth: "password", last: 1763000000000 },
+      ];
+      renderSessions();
+      expect("老写法 last 也能认", lastUsed(sessionStore.records[0]), 1763000000000);
+      seen.diskField = { lastUsed: lastUsed({ last_used: 5 }), lastFallback: lastUsed({ last: 7 }) };
+    } catch (err) {
+      bad.push(`走会话增删改的过程抛了异常：${err && err.message ? err.message : err}`);
+    }
+
+    // 收拾现场：清掉塞进去的会话与分组，把 localStorage 里原有的两份恢复回去
+    sessionStore.records = [];
+    el("sess-search").value = "";
+    localStorage.removeItem(GROUPS_KEY);
+    localStorage.removeItem(GFOLD_KEY);
+    if (groupsBackup !== null) localStorage.setItem(GROUPS_KEY, groupsBackup);
+    if (foldBackup !== null) localStorage.setItem(GFOLD_KEY, foldBackup);
+    renderSessions();
+    document.title = bad.length
+      ? `SESSIONS-SELFTEST-FAIL ${JSON.stringify(bad)} ${JSON.stringify(seen)}`
+      : `SESSIONS-SELFTEST-OK ${JSON.stringify(seen)}`;
   })();
 }
