@@ -38,22 +38,27 @@ down, files go up. The name is **port + io** — an SSH port, and the doorway da
 | 会话管理 | 已做，双击就连；分组、搜索、重命名；存本地 `sessions.json` | Saved sessions, groups, search, rename; stored locally |
 | 导入旧配置 | 已做，从 `~/.ssh/config`、Xshell、WinSCP 导入 | Import from `~/.ssh/config`, Xshell, WinSCP |
 | 主机指纹 | 已做，首次连接记录指纹，变了就拦下 | Host key pinning on first connect; changed keys are blocked |
-| 主题 / 密度 / 字号 | 已做，深浅两套、标准与紧凑两档、字号 11–18 | Light/dark themes, two density steps, font size 11–18 |
+| 主题与强调色 | 已做，深浅两套（还能「跟随系统」）；强调色六套预置：青 / 蓝 / 紫 / 琥珀 / 玫瑰 / 青柠 | Light/dark (+ follow system); six accent presets |
+| 终端配色 | 已做四档：跟界面 / Dracula / Solarized / Nord（成套换底与八色，光标仍跟主色） | Four terminal colorways, decoupled from the UI theme |
+| 字号 / 字体 / 密度 | 已做：界面字号两档、终端字号 9–24、等宽字体四选（自动 / JetBrains / Cascadia / Consolas）、密度 24 / 28 / 32 三档；两套字号互不带动 | UI font scale, terminal 9–24, four mono fonts, three density steps; the two scales move independently |
+| 启动时与布局 | 已做：会话栏与文件面板各自的启动显隐三档；远端权限列可隐藏（68px 全还给文件名）；开局单屏或 2×2；面板宽度「记住上次 / 用默认」两层、默认宽度三档 | Boot-time panel visibility, optional permission column, start-with-one-pane-or-four, remembered vs default widths |
 | 口令本地加密 | 已做：密文写 `credentials.json`，主密钥 `vault.key` 留在应用数据目录；挡的是明文被同步盘 / 打包 / 日志带走，**不是本地提权**；系统钥匙串还没接 | Passwords encrypted at rest with a machine-local master key (not a keychain); protects against plaintext leaking into sync folders or logs |
 | 真实服务器端到端 | **未验证**（没有可连的测试机，只有协议层与本地回环测试） | End-to-end against a real server: **not verified** |
 | 代码签名 | **未签名**（Windows SmartScreen 会拦，macOS 需右键打开） | **Unsigned**: SmartScreen warns, macOS needs right-click |
 
-## 截图与说明（Eight shots）
+## 截图与说明（Ten shots：五个场景 × 深浅两套）
 
-`docs/shots/` 下八张，命名 `portio-<dark|light>-<scene>.png`。图里的会话与已知主机是演示数据；
+`docs/shots/` 下十张，命名 `portio-<dark|light>-<scene>.png`。图里的会话、已知主机与传输队列是演示数据；
 文件双栏显示「连上主机后显示远端目录」是因为无头浏览器里没有后端——**这是如实的一张图，没有 P 图补内容**。
+设置面板从「自定义」做进来之后长到十六项，一屏放不下，所以拆成顶部（自定义）与滚到底（已知主机）两张。
 
 | 场景 | 文件 | 中文说明 | English caption |
 | --- | --- | --- | --- |
-| 主界面 | `portio-*-main.png` | 左会话、中终端、右远端与本机双栏 | Sessions left, terminal center, remote and local files right |
+| 主界面 | `portio-*-main.png` | 左会话、中终端、右远端与本机双栏，底部传输队列三条 | Sessions left, terminal center, files right, transfer queue below |
 | 2×2 分屏 | `portio-*-split.png` | 四格各自独立，光标所在格有描边 | Four panes, each with its own channel |
 | 导入下拉 | `portio-*-import.png` | 一个入口，三个来源：`~/.ssh/config`、Xshell、WinSCP | One menu, three sources: ssh config, Xshell, WinSCP |
-| 设置面板 | `portio-*-settings.png` | 主题、密度、字号、滚动缓冲、已知主机 | Theme, density, font size, scrollback, known hosts |
+| 设置 · 自定义 | `portio-*-settings.png` | 主题、强调色、字号、密度、终端配色、字体、启动时、布局 | Theme, accent, type scale, density, terminal colorway, mono font, boot layout |
+| 设置 · 已知主机 | `portio-*-hosts.png` | 已知主机指纹表（可单条删除）与运行日志 | Pinned host keys (deletable) and the local log |
 
 出图脚本：`python scripts/shots.py`（先查 `<title>` 有没有 `ERR:`，再校验 2360×1380，任一门不过即 FAIL）。
 

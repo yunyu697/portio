@@ -2479,7 +2479,24 @@ if (location.hash.startsWith("#hosts-demo")) {
     { host: "stage-01.internal.example.com", port: 22, fingerprint: "SHA256:Qw3ErTyUiOpAsDfGhJkLzXcVbNm1234567890abcd" },
   ];
   toggleSettings(true);
+  // 截图用：面板长到十六项之后一屏放不下，「已知主机」沉在折叠以下。`#hosts-demo-tail`
+  // 把正文一路滚到底，拍的就是那一节；`#hosts-demo` 拍面板顶部（自定义）。
+  if (location.hash.startsWith("#hosts-demo-tail")) {
+    // 只认设置面板自己那个 .body：页面上还有连接面板、快捷键面板，它们的 .body 是 display:none，
+    // querySelector(".sheet .body") 抓到的是第一个（隐藏的）那个，滚它等于什么都没做。
+    const tail = () => {
+      const body = document.querySelector("#settings-modal .sheet .body");
+      if (body) body.scrollTop = body.scrollHeight - body.clientHeight;
+    };
+    setTimeout(() => {
+      tail();
+      requestAnimationFrame(tail);
+    }, 200);
+  }
 }
+
+// 截图用：只把设置面板打开、不预选任何一项，拍「自定义」面板的本来样子
+if (location.hash === "#settings-demo") toggleSettings(true);
 
 // 会话清单以前端内存镜像为准，启动时从磁盘拉一次
 if (location.hash.startsWith("#find-demo")) {
@@ -2718,10 +2735,20 @@ function refreshBothDirs() {
 }
 
 // 传输行：先占位，进度事件里按 key 找回来更新
+// 标题条那个计数原来只在 finishTransfer 里改一次，于是传输刚开始跑的时候数字还是旧的
+// （开始三条、结束一条，标题条从 0 跳到 1）。计数只跟着 transferRows 走，改一处就够。
+function syncTransferCount() {
+  const num = document.querySelector(".drawer .num");
+  if (num) num.textContent = String(transferRows.size);
+}
+
 function transferRow(name, dir) {
   const key = `${dir}:${name}`;
   if (transferRows.has(key)) return { key, el: transferRows.get(key) };
-  document.querySelector(".drawer-body").querySelector(".hint")?.remove();
+  const body = document.querySelector(".drawer-body");
+  // 空态那句要在第一行出现时就消失。它以前是 `.drawer-body` 里的裸文本，这里却按 `.hint` 找，
+  // 于是永远找不到——三条传输都在跑了，抽屉顶部还挂着一句「空」。现在它是个真元素。
+  body.querySelector(".drawer-empty")?.remove();
   const el = document.createElement("div");
   el.className = "tr";
   el.innerHTML =
@@ -2732,8 +2759,9 @@ function transferRow(name, dir) {
   bar.className = "bar";
   bar.innerHTML = "<i></i>";
   el.appendChild(bar);
-  document.querySelector(".drawer-body").appendChild(el);
+  body.appendChild(el);
   transferRows.set(key, el);
+  syncTransferCount();
   return { key, el };
 }
 
@@ -2827,7 +2855,7 @@ function finishTransfer(name, dir, bytes) {
   row.querySelector(".bar i").style.width = ok ? "100%" : "0";
   row.querySelector(".bar i").style.background = ok ? "var(--accent)" : "var(--danger)";
   row.querySelector(".meta").textContent = ok ? `完成 · ${fmtSize(bytes)}` : "失败";
-  document.querySelector(".drawer .num").textContent = String(transferRows.size);
+  syncTransferCount();
   if (window.__TAURI__?.event) {
     // 让队列自动浮出来看一眼，用户不用自己去翻抽屉（收起态就恢复到上次的高度，别只露一行）
     if (document.getElementById("drawer").classList.contains("collapsed")) {
@@ -2858,8 +2886,96 @@ if (window.__TAURI__?.event) {
   window.__TAURI__.event.listen("transfer", (e) => updateTransfer(e.payload));
 }
 
+// 截图用：无头页没有后端，传输队列一直是空的（0 条 + 一句提示）。#transfer-demo 塞三行
+// 不同进度——走的就是真正在用的 transferRow / updateTransfer / finishTransfer，不另画一份列表。
+// 主界面与分屏两张首发图也带上它，省得物料里那个抽屉永远是空的。
+if (
+  location.hash.startsWith("#transfer-demo") ||
+  location.hash.startsWith("#sess-demo") ||
+  location.hash.startsWith("#split-demo")
+) {
+  const seeded = [
+    { name: "site-2026-11-20.tar.gz", dir: "down", done: 45_600_000, total: 106_000_000, finished: false },
+    { name: "release-notes.md", dir: "up", done: 6144, total: 0, finished: true },
+    { name: "photos-2026.zip", dir: "up", done: 0, total: 0, finished: false },
+  ];
+  for (const p of seeded) {
+    transferRow(p.name, p.dir);
+    if (p.finished) finishTransfer(p.name, p.dir, p.done);
+    else if (p.total) updateTransfer({ dir: p.dir, name: p.name, done: p.done, total: p.total });
+  }
+}
+
 // 本地目录不用等连接，界面一出来就能看
 loadLocal(localStorage.getItem("portio.localPath") || null);
+
+// 带 #transfer-test 核一遍传输队列：空态那句必须随第一行消失，计数 / 百分比 / 完成 / 排队文案
+// 必须跟着真状态走。这条是给「三条在跑了抽屉顶上还挂着一句『空』」那个 Bug 立的桩。
+if (location.hash === "#transfer-test") {
+  const fails = [];
+  const ok = (cond, msg) => { if (!cond) fails.push(msg); };
+  const seen = {};
+  const body = document.querySelector(".drawer-body");
+  const emptyOf = () => body.querySelector(".drawer-empty");
+  const barOf = (row) => row.querySelector(".bar i").style.width;
+  try {
+    // ① 空队列：一句空态提示，零行
+    ok(!!emptyOf(), "空队列时应留着那句空态提示");
+    ok(transferRows.size === 0, `空队列时行数应是 0：${transferRows.size}`);
+
+    // ② 第一行出现 → 空态提示必须当场消失
+    transferRow("site-2026-11-20.tar.gz", "down");
+    ok(!emptyOf(), "队列里有行了，空态提示还挂着");
+    ok(transferRows.size === 1, `塞了一条后行数应是 1：${transferRows.size}`);
+
+    // ③ 进度：百分比与总量都写到行尾
+    updateTransfer({ dir: "down", name: "site-2026-11-20.tar.gz", done: 45_600_000, total: 106_000_000 });
+    const first = transferRows.get("down:site-2026-11-20.tar.gz");
+    ok(barOf(first) === "43%", `45600000/106000000 应算成 43%：${barOf(first)}`);
+    ok(
+      first.querySelector(".meta").textContent === "43% · 101 MB",
+      `行尾应是「43% · 101 MB」：${JSON.stringify(first.querySelector(".meta").textContent)}`
+    );
+
+    // ④ 再塞一条完成的、一条排队的：计数、文案、行数三处都要对
+    transferRow("release-notes.md", "up");
+    finishTransfer("release-notes.md", "up", 6144);
+    transferRow("photos-2026.zip", "up");
+    ok(transferRows.size === 3, `三条之后行数应是 3：${transferRows.size}`);
+    ok(body.querySelectorAll(".tr").length === 3, `抽屉正文里应有 3 条 .tr：${body.querySelectorAll(".tr").length}`);
+    ok(
+      document.querySelector(".drawer .num").textContent === "3",
+      `标题条计数应是 3：${document.querySelector(".drawer .num").textContent}`
+    );
+    ok(!emptyOf(), "三条都在跑了，空态提示还挂着");
+    const doneRow = transferRows.get("up:release-notes.md");
+    ok(barOf(doneRow) === "100%", `完成的那条进度条应满格：${barOf(doneRow)}`);
+    ok(
+      doneRow.querySelector(".meta").textContent === "完成 · 6.0 KB",
+      `完成那行的文案应是「完成 · 6.0 KB」：${JSON.stringify(doneRow.querySelector(".meta").textContent)}`
+    );
+    const qRow = transferRows.get("up:photos-2026.zip");
+    ok(qRow.querySelector(".meta").textContent === "排队", `还没开始的那行应写排队：${qRow.querySelector(".meta").textContent}`);
+
+    // ⑤ 几何：三行都在抽屉里，右缘不许越出抽屉
+    const drawerBox = document.getElementById("drawer").getBoundingClientRect();
+    ok(drawerBox.width > 0 && drawerBox.height > 0, "抽屉本身没有尺寸，界面塌了");
+    for (const [key, el] of transferRows) {
+      const b = el.getBoundingClientRect();
+      ok(b.width > 0 && b.height > 0, `传输行 \`${key}\` 没有尺寸`);
+      ok(b.right <= drawerBox.right + 0.5, `传输行 \`${key}\` 右缘越出抽屉：${b.right} > ${drawerBox.right}`);
+    }
+    seen.rows = transferRows.size;
+    seen.num = document.querySelector(".drawer .num").textContent;
+    seen.bar = barOf(first);
+    seen.empty = !!emptyOf();
+  } catch (err) {
+    fails.push(`核传输队列的过程抛了异常：${err && err.message ? err.message : err}`);
+  }
+  document.title = fails.length
+    ? `TRANSFER-SELFTEST-FAIL ${JSON.stringify(fails)} ${JSON.stringify(seen)}`
+    : `TRANSFER-SELFTEST-OK ${JSON.stringify(seen)}`;
+}
 
 // #ctx-demo：真的派发一次右键事件，用真实 handler 出菜单，便于截图核对（不是另画一份假菜单）
 if (location.hash.includes("ctx-demo")) {

@@ -1,10 +1,13 @@
 """S14 首发截图素材：用现有前端在无头 Chrome 里按统一规格出图。
 
-规格（四个场景 × 深浅两套，共 8 张）：
+规格（五个场景 × 深浅两套，共 10 张）：
 - 逻辑窗口 1180×690，`--force-device-scale-factor=2` → 实际 PNG 2360×1380（@2x）
 - 场景全部走 app.js 里已有的 demo 钩子，不另画假界面：
-  main=#sess-demo（三栏 + 双栏文件）、split=#split-demo（2×2 分屏）、
-  import=#import-demo（导入来源下拉展开）、settings=#hosts-demo（设置面板 + 已知主机）
+  main=#sess-demo（三栏 + 双栏文件 + 传输队列三条）、split=#split-demo（2×2 分屏）、
+  import=#import-demo（导入来源下拉展开）、settings=#settings-demo（设置面板顶部：自定义十六项）、
+  hosts=#hosts-demo-tail（设置面板滚到底：已知主机 + 运行日志）
+- 设置面板从十六项之后一屏放不下，所以拆成两张：顶部拍「自定义」，滚到底拍「已知主机」。
+  一张图讲不完两件事，硬塞只会两件都看不清。
 - 主题用 `?theme=light` / `?theme=dark` 附在 hash 后面，由 app.js 顶部那段参数解析落进 localStorage
 
 每张出图前先用 `--dump-dom` 跑一遍看 `<title>`：出现 `ERR:` 就算失败，不出这张图。
@@ -33,10 +36,11 @@ SCALE = 2
 BUDGET = 6000
 
 SCENES = {
-    "main": ("#sess-demo", "三栏：会话栏 + 终端 + 双栏文件"),
+    "main": ("#sess-demo", "三栏：会话栏 + 终端 + 双栏文件 + 传输队列"),
     "split": ("#split-demo", "终端 2×2 分屏"),
     "import": ("#import-demo", "导入来源下拉展开"),
-    "settings": ("#hosts-demo", "设置面板与已知主机"),
+    "settings": ("#settings-demo", "设置面板顶部：自定义十六项"),
+    "hosts": ("#hosts-demo-tail", "设置面板滚到底：已知主机与运行日志"),
 }
 
 THEMES = ("dark", "light")
