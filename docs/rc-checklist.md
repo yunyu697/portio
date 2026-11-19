@@ -12,14 +12,14 @@
 | ✗ | 已知缺口：代码里就没有，或明知不合格 |
 | 🚫 | 卡外部条件：缺服务器 / 缺证书 / 缺平台机器，写清差什么 |
 
-**最近一次整跑**：2026-11-20 · `v1.0.7-RC9` · `python scripts/rc.py --fast` → 28 通过 / 0 失败 / 1 跳过（A1 跳过，本轮没动 Rust）；
+**最近一次整跑**：2026-11-20 · `v1.0.7-RC10` · `python scripts/rc.py --fast` → 29 通过 / 0 失败 / 1 跳过（A1 跳过，本轮没动 Rust）；同日早些时候 `v1.0.7-RC9` 跑过**全量**（含 A1）：29 通过 / 0 失败 / 0 跳过；
 人工项与真服务器项仍未跑（见 §7）。
 
 ---
 
 ## 1. 本机自动化（一条命令一项，五分钟跑完）
 
-**这一段现在有固定入口**：`python scripts/rc.py` 按顺序跑完 A1–A29，逐项打 `[PASS]` / `[FAIL]` / `[SKIP]`，
+**这一段现在有固定入口**：`python scripts/rc.py` 按顺序跑完 A1–A30，逐项打 `[PASS]` / `[FAIL]` / `[SKIP]`，
 最后一行是汇总，可以直接贴进 §7。全跑一分钟上下（`cargo test` 占大头），只改前端时用 `--fast` 跳过 A1。
 表里保留每项的命令与判据，`rc.py` 出问题时按表手工复现。
 
@@ -54,6 +54,7 @@
 | A27 | 面板宽度两层 | `python scripts/rc.py`（内部打开 `#layout-test`） | 标题 `LAYOUT-SELFTEST-OK`：出厂态读到「记住上次」、seg 选「记住上次」、宽度档选「标准」、盘里没有这两个键；手拖一次（360px）记忆层落盘、界面跟着走；切成「用默认 + 窄」按开机口径重落一次 → 侧栏 **200px**、分栏 **50.00%**、抽屉 **172px**，而**记忆层三个键一个字没被改写**（仍是 360 / 0.6600 / 200）；换回「记住上次」再落一次 → 三处原样回到 360px / 66.00% / 200px；认不出的值各回各的默认（`auto` → 记住上次、`300` → 标准）且不回写垃圾 | ✅ 反向验证三条都翻红：① 开机落尺寸顺手走 `applySidebar`（会落盘）→ FAIL「用默认不许改写宽度记忆：200」「记住上次应回到 360px：200px」；② `readLayoutMode` 去掉白名单（直接返回盘里的值）→ FAIL「认不出的布局档应读成记住上次：auto」；③ `applyBootLayout` 的分栏不退 50%（仍读记忆层）→ FAIL「用默认分栏应回 50.00%：66.00%」。还原后 `LAYOUT-SELFTEST-OK {"layout":["360px","66.00%","200px"]}` |
 | A28 | 离线说明页与代码对表 | `python scripts\check_site.py`（也就是 `rc.py` 的 A28，纯 Python 不开浏览器） | 打印 `OK`：`docs/site/index.html` 那一节的每一项设置都在设置面板里真的存在、每一颗按钮的档位都被页面写到、滑块范围（终端字号 9–24）对得上；页面写了一项产品里没有的项同样 FAIL；版本串只能是当前那个，且至少出现在署名 / 安装 / 版本段三处 | ✅ 首跑 `OK 16 项设置 / 40 个档位` |
 | A29 | 传输队列的空态、计数与几条文案 | `python scripts\rc.py`（内部打开 `#transfer-test`） | 标题 `TRANSFER-SELFTEST-OK`：空队列时那句「空。上传、下载、同步的进度都会在这里」在；第一行一出现它就消失（`empty:false`）；三条之后行数 3、标题条计数 `3`、正文里 3 条 `.tr`；45600000/106000000 的进度条是 `43%`、行尾写「43% · 101 MB」；完成那条满格且写「完成 · 6.0 KB」；还没开始那条写「排队」；每个传输行都有尺寸且右缘不越出抽屉 | ✅ 反向验证两条都翻红：① 把空态删除改回 `.hint` 旧写法 → FAIL「队列里有行了，空态提示还挂着」「三条都在跑了，空态提示还挂着」（`empty:true`）；② 让 `transferRow` 不调 `syncTransferCount` → FAIL「标题条计数应是 3：2」（`num:2`）。还原后 `TRANSFER-SELFTEST-OK {"rows":3,"num":"3","bar":"43%","empty":false}` |
+| A30 | 后端出错时界面有没有话说 | `python scripts\rc.py`（内部打开 `#net-fail-test`） | 标题 `NET-FAIL-SELFTEST-OK`：四类回包（`No such file or directory` / `Permission denied` / `Connection refused` / `no space left on device`）都翻成「发生了什么 + 下一步怎么做」，认不出的保留原文并带命令名；列目录失败时块里留一句「列目录失败，原因见右下角提示」、路径条不被写成打错的路径、不抛；上传 / 下载失败各落成「失败」红条（进度条 `0%` 且用 `--danger`）、标题条计数为 2、toast 分别是「远端磁盘已满：…」与「连接超时：…」 | ✅ 反向验证两条都翻红：① 下载改回直连 `bridge.invoke` → FAIL「核后端出错这一路的过程抛了异常：Cannot read properties of null (reading 'invoke')」（行停在「排队」）；② 错误翻译改回大小写敏感 → FAIL「「No such file or directory」应翻成「路径不存在：…」」「「Permission denied」应翻成「权限不足：…」」。还原后 `NET-FAIL-SELFTEST-OK {"remote":"列目录失败，原因见右下角","failed":2}` |
 
 
 ### 怎么跑 A6–A9（无头）

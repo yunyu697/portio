@@ -49,27 +49,37 @@ window.addEventListener("unhandledrejection", (e) => {
 
 // 把 Rust 侧的原始错误翻成人话：说清"发生了什么 + 下一步怎么做"。
 // 匹配不上的一律保留原文，宁可粗糙也不隐藏细节。
+// 回包大小写不定：系统与协议栈常写 "Permission denied"、"No such file or directory"，
+// 所以比对一律用全小写的副本，展示仍用原文——这条以前只按小写比，首字母大写的全掉进兜底。
 function explainError(cmd, err) {
   const raw = String(err ?? "");
+  const low = raw.toLowerCase();
   const rules = [
     [/authentication|auth failed|userauth|密码|私钥/, "认证被拒绝", "用户名、密码或私钥不对；确认登录方式与凭据后重试"],
-    [/econnrefused|connection refused|actively refused/i, "连接被拒绝", "端口没开或被防火墙拦了；先用 telnet 探一下 22 端口"],
+    [/econnrefused|connection refused|actively refused/, "连接被拒绝", "端口没开或被防火墙拦了；先用 telnet 探一下 22 端口"],
     [/timed out|timeout|超时/, "连接超时", "网络不可达或服务端限流；检查网络与允许列表"],
     [/no space left|磁盘满/, "远端磁盘已满", "清理远端目录或换目标路径"],
-    [/permission denied|permission|权限/i, "权限不足", "该账号对目标路径没有权限；换目录或用有权限的账号"],
+    [/permission denied|permission|权限/, "权限不足", "该账号对目标路径没有权限；换目录或用有权限的账号"],
     [/no such file|not found|不存在/, "路径不存在", "目录可能被删或改名；刷新列表确认"],
-    [/host key|hostkey/i, "主机指纹变化", "可能被中间人替换；确认指纹后再决定是否继续"],
+    [/host key|hostkey/, "主机指纹变化", "可能被中间人替换；确认指纹后再决定是否继续"],
   ];
   for (const [re, title, hint] of rules) {
-    if (re.test(raw)) return `${title}：${hint}`;
+    if (re.test(low)) return `${title}：${hint}`;
   }
   return `${cmd} 失败：${raw}`;
 }
 
+// 后端调用一律从这个口子过：出错先翻成人话再弹 toast，调用方只看返回 null。
+// fakeInvoke 是自检用的替身——无头页里没有真后端，"后端抛错"这一路不塞替身就永远跑不到。
+let fakeInvoke = null;
+function hasBackend() {
+  return !!(fakeInvoke || bridge);
+}
 async function call(cmd, args) {
-  if (!bridge) return null;
+  const inv = fakeInvoke ?? (bridge ? bridge.invoke.bind(bridge) : null);
+  if (!inv) return null;
   try {
-    return await bridge.invoke(cmd, args);
+    return await inv(cmd, args);
   } catch (err) {
     toast(explainError(cmd, err));
     return null;
@@ -2705,8 +2715,14 @@ async function loadRemote(path) {
     remoteListEl.innerHTML = '<span class="hint">先连一台主机，远端目录才会出现。</span>';
     return;
   }
-  const res = await bridge.invoke("sftp_list", { id: sessionId, path });
-  if (!res) { remoteListEl.innerHTML = '<span class="hint">列目录失败，详情见状态栏。</span>'; return; }
+  // 这一处原来直连 bridge.invoke：路径打错、目录被删、权限不够时只剩一条没人看见的拒绝，
+  // 面板还停在旧目录，一句话都没有。走 call() 才会把错因翻成人话。
+  const res = await call("sftp_list", { id: sessionId, path });
+  if (!res) {
+    // 没有后端的预览页里 call() 也是 null——那种情况保持原样，别在物料截图上写「失败」
+    if (hasBackend()) remoteListEl.innerHTML = '<span class="hint">列目录失败，原因见右下角提示。</span>';
+    return;
+  }
   remotePath = path;
   remotePathEl.value = path;
   document.getElementById("files-path").textContent = path;
@@ -2715,8 +2731,11 @@ async function loadRemote(path) {
 }
 
 async function loadLocal(path) {
-  const res = await bridge.invoke("local_list", { path: path ?? null });
-  if (!res) return;
+  const res = await call("local_list", { path: path ?? null });
+  if (!res) {
+    if (hasBackend()) localListEl.innerHTML = '<span class="hint">列目录失败，原因见右下角提示。</span>';
+    return;
+  }
   const [dir, items] = res;
   localPath = dir;
   localPathEl.value = dir;
@@ -2776,17 +2795,21 @@ function updateTransfer(p) {
 async function downloadFile(item) {
   const target = winJoin(localPath, item.name);
   transferRow(item.name, "down");
-  const bytes = await bridge.invoke("sftp_download", { id: sessionId, remote: item.path, local: target });
+  // 这两条以前直连 bridge.invoke：一旦抛错（磁盘满、断线、权限不够），行会永远停在「排队」，
+  // 既没人说失败，也不知道要不要重试。走 call() 收尾才落成红条 + 一句人话。
+  const bytes = await call("sftp_download", { id: sessionId, remote: item.path, local: target });
+  if (bytes === null && !hasBackend()) return; // 预览页没有后端：留着排队，不假报失败
   finishTransfer(item.name, "down", bytes);
-  if (bytes !== null) loadLocal(localPath);
+  if (typeof bytes === "number") loadLocal(localPath);
 }
 
 async function uploadFile(item) {
   const target = posixJoin(remotePath, item.name);
   transferRow(item.name, "up");
-  const bytes = await bridge.invoke("sftp_upload", { id: sessionId, local: item.path, remote: target });
+  const bytes = await call("sftp_upload", { id: sessionId, local: item.path, remote: target });
+  if (bytes === null && !hasBackend()) return;
   finishTransfer(item.name, "up", bytes);
-  if (bytes !== null) loadRemote(remotePath);
+  if (typeof bytes === "number") loadRemote(remotePath);
 }
 
 // ---------- 右键菜单里用到的动作 ----------
@@ -2852,7 +2875,7 @@ function finishTransfer(name, dir, bytes) {
   const row = transferRows.get(`${dir}:${name}`);
   if (!row) return;
   const ok = bytes !== null;
-  row.querySelector(".bar i").style.width = ok ? "100%" : "0";
+  row.querySelector(".bar i").style.width = ok ? "100%" : "0%";
   row.querySelector(".bar i").style.background = ok ? "var(--accent)" : "var(--danger)";
   row.querySelector(".meta").textContent = ok ? `完成 · ${fmtSize(bytes)}` : "失败";
   syncTransferCount();
@@ -2975,6 +2998,141 @@ if (location.hash === "#transfer-test") {
   document.title = fails.length
     ? `TRANSFER-SELFTEST-FAIL ${JSON.stringify(fails)} ${JSON.stringify(seen)}`
     : `TRANSFER-SELFTEST-OK ${JSON.stringify(seen)}`;
+}
+
+// 带 #net-fail-test 核一遍"后端出错时界面有没有话说"：列目录失败要在块里留一句、
+// 传输失败要落成「失败」红条而不是永远「排队」、错因一律翻成人话。这条给的是
+// 「列目录与上传下载绕过统一错误处理，出事了界面一声不响」那个 Bug 立的桩。
+if (location.hash === "#net-fail-test") {
+  (async () => {
+    const fails = [];
+    const ok = (cond, msg) => {
+      if (!cond) fails.push(msg);
+    };
+    const seen = {};
+    const toastEl = document.getElementById("toast");
+    const tgBefore = [...toastEl.children];
+    // toast 是一条条叠着排的（同时最多几条），要核的是最新那一条
+    const lastToast = () => {
+      const kids = [...toastEl.children];
+      return kids.length ? kids[kids.length - 1].textContent : "";
+    };
+    const prevSid = sessionId;
+    const prevRemotePath = remotePath;
+    const prevRemoteHtml = remoteListEl.innerHTML;
+    const prevLocalHtml = localListEl.innerHTML;
+    const drawerBody = document.querySelector(".drawer-body");
+    const failRows = [];
+    try {
+      // ① 错因翻译：四类最常见的回包都要说清"发生了什么 + 下一步"，认不出的保留原文并带上命令名
+      const cases = [
+        ["No such file or directory", "路径不存在："],
+        ["Permission denied", "权限不足："],
+        ["Connection refused", "连接被拒绝："],
+        ["remote disk full: no space left on device", "远端磁盘已满："],
+      ];
+      for (const [raw, want] of cases) {
+        const got = explainError("sftp_list", raw);
+        ok(got.startsWith(want), `「${raw}」应翻成「${want}…」：${got}`);
+      }
+      const odd = explainError("sftp_list", "EOF while reading");
+      ok(odd.startsWith("sftp_list 失败：") && odd.includes("EOF while reading"), `认不出的错应保留原文并带命令名：${odd}`);
+
+      // ② 造一个会抛错的后端：无头页里没有真后端，这手不塞替身就永远跑不到
+      fakeInvoke = async (cmd) => {
+        if (cmd === "sftp_list") throw new Error("No such file or directory");
+        if (cmd === "local_list") throw new Error("Permission denied");
+        if (cmd === "sftp_download") throw new Error("no space left on device");
+        if (cmd === "sftp_upload") throw new Error("timed out");
+        return null;
+      };
+      sessionId = 4242;
+
+      // ③ 远端列目录失败：一句话要在块里，路径条不许被写成一个打错的路径，进程不许抛
+      const pathBefore = document.getElementById("files-path").textContent;
+      let threw = null;
+      try {
+        await loadRemote("/nope");
+      } catch (err) {
+        threw = err && err.message ? err.message : String(err);
+      }
+      ok(threw === null, `列目录失败不该抛出去：${threw}`);
+      ok(remoteListEl.textContent.includes("列目录失败"), `远端块应留一句失败说明：${remoteListEl.textContent}`);
+      ok(lastToast().startsWith("路径不存在："), `错因应弹成「路径不存在：…」：${lastToast()}`);
+      ok(
+        document.getElementById("files-path").textContent === pathBefore,
+        `列目录失败不该把路径条改成打错的路径：${document.getElementById("files-path").textContent}`
+      );
+
+      // ④ 本地列目录失败：一样要有话说
+      threw = null;
+      try {
+        await loadLocal("C:/nope");
+      } catch (err) {
+        threw = err && err.message ? err.message : String(err);
+      }
+      ok(threw === null, `本地列目录失败不该抛出去：${threw}`);
+      ok(localListEl.textContent.includes("列目录失败"), `本地块应留一句失败说明：${localListEl.textContent}`);
+      ok(lastToast().startsWith("权限不足："), `本地权限不足应弹成「权限不足：…」：${lastToast()}`);
+
+      // ⑤ 下载失败：行要收成「失败」，进度条清零且用危险色，绝不能永远停在「排队」
+      await downloadFile({ name: "a.bin", path: "/tmp/a.bin", is_dir: false });
+      const rowD = transferRows.get("down:a.bin");
+      failRows.push("down:a.bin");
+      ok(!!rowD, "下载失败后应留下这一行");
+      ok(rowD && rowD.querySelector(".meta").textContent === "失败", `下载失败的行应写「失败」：${rowD && rowD.querySelector(".meta").textContent}`);
+      ok(rowD && rowD.querySelector(".bar i").style.width === "0%", `失败的行进度条应清零：${rowD && rowD.querySelector(".bar i").style.width}`);
+      const probe = document.createElement("div");
+      probe.style.background = "var(--danger)";
+      document.body.append(probe);
+      const dangerBg = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      ok(
+        rowD && getComputedStyle(rowD.querySelector(".bar i")).backgroundColor === dangerBg,
+        "失败的行进度条要用危险色"
+      );
+      ok(lastToast().startsWith("远端磁盘已满："), `磁盘满应弹成「远端磁盘已满：…」：${lastToast()}`);
+
+      // ⑥ 上传失败：同样收成「失败」；两条都失败时计数是 2
+      await uploadFile({ name: "b.bin", path: "C:\\b.bin", is_dir: false });
+      const rowU = transferRows.get("up:b.bin");
+      failRows.push("up:b.bin");
+      ok(rowU && rowU.querySelector(".meta").textContent === "失败", `上传失败的行应写「失败」：${rowU && rowU.querySelector(".meta").textContent}`);
+      ok(
+        document.querySelector(".drawer .num").textContent === "2",
+        `两条失败行也要算进标题条计数：${document.querySelector(".drawer .num").textContent}`
+      );
+      ok(lastToast().startsWith("连接超时："), `超时应弹成「连接超时：…」：${lastToast()}`);
+
+      seen.remote = remoteListEl.textContent.trim().slice(0, 12);
+      seen.failed = failRows.length;
+    } catch (err) {
+      fails.push(`核后端出错这一路的过程抛了异常：${err && err.message ? err.message : err}`);
+    } finally {
+      // 收场：替身摘掉、会话号与路径还原、试出来的行连同计数一起清掉，两块列表回到原来那行提示
+      fakeInvoke = null;
+      sessionId = prevSid;
+      remotePath = prevRemotePath;
+      for (const key of failRows) {
+        const el = transferRows.get(key);
+        if (el) el.remove();
+        transferRows.delete(key);
+      }
+      syncTransferCount();
+      if (transferRows.size === 0 && !drawerBody.querySelector(".drawer-empty")) {
+        const empty = document.createElement("div");
+        empty.className = "drawer-empty";
+        empty.textContent = "空。上传、下载、同步的进度都会在这里。";
+        drawerBody.append(empty);
+      }
+      for (const t of [...toastEl.children]) if (!tgBefore.includes(t)) t.remove();
+      remoteListEl.innerHTML = prevRemoteHtml;
+      localListEl.innerHTML = prevLocalHtml;
+    }
+    document.title = fails.length
+      ? `NET-FAIL-SELFTEST-FAIL ${JSON.stringify(fails)} ${JSON.stringify(seen)}`
+      : `NET-FAIL-SELFTEST-OK ${JSON.stringify(seen)}`;
+  })();
 }
 
 // #ctx-demo：真的派发一次右键事件，用真实 handler 出菜单，便于截图核对（不是另画一份假菜单）

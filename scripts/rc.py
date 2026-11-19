@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / SKIP。
 
-对应 docs/rc-checklist.md §1 的 A1–A29。以前这些步骤散在日志里，每轮都要手打一遍命令，
+对应 docs/rc-checklist.md §1 的 A1–A30。以前这些步骤散在日志里，每轮都要手打一遍命令，
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
 
 用法：
@@ -280,6 +280,7 @@ def main(argv: list[str]) -> int:
         ("A27", "#layout-test = LAYOUT-SELFTEST-OK（面板宽度两层：拖拽落记忆层、用默认按三档落宽度且分栏回 50/50 抽屉回一行、记忆层一个字不改，认不出的值各回各的默认且不回写）", True),
         ("A28", "check_site.py（说明页每一项设置与每个档位都跟设置面板对上）", True),
         ("A29", "#transfer-test = TRANSFER-SELFTEST-OK（空态随第一行消失、计数跟实际行数、43% 与完成/排队文案、行不出抽屉）", True),
+        ("A30", "#net-fail-test = NET-FAIL-SELFTEST-OK（后端出错也要有话说：列目录失败留话、传输失败落红条而不是永远排队、错因翻成人话）", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -376,9 +377,12 @@ def main(argv: list[str]) -> int:
         elif code == "A28":
             # 纯 Python 对表，不开浏览器
             status, detail = a_script("check_site.py", "说明页与代码对表")
-        else:
-            # A29：塞三条演示传输（一条在跑、一条完成、一条排队），量空态是否消失与计数、文案、几何
+        elif code == "A29":
+            # 塞三条演示传输（一条在跑、一条完成、一条排队），量空态是否消失与计数、文案、几何
             status, detail = a_page(chrome, profile, "#transfer-test", "TRANSFER-SELFTEST-OK", "1180,690", 8000)
+        else:
+            # A30：塞一个会抛错的后端替身，量列目录失败有没有话说、传输失败落不落红条、错因翻没翻成人话
+            status, detail = a_page(chrome, profile, "#net-fail-test", "NET-FAIL-SELFTEST-OK", "1180,690", 8000)
         results.append((code, label, status, detail))
         print(f"[{status}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
 
