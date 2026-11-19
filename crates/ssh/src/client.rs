@@ -109,9 +109,10 @@ impl SshSession {
                 if let Some(expected) = &expected_fingerprint {
                     let actual = fp_now(&seen);
                     if &actual != expected {
-                        return Err(SshError::HostKeyMismatch(format!(
-                            "记录的是 {expected}，服务器给的是 {actual}"
-                        )));
+                        return Err(SshError::HostKeyMismatch {
+                            expected: expected.clone(),
+                            actual,
+                        });
                     }
                 }
                 return Err(SshError::Protocol(err.to_string()));

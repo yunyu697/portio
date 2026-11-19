@@ -256,6 +256,67 @@ mod tests {
     }
 
     #[test]
+    fn forget_makes_the_next_connection_first_seen_again() {
+        // 清单 M12 的那半句：删掉记录后重连，应当重新走首次信任。
+        // 关键是把整条链路照参数走一遍——建连前先取 expected，删了之后 expected 必须变回 None，
+        // 否则重连还是拿旧指纹去握手，用户点完"删除"依然连不上，还看不出为什么。
+        let p = tmp_path("forget-tofu");
+        let _ = fs::remove_file(&p);
+        let mut kh = KnownHosts::load(&p);
+        kh.verify("db-01.prod", 2222, "SHA256:OLD").unwrap();
+        assert_eq!(
+            kh.fingerprint_of("db-01.prod", 2222).as_deref(),
+            Some("SHA256:OLD"),
+            "有记录时建连要带旧指纹去做校验"
+        );
+
+        assert!(kh.forget("db-01.prod", 2222));
+        assert_eq!(
+            kh.fingerprint_of("db-01.prod", 2222),
+            None,
+            "删掉之后建连不该再带旧指纹"
+        );
+
+        // 服务器换过钥匙也能连上，并且被视为首次见到
+        assert_eq!(
+            kh.verify("db-01.prod", 2222, "SHA256:NEW").unwrap(),
+            HostKeyVerdict::FirstSeen
+        );
+        // 重新信任只是重新开始记录，不是放弃校验：下一次换成第三把钥匙，照样报"变了"
+        match kh.verify("db-01.prod", 2222, "SHA256:OTHER").unwrap() {
+            HostKeyVerdict::Changed { previous } => assert_eq!(previous, "SHA256:NEW"),
+            other => panic!("重新信任之后仍要能报警，实际 {other:?}"),
+        }
+
+        // 删除与重新记录都要落盘：换一个实例重读，看到的必须是第三把钥匙那次之前的记录
+        // （Changed 不写盘，所以磁盘上还是 NEW）
+        let kh2 = KnownHosts::load(&p);
+        assert_eq!(
+            kh2.fingerprint_of("db-01.prod", 2222).as_deref(),
+            Some("SHA256:NEW")
+        );
+        let _ = fs::remove_file(&p);
+    }
+
+    #[test]
+    fn forget_only_touches_the_port_it_names() {
+        let p = tmp_path("forget-port");
+        let _ = fs::remove_file(&p);
+        let mut kh = KnownHosts::load(&p);
+        kh.verify("h.example.com", 22, "SHA256:A").unwrap();
+        kh.verify("h.example.com", 2222, "SHA256:B").unwrap();
+
+        assert!(kh.forget("h.example.com", 2222));
+        assert_eq!(
+            kh.fingerprint_of("h.example.com", 22).as_deref(),
+            Some("SHA256:A"),
+            "同一台机器的另一个端口不该被一起删掉"
+        );
+        assert_eq!(kh.records().len(), 1);
+        let _ = fs::remove_file(&p);
+    }
+
+    #[test]
     fn persists_across_reload() {
         let p = tmp_path("reload");
         let _ = fs::remove_file(&p);

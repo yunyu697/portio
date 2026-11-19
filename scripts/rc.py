@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / SKIP。
 
-对应 docs/rc-checklist.md §1 的 A1–A19。以前这些步骤散在日志里，每轮都要手打一遍命令，
+对应 docs/rc-checklist.md §1 的 A1–A20。以前这些步骤散在日志里，每轮都要手打一遍命令，
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
 
 用法：
@@ -270,6 +270,7 @@ def main(argv: list[str]) -> int:
         ("A17", "#find-pane-test = FIND-PANE-SELFTEST-OK（分屏后查找只认当前格：计数/命中/选区/高亮跟着换格走）", True),
         ("A18", "#connect-entry-test = CONNECT-ENTRY-SELFTEST-OK（新建连接/快速连接回车/双击会话三条入口，外加\"新建连接从空白起\"与括号 IPv6 解析）", True),
         ("A19", "#sessions-test = SESSIONS-SELFTEST-OK（会话增删改/分组/折叠/搜索，以及磁盘上的 last_used 读回来还认不认\"最近用过\"）", True),
+        ("A20", "#hosts-test = HOSTS-SELFTEST-OK（已知主机：列出/指纹截断/按端口删/删空后的空态）", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -336,9 +337,12 @@ def main(argv: list[str]) -> int:
         elif code == "A18":
             # 三条入口一条条点，再钉住"新建连接从空白起"，给 8s 虚拟时间
             status, detail = a_page(chrome, profile, "#connect-entry-test", "CONNECT-ENTRY-SELFTEST-OK", "1180,690", 8000)
-        else:
+        elif code == "A19":
             # 会话增删改与分组要反复重画列表，给 8s 虚拟时间
             status, detail = a_page(chrome, profile, "#sessions-test", "SESSIONS-SELFTEST-OK", "1180,690", 8000)
+        else:
+            # 已知主机面板连点三次删除再重建，给 8s 虚拟时间
+            status, detail = a_page(chrome, profile, "#hosts-test", "HOSTS-SELFTEST-OK", "1180,690", 8000)
         results.append((code, label, status, detail))
         print(f"[{status}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
 

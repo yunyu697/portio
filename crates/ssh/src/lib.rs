@@ -48,8 +48,10 @@ impl AuthMethod {
 pub enum SshError {
     #[error("连接超时：{0}")]
     ConnectTimeout(String),
-    #[error("主机密钥校验失败：{0}")]
-    HostKeyMismatch(String),
+    /// 指纹与记录不一致。两个指纹都留着：界面要把"记录的是哪个、这次是哪个"摆出来，
+    /// 才谈得上让人决定要不要重新信任。
+    #[error("主机密钥校验失败：记录的是 {expected}，服务器给的是 {actual}")]
+    HostKeyMismatch { expected: String, actual: String },
     #[error("认证失败：{0}")]
     AuthFailed(String),
     #[error("通道已断开")]
@@ -62,4 +64,50 @@ pub enum SshError {
 pub trait Connection {
     fn open_shell(&mut self) -> Result<(), SshError>;
     fn resize(&mut self, cols: u32, rows: u32) -> Result<(), SshError>;
+}
+
+impl SshError {
+    /// 主机密钥与记录不一致时，给上层一个能分辨的标记：`HOSTKEY_CHANGED|记录|本次`。
+    ///
+    /// 界面靠这个前缀把"密钥变了"和其它连接失败分开：前者要人拍板（去设置里确认或删记录），
+    /// 后者只需要看错误文本。做成方法而不是让 app 层去拆错误字符串，改文案时就不会把契约拆坏。
+    pub fn hostkey_changed_tag(&self) -> Option<String> {
+        match self {
+            SshError::HostKeyMismatch { expected, actual } => {
+                Some(format!("HOSTKEY_CHANGED|{expected}|{actual}"))
+            }
+            _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hostkey_mismatch_becomes_a_tag_the_ui_can_parse() {
+        let err = SshError::HostKeyMismatch {
+            expected: "SHA256:OLD".into(),
+            actual: "SHA256:NEW".into(),
+        };
+        assert_eq!(
+            err.hostkey_changed_tag().as_deref(),
+            Some("HOSTKEY_CHANGED|SHA256:OLD|SHA256:NEW")
+        );
+        // 三段、竖线分隔——前端 split("|") 取前两段，格式不能变
+        assert_eq!(err.hostkey_changed_tag().unwrap().split("|").count(), 3);
+    }
+
+    #[test]
+    fn other_errors_are_not_tagged() {
+        for err in [
+            SshError::ConnectTimeout("h:22".into()),
+            SshError::AuthFailed("userauth failed".into()),
+            SshError::ChannelClosed,
+            SshError::Protocol("boom".into()),
+        ] {
+            assert_eq!(err.hostkey_changed_tag(), None, "{err:?} 不该当成密钥变更");
+        }
+    }
 }

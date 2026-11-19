@@ -82,6 +82,15 @@ pub fn hosts_path(app: AppHandle) -> Result<String, String> {
     Ok(known_hosts_path(&app)?.display().to_string())
 }
 
+/// 建连失败的对外文本：密钥变了要带上前端能解析的前缀，其它错误照原样给。
+///
+/// 抽成函数是为了能被单测钉住——这条前缀是 app 与界面之间的约定，
+/// 以前它只在 `verify` 之后那半段代码里拼，而真正的变更早在握手阶段就被拒了，
+/// 于是界面等的那句"去设置删掉记录再连"一直没人发。
+fn connect_error_text(e: portio_ssh::SshError) -> String {
+    e.hostkey_changed_tag().unwrap_or_else(|| e.to_string())
+}
+
 /// 建连 + 认证 + 开 PTY。成功后返回会话 id，之后的输入/改尺寸都带这个 id。
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
@@ -111,15 +120,18 @@ pub async fn ssh_connect(
 
     let (session, fingerprint) = SshSession::connect(&opts, expected, Duration::from_secs(12))
         .await
-        .map_err(|e| e.to_string())?;
+        // 指纹对不上时，protocol 层已经拒了握手。这里把它转成前端认得的前缀，
+        // 否则"去设置里删掉记录再连"这句提示永远到不了人眼前。
+        .map_err(connect_error_text)?;
 
     match kh
         .verify(&opts.host.host, opts.host.port, &fingerprint)
         .map_err(|e| e.to_string())?
     {
+        // 正常路径走不到这里（上面 connect 已经按记录拒掉变更），留着当兜底：
+        // 将来若有调用方绕过 expected 直连，仍然要给前端同一个前缀。
         HostKeyVerdict::Changed { previous } => {
             let _ = session.disconnect().await;
-            // 用前缀让前端能区分"密钥变了"这种需要用户拍板的情况
             return Err(format!("HOSTKEY_CHANGED|{previous}|{fingerprint}"));
         }
         verdict => {
@@ -447,6 +459,32 @@ pub fn local_rename(from: String, to: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use portio_ssh::SshError;
+
+    /// 主机密钥变更是界面唯一需要"停下来问人"的连接错误，前缀必须原样、可解析。
+    #[test]
+    fn hostkey_change_reaches_the_ui_with_its_prefix() {
+        let text = connect_error_text(SshError::HostKeyMismatch {
+            expected: "SHA256:OLD".into(),
+            actual: "SHA256:NEW".into(),
+        });
+        let parts: Vec<&str> = text.split('|').collect();
+        assert_eq!(parts.len(), 3, "三段式：{text}");
+        assert_eq!(parts[0], "HOSTKEY_CHANGED");
+        assert_eq!(parts[1], "SHA256:OLD");
+        assert_eq!(parts[2], "SHA256:NEW");
+    }
+
+    /// 其它错误不许被当成"密钥变了"，否则界面会让用户去删一条没错的记录。
+    #[test]
+    fn other_connect_errors_keep_their_own_wording() {
+        let auth = connect_error_text(SshError::AuthFailed("userauth failed".into()));
+        assert!(auth.starts_with("认证失败"), "{auth}");
+        assert!(!auth.contains("HOSTKEY_CHANGED"), "{auth}");
+
+        let timeout = connect_error_text(SshError::ConnectTimeout("h:22".into()));
+        assert!(timeout.starts_with("连接超时"), "{timeout}");
+    }
 
     /// 中文名 / 空格 / 特殊字符的目录，读出来后名字必须一字不差，且目录在前。
     #[test]

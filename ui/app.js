@@ -354,7 +354,16 @@ document.getElementById("hosts-list").addEventListener("click", async (e) => {
   const btn = e.target.closest(".hz-del");
   if (!btn) return;
   const port = Number(btn.dataset.port);
-  const gone = await call("hosts_forget", { host: btn.dataset.host, port });
+  // 核验页（#hosts-demo / #hosts-test）没有后端：删的就是内存里那几条，
+  // 好让"点完少一行、计数跟着变"这条路也被真走过一遍，而不是靠假数据摆样子。
+  let gone;
+  if (hostDemo) {
+    const before = hostDemo.length;
+    hostDemo = hostDemo.filter((r) => !(r.host === btn.dataset.host && r.port === port));
+    gone = hostDemo.length !== before;
+  } else {
+    gone = await call("hosts_forget", { host: btn.dataset.host, port });
+  }
   toast(gone ? `已删除 ${btn.dataset.host}:${port} 的记录` : "这条记录已经不在了");
   renderHosts();
 });
@@ -3716,5 +3725,85 @@ if (location.hash === "#sessions-test") {
     document.title = bad.length
       ? `SESSIONS-SELFTEST-FAIL ${JSON.stringify(bad)} ${JSON.stringify(seen)}`
       : `SESSIONS-SELFTEST-OK ${JSON.stringify(seen)}`;
+  })();
+}
+
+// ---------- 已知主机：列出、截断显示、按端口删除、空态 ----------
+// 清单 §2 M12 的手工动作（"打开设置看列表，删一条，重连走首次信任"）里，
+// "重连走首次信任"那半句在 Rust 侧用单测钉住了（known_hosts: forget_makes_the_next_connection_first_seen_again），
+// 这里钉住能看见的那半句：行数、计数、指纹截断、同一台机器不同端口分开删、删空了的样子。
+if (location.hash === "#hosts-test") {
+  (function () {
+    const bad = [];
+    const seen = {};
+    const expect = (label, got, want) => {
+      if (got !== want) bad.push(`${label}：${JSON.stringify(got)} ≠ ${JSON.stringify(want)}`);
+    };
+    const byId = (id) => document.getElementById(id);
+    const rows = () => [...byId("hosts-list").querySelectorAll(".hz")];
+    const keys = () => rows().map((r) => r.querySelector(".hh").textContent);
+    const rowOf = (key) => rows().find((r) => r.querySelector(".hh").textContent === key);
+    const delOf = (key) => rowOf(key)?.querySelector(".hz-del");
+    const lastToast = () => (toastBox.lastElementChild ? toastBox.lastElementChild.textContent : "");
+
+    const LONG = "SHA256:9fKq2mZpQ0aBcDeFgHiJkLmNoPqRsTuVwXyZ01234";
+    const seed = () => {
+      hostDemo = [
+        { host: "h.example.com", port: 22, fingerprint: LONG },
+        { host: "h.example.com", port: 2222, fingerprint: "SHA256:Zx81MnBvC3xY7tReWqAsDfGhJkLz" },
+        { host: "[::1]", port: 22, fingerprint: "SHA256:V6" },
+      ];
+      renderHosts();
+    };
+
+    try {
+      seed();
+      expect("三条记录该画三行", rows().length, 3);
+      expect("计数写条数", byId("hosts-count").textContent, "3 条");
+      expect("按给出的顺序排", JSON.stringify(keys()), JSON.stringify([
+        "h.example.com:22", "h.example.com:2222", "[::1]:22",
+      ]));
+
+      // 指纹只露前 10 位，全文挂在 title 上——省宽度但不藏信息
+      const fp = rowOf("h.example.com:22").querySelector(".hf");
+      expect("长的指纹要截断", fp.textContent, "SHA256:" + LONG.slice(7, 17) + "…");
+      expect("截断只起版式作用，全文在 title 里", fp.title, LONG);
+      const shortFpCell = rowOf("[::1]:22").querySelector(".hf");
+      expect("短指纹不加省略号", shortFpCell.textContent, "SHA256:V6");
+
+      // 端口是键的一部分：删 2222 不许把 22 一起带走
+      delOf("h.example.com:2222").click();
+      expect("删掉一条后剩两行", rows().length, 2);
+      expect("计数跟着变", byId("hosts-count").textContent, "2 条");
+      expect("同机另一端口还在", keys().includes("h.example.com:22"), true);
+      expect("删掉的那条不在了", keys().includes("h.example.com:2222"), false);
+      expect("删完要有回执", lastToast(), "已删除 h.example.com:2222 的记录");
+
+      // IPv6 主机名按整串显示，不能被冒号切碎
+      delOf("[::1]:22").click();
+      expect("IPv6 纪录也能删", rows().length, 1);
+      expect("IPv6 删掉就不在列表里", keys().includes("[::1]:22"), false);
+
+      // 删到最后一条：不留一行空白，给一句解释
+      delOf("h.example.com:22").click();
+      expect("删空之后没有行", rows().length, 0);
+      expect("空态计数写「无」", byId("hosts-count").textContent, "无");
+      const hint = byId("hosts-list").querySelector(".hosts-empty");
+      expect("空态要说明怎么才会有记录", hint && hint.textContent,
+        "还没有记录。第一次连上某台主机时会自动记住它的指纹。");
+
+      // 再喂一批，确认空态之后还能正常长回来（删光了不是把面板弄死）
+      seed();
+      expect("空态之后还能重新列出", rows().length, 3);
+      seen.lastKeys = keys();
+    } catch (err) {
+      bad.push(`走已知主机面板的过程抛了异常：${err && err.message ? err.message : err}`);
+    } finally {
+      hostDemo = null;
+    }
+
+    document.title = bad.length
+      ? `HOSTS-SELFTEST-FAIL ${JSON.stringify(bad)} ${JSON.stringify(seen)}`
+      : `HOSTS-SELFTEST-OK ${JSON.stringify(seen)}`;
   })();
 }
