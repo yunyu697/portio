@@ -443,7 +443,11 @@ mod tests {
         }
         seen.sort();
         seen.dedup();
-        assert_eq!(seen.len(), THREADS * PER_THREAD, "出现了重复或残缺的日志内容");
+        assert_eq!(
+            seen.len(),
+            THREADS * PER_THREAD,
+            "出现了重复或残缺的日志内容"
+        );
         for t in 0..THREADS {
             for i in 0..PER_THREAD {
                 let want = format!("t{t}-{i}");
@@ -488,11 +492,13 @@ mod tests {
 
         let mut bytes: Vec<u8> = Vec::new();
         for i in 0..5 {
-            bytes.extend_from_slice(format!("2026-11-19T10:00:0{i}Z [ERROR] [ui] 第{i}条\n").as_bytes());
+            bytes.extend_from_slice(
+                format!("2026-11-19T10:00:0{i}Z [ERROR] [ui] 第{i}条\n").as_bytes(),
+            );
         }
         // 半截写入 + 一坨非 UTF-8（0xFF / 孤立的续字节 / NUL）
         bytes.extend_from_slice(b"2026-11-19T10:00:06Z [ERROR] [ui] \xff\xfe\x00\x80\x81 tail\r\n");
-        bytes.extend_from_slice(format!("2026-11-19T10:00:07Z [INFO] [app] 最后一条").as_bytes());
+        bytes.extend_from_slice("2026-11-19T10:00:07Z [INFO] [app] 最后一条".as_bytes());
         std::fs::write(&file, &bytes).unwrap();
 
         let text = read_tail_file(&file, 200);
@@ -512,7 +518,10 @@ mod tests {
             text.contains('\u{FFFD}'),
             "坏字节应该就地变成替换字符，而不是把整行吞掉：{text:?}"
         );
-        assert!(!text.contains('\r'), "CRLF 里的 \\r 不该留在输出里：{text:?}");
+        assert!(
+            !text.contains('\r'),
+            "CRLF 里的 \\r 不该留在输出里：{text:?}"
+        );
         assert_eq!(text.lines().count(), 7, "行数不对：{text:?}");
 
         let _ = std::fs::remove_dir_all(&dir);

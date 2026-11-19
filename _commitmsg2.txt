@@ -1,12 +1,10 @@
-docs(release): 对外说法与回归记录跟到 RC8
+chore(fmt): 补跑 cargo fmt，消掉 CI 的 fmt 闸与 clippy 提示
 
-RC8 的包已发出去（run 44503329899 四 job success），把四处对外文档与记录一起对上：
+上一轮 RC8 的并发单测里有两处没跑 fmt/clippy：`assert_eq!` 一行过长（CI 的
+`cargo fmt --all --check` 拦下，run 44505662151 因此红），另有一处 `format!("字面串")`。
 
-- README 版本段（当前在 v1.0.6-RC8，最新包就是这一批；`v1.0.6-RC6` 只留作版本规则示例）
-- docs/release-notes.md 当前状态补一句 RC8 修了什么 + 两处产物名
-- docs/site/index.html 五处版本串与安装段示例名
-- docs/press-kit.md 下载表换 RC8 四产物与体积（3356439 / 9463772 / 4945556 / 83139064）
-- docs/rc-checklist.md 最近一次整跑改 RC8 / 20 项，§7 补 RC8 行
-- docs/autopilot-log.md 追加当轮记录
+- `cargo fmt --all` → `cargo fmt --all --check` exit 0
+- `cargo clippy --workspace --all-targets -- -D warnings` exit 0
+- `cargo test --workspace` 95 passed；`cargo test -p portio-app diag` 13 passed
 
-验证：check_versions.py → OK v1.0.6-RC8；Select-String 复查 README / release-notes / press-kit / site 已无 1.0.6-RC7 残留。
+只动空白与一处 `format!`→字面串，行为不变。
