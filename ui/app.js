@@ -615,7 +615,7 @@ window.addEventListener("keydown", (e) => {
 const findBar = document.getElementById("find");
 const findInput = document.getElementById("find-q");
 const findCount = document.getElementById("find-n");
-const findHits = { q: "", all: [], at: -1 };
+const findHits = { q: "", all: [], at: -1, term: null };
 let findTimer = 0;
 
 function findScan(q) {
@@ -676,6 +676,8 @@ function findJump(delta) {
 
 function findRefresh() {
   findHits.q = findInput.value;
+  // 记下这次扫的是哪一格：分屏之后换格要能认出"命中不属于当前这个 buffer"
+  findHits.term = term ?? null;
   findHits.all = findScan(findHits.q);
   findHits.at = -1;
   if (term) term.clearSelection();
@@ -1009,6 +1011,13 @@ function setActiveCell(tab, cell) {
   if (!tab.cells.includes(cell)) return;
   tab.cell = cell;
   if (tab.id === activeId) syncActiveCell(tab);
+  // 查找条开着的时候换格：那些命中行号属于上一格的 buffer，不重扫就会在**这一格**的错行上高亮，
+  // 计数也还是上一格的（用户看到"有计数、地方不对"）。重扫一遍，顺手把上一格的高亮收掉。
+  if (findBar && !findBar.hidden && findHits.term !== term) {
+    if (findHits.term) findHits.term.clearSelection();
+    if (findHits.q) findRefresh();
+    else findHits.term = null;
+  }
   cell.term.focus();
 }
 
@@ -3087,6 +3096,172 @@ if (location.hash.startsWith("#find-test")) {
     run();
   })();
 }
+// ---------- #find-pane-test：分屏之后，查找只认"当前格" ----------
+// M9 以前只验了单格：一格终端里搜索，怎么都对。分屏之后冒出一个真问题——查找条记住的是"上一格的行号"，
+// 点一下别的格换焦点，计数还是旧格的、Enter 跳过去在**新格**的错行上高亮。用户看到的是"计数有、地方不对"，
+// 这种 bug 不会报错，只会让人觉得"搜索不准"。这段把四格各写进自己的标记词，然后走一遍：
+//   ① A 格开着查找条查到 3 处并选中第 1 处；② 切到 C 格（等价于点一下那格）——计数、命中、选区都必须立刻换成 C 格的；
+//   ③ 在 C 格查它自己的词，逐条跳转只许动 C 格；④ 切回 B 格，计数再换一次；⑤ 关掉后四格都不许留高亮。
+if (location.hash === "#find-pane-test") {
+  (function paneFindTest() {
+    document.body.classList.add("dragging", "dragging-x"); // 关过渡，只量终态
+    const bad = [];
+    const seen = {};
+    const tab = tabById(activeId);
+    if (!tab) {
+      document.title = "FIND-PANE-SELFTEST-FAIL no-tab";
+      return;
+    }
+
+    // 一格 → 四格（点标题条上的分屏钮走的是同一个函数）
+    while (tab.cells.length < 4) splitTab(tab, "v");
+    const cells = tab.cells;
+    const marks = ["TOKENA", "TOKENB", "TOKENC", "TOKEND"];
+    const wants = [3, 1, 2, 1];
+
+    // 按格扫一遍某一格的 buffer（不借 findScan，免得自己验自己）
+    function recountIn(t, needle) {
+      const buf = t?.buffer.active;
+      if (!buf) return [];
+      const out = [];
+      const low = needle.toLowerCase();
+      for (let row = 0; row < buf.length; row += 1) {
+        const line = buf.getLine(row);
+        if (!line) continue;
+        const hay = line.translateToString(true).toLowerCase();
+        let at = hay.indexOf(low);
+        while (at !== -1) {
+          out.push({ row, col: at });
+          at = hay.indexOf(low, at + low.length);
+        }
+      }
+      return out;
+    }
+
+    // 四格各写自己的标记词，别格的词一格都不许出现——判"搜错了格"全靠这个。
+    // 标记词放在行首：分屏之后每格只有二十来列，词要是不够前面就会被折到下一行，
+    // 那样"按整词搜"会搜不到（第一版就是这么假失败的）。
+    cells.forEach((c, i) => {
+      let block = "";
+      for (let k = 0; k < wants[i]; k += 1) block += `${marks[i]} 第 ${k + 1} 处，中文尾巴\r\n`;
+      c.term.write(block);
+    });
+
+    let tries = 0;
+    (function waitFlush() {
+      const ready = cells.every((c, i) => recountIn(c.term, marks[i]).length >= wants[i]);
+      if (!ready && tries < 80) {
+        tries += 1;
+        setTimeout(waitFlush, 50);
+        return;
+      }
+      if (!ready) {
+        const got = cells.map((c, i) => recountIn(c.term, marks[i]).length);
+        seen.debug = {
+          cells: cells.length,
+          bufLen: cells.map((c) => c.term.buffer.active.length),
+          line0: cells.map((c) => (c.term.buffer.active.getLine(0)?.translateToString(true) ?? "").slice(0, 32)),
+        };
+        bad.push(`四格素材没写全：实际 ${JSON.stringify(got)}，应 ${JSON.stringify(wants)}`);
+        finish();
+        return;
+      }
+      run();
+    })();
+
+    function othersClean(except) {
+      return cells.filter((c) => c !== except && c.term.getSelection()).map((c) => c.id);
+    }
+
+    function run() {
+      // ① A 格：查到 3 处，首跳选中第 1 处
+      setActiveCell(tab, cells[0]);
+      findToggle(true);
+      findInput.value = marks[0];
+      findRefresh();
+      seen.a = { label: findCount.textContent, hits: findHits.all.length };
+      if (findHits.all.length !== wants[0]) bad.push(`A 格应查 ${wants[0]} 处，实际 ${findHits.all.length} 处`);
+      if (findCount.textContent !== `1/${wants[0]}`) {
+        bad.push(`A 格计数文字是 ${findCount.textContent}，应 1/${wants[0]}`);
+      }
+      if (cells[0].term.getSelection() !== marks[0]) {
+        bad.push(`A 格跳转后选中的是 ${JSON.stringify(cells[0].term.getSelection())}`);
+      }
+
+      // ② 切到 C 格：这个查询词在 C 格里一处都没有，计数必须立刻变成 0/0 并转红
+      setActiveCell(tab, cells[2]);
+      seen.switch = {
+        label: findCount.textContent,
+        hits: findHits.all.length,
+        termIsC: findHits.term === cells[2].term,
+        aSel: cells[0].term.getSelection(),
+      };
+      if (!seen.switch.termIsC) bad.push("切格之后查找还记着上一格的 buffer（没有重扫）");
+      if (findHits.all.length !== 0) {
+        bad.push(`C 格里一处 ${marks[0]} 都没有，却报了 ${findHits.all.length} 处`);
+      }
+      if (findCount.textContent !== "0/0") bad.push(`切格后计数应 0/0，实际 ${findCount.textContent}`);
+      if (!findCount.classList.contains("bad")) bad.push("切格后无命中没转红");
+      if (seen.switch.aSel !== "") bad.push("A 格还留着上一轮查询的高亮");
+
+      // ③ C 格查自己的词：2 处，逐条跳转只许动 C 格
+      findInput.value = marks[2];
+      findRefresh();
+      seen.c = { label: findCount.textContent, hits: findHits.all.length };
+      if (findHits.all.length !== wants[2]) bad.push(`C 格应查 ${wants[2]} 处，实际 ${findHits.all.length} 处`);
+      if (findCount.textContent !== `1/${wants[2]}`) {
+        bad.push(`C 格计数文字是 ${findCount.textContent}，应 1/${wants[2]}`);
+      }
+      const cBad = [];
+      for (let i = 0; i < findHits.all.length; i += 1) {
+        findHits.at = i - 1;
+        findJump(1);
+        if (cells[2].term.getSelection() !== marks[2]) {
+          cBad.push({ i, row: findHits.all[i].row, got: cells[2].term.getSelection() });
+        }
+      }
+      seen.c.jumps = cBad.length;
+      if (cBad.length) bad.push(`C 格里跳转选到的不是查询词：${JSON.stringify(cBad.slice(0, 3))}`);
+      const dirty = othersClean(cells[2]);
+      if (dirty.length) bad.push(`跳转把选区留在了别的格：${JSON.stringify(dirty)}`);
+
+      // ④ 切回 B 格：B 格的词只有 1 处，计数跟着换成 B 格的
+      findInput.value = marks[1];
+      findRefresh(); // 此时还在 C 格，B 格的词在 C 格里 0 处
+      if (findHits.all.length !== 0) bad.push(`C 格里不该有 ${marks[1]}`);
+      setActiveCell(tab, cells[1]);
+      seen.b = { label: findCount.textContent, hits: findHits.all.length };
+      if (findHits.all.length !== wants[1]) bad.push(`B 格应查 ${wants[1]} 处，实际 ${findHits.all.length} 处`);
+      if (findCount.textContent !== `1/${wants[1]}`) {
+        bad.push(`B 格计数文字是 ${findCount.textContent}，应 1/${wants[1]}`);
+      }
+      if (cells[1].term.getSelection() !== marks[1]) bad.push("B 格跳转没选中查询词");
+
+      // ⑤ 关掉：四格都不许留高亮，序号复位
+      findToggle(false);
+      const left = cells.filter((c) => c.term.getSelection()).map((c) => c.id);
+      if (left.length) bad.push(`关掉查找后还有格留着高亮：${JSON.stringify(left)}`);
+      if (findHits.at !== -1) bad.push(`关掉后命中序号没复位（现在 ${findHits.at}）`);
+
+      // 收拾现场，让这个页在真浏览器里打开也回到正常态
+      findInput.value = "";
+      findHits.q = "";
+      findHits.all = [];
+      findHits.at = -1;
+      findHits.term = null;
+      findPaint();
+      document.body.classList.remove("dragging", "dragging-x");
+      finish();
+    }
+
+    function finish() {
+      document.title = bad.length === 0
+        ? `FIND-PANE-SELFTEST-OK ${JSON.stringify(seen)}`
+        : `FIND-PANE-SELFTEST-FAIL ${JSON.stringify(bad)} ${JSON.stringify(seen)}`;
+    }
+  })();
+}
+
 // ---------- 无头自检：#density-test（密度两档：标准 / 紧凑） ----------
 // 设置里能切"标准"与"紧凑"两档，差别只在 --row（28 / 24）：面板标题条、文件栏、文件行、
 // 传输行都跟着变高。这里量的是"切完高度一定对、位置一点也不许动"：

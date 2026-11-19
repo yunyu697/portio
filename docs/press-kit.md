@@ -57,10 +57,11 @@ down, files go up. The name is **port + io** — an SSH port, and the doorway da
 
 出图脚本：`python scripts/shots.py`（先查 `<title>` 有没有 `ERR:`，再校验 2360×1380，任一门不过即 FAIL）。
 
-## 现在可以下载什么（截至 `v1.0.6-RC3`）
+## 现在可以下载什么（截至 `v1.0.6-RC4`）
 
 最新一份可下载的包是 `v1.0.5-RC8` 那次打的（从 [Releases](https://github.com/yunyu697/portio/releases) 下）。
-RC9、RC10、1.0.6-RC1、1.0.6-RC2、1.0.6-RC3 这五版只动过物料、文档与脚本，二进制与 RC8 一致，所以没有新包。
+RC9、RC10 与 1.0.6 的 RC1–RC3 只动过物料、文档与脚本，二进制与 RC8 一致，所以没有新包；
+RC4 起前端改过（分屏下的查找修了一个真 Bug），包要重新打。
 
 | 平台 | 产物 | 状态 |
 | --- | --- | --- |

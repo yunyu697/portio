@@ -267,6 +267,7 @@ def main(argv: list[str]) -> int:
         ("A14", "#theme-test = THEME-SELFTEST-OK（深浅两套几何一致 + 令牌对比度）", True),
         ("A15", "#find-test = FIND-SELFTEST-OK（900 宽下查找：计数/坐标/环回/无命中/几何 + 800 行长 buffer、宽字符、emoji、组合字符、ANSI、居中、贴底）", True),
         ("A16", "#density-test = DENSITY-SELFTEST-OK（标准/紧凑两档：九处行高严丝合缝等于 --row、两档只差 4px、切档不横向错位）", True),
+        ("A17", "#find-pane-test = FIND-PANE-SELFTEST-OK（分屏后查找只认当前格：计数/命中/选区/高亮跟着换格走）", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -325,8 +326,11 @@ def main(argv: list[str]) -> int:
         elif code == "A15":
             # 800 行素材 + 80 次跳转比别的探针吃虚拟时间，预算给到 20s
             status, detail = a_page(chrome, profile, "#find-test", "FIND-SELFTEST-OK", "900,620", 20000)
-        else:
+        elif code == "A16":
             status, detail = a_page(chrome, profile, "#density-test", "DENSITY-SELFTEST-OK")
+        else:
+            # 四格各写素材再来回切格，给 8s 虚拟时间
+            status, detail = a_page(chrome, profile, "#find-pane-test", "FIND-PANE-SELFTEST-OK", "1180,690", 8000)
         results.append((code, label, status, detail))
         print(f"[{status}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
 
