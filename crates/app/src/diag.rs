@@ -236,6 +236,20 @@ pub fn tail_of(bytes: &[u8], want: usize) -> String {
 
 /// 读文件的最后 `want` 行；文件不存在或读不动就当没有内容（不弹错）。
 pub fn read_tail_file(file: &Path, want: usize) -> String {
+    let current = tail_of_file(file, want);
+    if !current.is_empty() {
+        return current;
+    }
+    // 当前文件不存在、或者是个空文件（刚轮转完，新的一条还没写进来）——内容整份都在 `.1` 里。
+    // 轮转发生的那一刻，恰恰是我最需要看日志的时候，这时候读空等于把东西藏起来。
+    let bak = backup_path(file);
+    if bak == file {
+        return current;
+    }
+    tail_of_file(&bak, want)
+}
+
+fn tail_of_file(file: &Path, want: usize) -> String {
     match std::fs::read(file) {
         Ok(bytes) => tail_of(&bytes, want),
         Err(_) => String::new(),
@@ -608,5 +622,47 @@ mod tests {
             !new.contains("\"/select,"),
             "新写法不该把 /select, 括进引号：{new}"
         );
+    }
+
+    /// 轮转把整份内容搬去 `.1` 的那一瞬间，当前文件不存在；再往后一点，当前文件是个空文件。
+    /// 这两种时候「看日志」都得能看到 `.1` 里的东西——出事的时候正好就是这时候。
+    #[test]
+    fn an_emptied_or_missing_log_falls_back_to_the_backup() {
+        let dir = std::env::temp_dir().join(format!("portio-diag-{}-fallback", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("portio.log");
+        let bak = backup_path(&file);
+
+        // ① 刚轮转：当前文件已被改走，只剩 `.1`
+        std::fs::write(&bak, "旧的一行\n旧的最后一行\n").unwrap();
+        let got = read_tail_file(&file, 5);
+        assert_eq!(
+            got, "旧的一行\n旧的最后一行",
+            "当前文件不存在时该读 .1：{got:?}"
+        );
+
+        // ② 快照里当前文件也可能是个 0 字节的空文件
+        std::fs::write(&file, b"").unwrap();
+        let got = read_tail_file(&file, 5);
+        assert_eq!(
+            got, "旧的一行\n旧的最后一行",
+            "当前文件为空时该读 .1：{got:?}"
+        );
+
+        // ③ 当前文件一旦有了新内容，就只读它，不掺旧内容
+        std::fs::write(&file, "新的一条\n").unwrap();
+        assert_eq!(read_tail_file(&file, 5), "新的一条");
+        assert!(
+            !read_tail_file(&file, 5).contains("旧的"),
+            "当前文件有内容时不该把 .1 混进来"
+        );
+
+        // ④ 两份都没有 → 空串（不弹错）
+        let _ = std::fs::remove_file(&file);
+        let _ = std::fs::remove_file(&bak);
+        assert_eq!(read_tail_file(&file, 5), "");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
