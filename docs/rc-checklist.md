@@ -12,14 +12,14 @@
 | ✗ | 已知缺口：代码里就没有，或明知不合格 |
 | 🚫 | 卡外部条件：缺服务器 / 缺证书 / 缺平台机器，写清差什么 |
 
-**最近一次整跑**：2026-11-20 · `v1.0.7-RC6` · `python scripts/rc.py` → 25 通过 / 0 失败 / 0 跳过（178.1s）；
+**最近一次整跑**：2026-11-20 · `v1.0.7-RC7` · `python scripts/rc.py` → 26 通过 / 0 失败 / 0 跳过（202.2s）；
 人工项与真服务器项仍未跑（见 §7）。
 
 ---
 
 ## 1. 本机自动化（一条命令一项，五分钟跑完）
 
-**这一段现在有固定入口**：`python scripts/rc.py` 按顺序跑完 A1–A25，逐项打 `[PASS]` / `[FAIL]` / `[SKIP]`，
+**这一段现在有固定入口**：`python scripts/rc.py` 按顺序跑完 A1–A26，逐项打 `[PASS]` / `[FAIL]` / `[SKIP]`，
 最后一行是汇总，可以直接贴进 §7。全跑约 40 秒（`cargo test` 占大头），只改前端时用 `--fast` 跳过 A1。
 表里保留每项的命令与判据，`rc.py` 出问题时按表手工复现。
 
@@ -50,6 +50,7 @@
 | A23 | 字号 / 字体 / 密度三件 | `python scripts/rc.py`（内部打开 `#font-test`） | 标题 `FONT-SELFTEST-OK`：出厂态无 `data-ui-font` / `data-mono`、终端 13px 且族名含 JetBrains Mono；界面字号「大一号」把 `--fs-13` 从 13px 抬到 14px、真元素算出来的字号跟着变大，而**终端字号一动不动**；终端字号 18 时界面 `--fs-13` 一动不动（两套互不带动）；字号 30 / 8 越界读回 13、下界 9 认；换 Consolas 后 `data-mono` 落上、**真终端族名以 Consolas 打头且末尾有 monospace 兜底**；Cascadia 与 Consolas 族名不同、认不出的名字不留痕回「自动」；密度三档 24 / 28 / 32、相邻正好差 4px、seg 跟着走；界面与终端共用同一个 `--mono` 令牌 | ✅ 反向验证两条都翻红：去掉 `eachTerm` 换字体那行 → FAIL「真终端的族名没以 Consolas 打头」；删掉宽松档 `--row:32px` → FAIL「宽松档 --row 应为 32px：28 ≠ 32」「标准 → 宽松 差 0px」 |
 | A24 | 启动时的面板显隐 | `python scripts/rc.py`（内部打开 `#boot-test`） | 标题 `BOOT-SELFTEST-OK`：出厂态两个 seg 都是「记住上次」、盘里没有 boot 键；三档语义四种组合逐个核（记住上次用记忆态 / 总是展开恒展开 / 总是收起恒收起）；改「启动时」**眼前的会话栏与文件面板都还开着**，且 `portio.sidebarFolded` / `portio.filesFolded` 两个记忆键一个字节都没变；模拟启动：总是收起 → 会话栏真收起（`--sidebar` 归 0）、文件面板进 `files-folded` 且折叠钮 `aria-pressed=true`；总是展开 → 两处都回来、宽度回到记忆值（不是 0）；认不出的档位读成「记住上次」且不回写垃圾；seg 选中项跟着落盘值走 | ✅ 反向验证两条都翻红：① 在 `applyBootMode` 里顺手 `applyBootSide()` / `applyBootFiles()`（把设置当命令用）→ FAIL「选了「总是收起」后眼前的会话栏还开着：true ≠ false」「…文件面板还开着」；② 在 `setFoldUI` 里顺手写 `portio.sidebarFolded`（启动覆盖污染记忆）→ FAIL「启动覆盖不改会话栏记忆态："1" ≠ "0"」。还原后 `BOOT-SELFTEST-OK` |
 | A25 | 文件面板权限列开关 | `python scripts/rc.py`（内部打开 `#perm-test`） | 标题 `PERM-SELFTEST-OK`：出厂态没有 `data-perm`、seg 选「显示」、盘里没有这个键，远端行是 5 列；关掉后 `data-perm="hide"`、权限单元格 `display:none`、**远端行只剩 4 列**（轨道真被收走）、名字列多出的宽度正好 68 + 4（gap）；而**大小列与时间列的右缘一点都不挪**（0.5px 内）、行宽与行高（= `--row`）不变；本地行始终 4 列不受影响；认不出的值读成「显示」且不回写垃圾；落盘与 seg 选中跟着走，再开回来列数回 5、名字列宽度回原值 | ✅ 反向验证两条都翻红：① 删掉 `html[data-perm="hide"] .fp-row.has-perm{…}` 那条（只藏单元格、留着 68px 轨道）→ FAIL「关掉后远端行只剩 4 列：5 ≠ 4」「关掉后名字列多出来的宽度：0 ≠ 72（差 -72）」「关掉后大小列的右缘不许挪：994 ≠ 1062（差 -68）」；② `readPerm` 去掉白名单校验（认不出的值原样返回）→ FAIL「认不出的值读成显示："collapse" ≠ "show"」。还原后 `PERM-SELFTEST-OK` |
+| A26 | 终端开局格数 | `python scripts/rc.py`（内部打开 `#panes-test`） | 标题 `PANES-SELFTEST-OK`：出厂态读到单屏、seg 选「单屏」、盘里没有这个键；选「2×2 四格」立刻落盘、seg 跟着走，而**眼前那个标签的格数一点没变**（设置描述下一次开局，不是立即执行的动作）；模拟一次开机：第一个标签真摊成 4 格且网格是 2×2、带焦点描边类，**第二个标签仍是 1 格**，一次性标记只消费一次；单屏档同样只影响下一个开局标签；认不出的值读成「单屏」且不回写垃圾 | ✅ 反向验证三条都翻红：① `createLocalTab` 里不再调 `fillQuad` → FAIL「2×2 开局应 4 格：1」「2×2 开局应是 2×2 网格：1×1」「四格应有焦点描边类」；② `readPanes` 去掉白名单（`v || 单屏`）→ FAIL「认不出的档位应读成单屏：tri」；③ `applyBootPanes` 里顺手把当前标签摊开 → FAIL「改开局格数不许动眼前这一下：1 → 4」。还原后 `PANES-SELFTEST-OK {"cells":[1,4,1,1]}` |
 
 ### 怎么跑 A6–A9（无头）
 
@@ -200,4 +201,5 @@ foreach ($frag in "", "#split-test", "#clip-test", "#fold-test") {
 | 2026-11-19 | `v1.0.7-RC4` | `scripts/rc.py` → **23 通过 / 0 失败 / 0 跳过**，81.7s（新增 A23 `#font-test` 1.8s）；反向验证两条：① 去掉 `applyMono` 里的 `eachTerm(t => t.options.fontFamily = termFont())`（CSS 换了、真终端没换）→ FAIL 点名「真终端的族名没以 Consolas 打头：\"JetBrains Mono\",…」「Cascadia 与 Consolas 的族名不同：…撞了」；② 删掉 `html[data-density="comfortable"]{--row:32px}` → FAIL「宽松档 --row 应为 32px：28 ≠ 32」「标准 → 宽松 差 0px，应正好 4px」（② 那一跑 JS 没还原、与 ① 叠着跑，所以输出里同时带着 ① 的失败项）。还原后 `FONT-SELFTEST-OK`。check_design_tokens / check_ui_scale / node --check / cargo fmt --all --check 均 OK。三平台包 `Portio 1.0.7-RC4`（exe 3367657 B / dmg 9493220 B / deb 4955346 B / AppImage 83134968 B，`prerelease: true`） | 未跑 | 未跑 | 真窗口里没点过（桌面锁着）；JetBrains / Cascadia 是否真装在这台机器上没核（族名串按回落走）；无 SSH 服务器，9 号 / 24 号在真实满屏输出下的可读性未验证；本地 NSIS 包改用 `CARGO_TARGET_DIR=D:\portio-target` 才打出来（C 盘见下） |
 | 2026-11-20 | `v1.0.7-RC5` | `scripts/rc.py` → **24 通过 / 0 失败 / 0 跳过**，213.2s（新增 A24 `#boot-test` 2.2s；A1 在 `CARGO_TARGET_DIR=D:\portio-target` 上全新编译 157.3s，97 passed）；反向验证两条：① `applyBootMode` 里顺手立刻改眼前布局 → FAIL「选了「总是收起」后眼前的会话栏还开着」「…文件面板还开着」；② `setFoldUI` 里顺手写 `portio.sidebarFolded` → FAIL「启动覆盖不改会话栏记忆态："1" ≠ "0"」。还原后 `BOOT-SELFTEST-OK`。check_design_tokens / check_ui_scale / node --check 均 OK。三平台包 `Portio 1.0.7-RC5`（exe 3367447 B / dmg 9498340 B / deb 4955524 B / AppImage 83147256 B，`prerelease: true`；Release run 44563959577：gate + 三平台四项全 success，macOS 那格第一次被取消、`gh run rerun --failed` 重跑后过） | 未跑 | 未跑 | 真窗口里没真重启过一次（桌面锁着），「重开 Portio 后按偏好收放」是靠自检里模拟启动那条判据兜的；无 SSH 服务器，`总是收起` 在真实会话里省出来的宽度有什么观感未验证 |
 | 2026-11-20 | `v1.0.7-RC6` | `scripts/rc.py` → **25 通过 / 0 失败 / 0 跳过**，178.1s（新增 A25 `#perm-test` 2.3s）；反向验证两条：① 删掉「隐藏时收走 68px 轨道」那条 CSS → FAIL「远端行只剩 4 列：5 ≠ 4」「名字列多出来的宽度：0 ≠ 72」「大小列的右缘不许挪：994 ≠ 1062」；② `readPerm` 去掉白名单 → FAIL「认不出的值读成显示：\"collapse\" ≠ \"show\"」。还原后 `PERM-SELFTEST-OK`。check_design_tokens / check_ui_scale / node --check 均 OK。三平台包 `Portio 1.0.7-RC6`（exe 3372544 B / dmg 9502433 B / deb 4957370 B / AppImage 83147256 B，`prerelease: true`；Release run 44576133068 首跑四项全 success） | 未跑 | 未跑 | 真窗口里没点过（桌面锁着）；无 SSH 服务器，真实远端目录里权限串长短不一（`-rw-r--r--` 与 `lrwxrwxrwx`）时的对齐只在无头页面里量过；1024 窄窗下藏列的效果只核了不溢出，没有实机手感 |
+| 2026-11-20 | `v1.0.7-RC7` | `scripts/rc.py` → **26 通过 / 0 失败 / 0 跳过**，202.2s（新增 A26 `#panes-test` 3.8s；A1 在 `CARGO_TARGET_DIR=D:\portio-target` 上 144.6s，97 passed）；反向验证三条：① 开局不摊开 → FAIL「2×2 开局应 4 格：1」「2×2 开局应是 2×2 网格：1×1」「四格应有焦点描边类」；② `readPanes` 不过白名单 → FAIL「认不出的档位应读成单屏：tri」；③ `applyBootPanes` 当场摊开 → FAIL「改开局格数不许动眼前这一下：1 → 4」。还原后 `PANES-SELFTEST-OK {"cells":[1,4,1,1]}`。check_design_tokens / check_ui_scale / node --check 均 OK。三平台包 `Portio 1.0.7-RC7`（字节数见下方发包行） | 未跑 | 未跑 | 真窗口里没点过（桌面锁着）：四格开局的实际手感（每格列数、焦点、`Ctrl+F`）只有无头页面兜着；无 SSH 服务器，四格里连主机的通道行为（每格一条 PTY）未端到端验证 |
 每一轮 RC 回归跑完，在表格里加一行；过不了的那几项写进下一轮的「下一步」。

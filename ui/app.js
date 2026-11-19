@@ -403,6 +403,21 @@ function applyPerm(id) {
   }
   syncSegs();
 }
+// ---------- 启动时的终端格数 ----------
+// 有人一开机就要四个格（左边跑日志、右边盯着 top），有人永远只要一格。
+// 这一档跟「启动时」两行是同一类：**只决定打开应用那一刻**，改它不许当场把眼前摊成四格；
+// 也只管第一个标签——用户自己新开的标签、连主机开的标签都仍是一格，别拿开局偏好去接管手上的动作。
+const PANES_KEY = "portio.bootPanes";
+const PANES_MODES = ["single", "quad"];
+const PANES_NAME = { single: "单屏", quad: "2×2 四格" };
+function readPanes() {
+  const v = localStorage.getItem(PANES_KEY);
+  return PANES_MODES.includes(v) ? v : "single"; // 认不出的值回单屏：别让人一开机就被四格糊住
+}
+function applyBootPanes(id) {
+  localStorage.setItem(PANES_KEY, PANES_MODES.includes(id) ? id : "single");
+  syncSegs();
+}
 function syncSegs() {
   markSeg("seg-theme", localStorage.getItem("portio.theme") ?? "dark");
   markSeg("seg-density", root.dataset.density ?? "standard");
@@ -413,6 +428,7 @@ function syncSegs() {
   markSeg("seg-boot-side", readBoot(BOOT_SIDE_KEY));
   markSeg("seg-boot-files", readBoot(BOOT_FILES_KEY));
   markSeg("seg-perm", readPerm());
+  markSeg("seg-panes", readPanes());
   syncAccentDots();
   const font = document.getElementById("set-font");
   if (font) font.value = String(readFontSize());
@@ -556,6 +572,13 @@ document.getElementById("seg-perm").addEventListener("click", (e) => {
   // 这一档是立刻看得见效果的：藏起来那一下，文件名马上多出 68px，不用等下次打开
   applyPerm(btn.dataset.v);
   toast(btn.dataset.v === "hide" ? "文件面板：权限列已隐藏" : "文件面板：权限列已显示");
+});
+document.getElementById("seg-panes").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  // 跟「启动时」两行同一套口径：只落盘，不把眼前的标签摊开
+  applyBootPanes(btn.dataset.v);
+  toast(`开局格数：${PANES_NAME[btn.dataset.v] ?? PANES_NAME.single}（下次打开生效）`);
 });
 document.getElementById("acc-row").addEventListener("click", (e) => {
   const dot = e.target.closest(".acc-dot");
@@ -1516,9 +1539,21 @@ function closeTab(id) {
   }
 }
 
+// 开局格数只补一次：打开应用那一刻的第一个标签按偏好摊开，之后再来的标签都是一格。
+// 用一次性标记而不是"看当前有几个标签"，是因为第一个标签可能被 #tabs-demo 之类的钩子抢先建出来。
+let bootPanesPending = true;
+// 一格摊成 2×2：两次分屏，与 #split-demo 同一套走法（竖分到两格，再横分补满四格）
+function fillQuad(tab) {
+  splitTab(tab, "v");
+  splitTab(tab, "h");
+}
 function createLocalTab(title = "本地 · 未连接") {
   const tab = createTab(title);
   tab.cell.term.write("Portio · 未连接。点左上「新建连接」开始。\r\n");
+  if (bootPanesPending) {
+    bootPanesPending = false;
+    if (readPanes() === "quad") fillQuad(tab);
+  }
   return tab;
 }
 
@@ -1562,6 +1597,71 @@ if (location.hash === "#split-test") {
   ok(t.cells.length === 1 && t.gridTemplate.cols === 1 && t.gridTemplate.rows === 1, "两格关一格应回单屏");
   ok(!t.grid.classList.contains("multi"), "单格时不该有焦点描边类");
   document.title = fails.length ? "ERR: " + fails.join(" / ") : "SELFTEST-OK";
+}
+
+// 带 #panes-test 核一遍「开局格数」：只作用于第一个标签、改设置不动眼前、认不出的值回单屏
+if (location.hash === "#panes-test") {
+  const fails = [];
+  const ok = (cond, msg) => { if (!cond) fails.push(msg); };
+  const seen = {};
+  const prevKey = localStorage.getItem(PANES_KEY);
+  const prevPending = bootPanesPending;
+  const made = [];
+  const segOn = () =>
+    [...document.querySelectorAll("#seg-panes button")].filter((b) => b.classList.contains("on")).map((b) => b.dataset.v)[0];
+  try {
+    // ① 出厂态：没选过就是单屏，盘里不该有键
+    localStorage.removeItem(PANES_KEY);
+    syncSegs();
+    ok(readPanes() === "single", `没选过时读到的应是单屏：${readPanes()}`);
+    ok(segOn() === "single", `出厂时 seg 应选单屏：${segOn()}`);
+    ok(localStorage.getItem(PANES_KEY) === null, "出厂时盘里不该有键");
+
+    // ② 选 2×2：立刻落盘、seg 跟着走，但眼前一个标签都不许被摊开
+    bootPanesPending = false;
+    const t0 = createLocalTab("panes-0");
+    made.push(t0.id);
+    const cellsBefore = t0.cells.length;
+    applyBootPanes("quad");
+    ok(localStorage.getItem(PANES_KEY) === "quad", `选 2×2 应落盘 quad：${localStorage.getItem(PANES_KEY)}`);
+    ok(segOn() === "quad", `选完之后 seg 应选 2×2：${segOn()}`);
+    ok(t0.cells.length === cellsBefore, `改开局格数不许动眼前这一下：${cellsBefore} → ${t0.cells.length}`);
+
+    // ③ 模拟一次开机：第一个标签摊成 2×2，第二个标签仍是一格
+    bootPanesPending = true;
+    const t1 = createLocalTab("panes-1");
+    made.push(t1.id);
+    ok(t1.cells.length === 4, `2×2 开局应 4 格：${t1.cells.length}`);
+    ok(t1.gridTemplate.cols === 2 && t1.gridTemplate.rows === 2, `2×2 开局应是 2×2 网格：${t1.gridTemplate.cols}×${t1.gridTemplate.rows}`);
+    ok(t1.grid.classList.contains("multi"), "四格应有焦点描边类");
+    const t2 = createLocalTab("panes-2");
+    made.push(t2.id);
+    ok(t2.cells.length === 1, `第二个标签应仍是一格：${t2.cells.length}`);
+    ok(bootPanesPending === false, "开局偏好只消费一次");
+
+    // ④ 单屏档：同样只影响下一个开局标签
+    applyBootPanes("single");
+    bootPanesPending = true;
+    const t3 = createLocalTab("panes-3");
+    made.push(t3.id);
+    ok(t3.cells.length === 1, `单屏开局应 1 格：${t3.cells.length}`);
+
+    // ⑤ 认不出的档位读成单屏，且不许把垃圾回写进盘
+    localStorage.setItem(PANES_KEY, "tri");
+    ok(readPanes() === "single", `认不出的档位应读成单屏：${readPanes()}`);
+    applyBootPanes("tri");
+    ok(localStorage.getItem(PANES_KEY) === "single", `认不出的档位不该回写进盘：${localStorage.getItem(PANES_KEY)}`);
+
+    seen.cells = made.map((id) => tabs.find((t) => t.id === id)?.cells.length ?? -1);
+  } finally {
+    // 清场：测试里建的标签全关掉（关到空时会自动补一个本地标签），键与一次性标记照原样放回
+    for (const id of made) closeTab(id);
+    if (prevKey === null) localStorage.removeItem(PANES_KEY);
+    else localStorage.setItem(PANES_KEY, prevKey);
+    bootPanesPending = prevPending;
+    syncSegs();
+  }
+  document.title = fails.length ? "ERR: " + fails.join(" / ") : `PANES-SELFTEST-OK ${JSON.stringify(seen)}`;
 }
 
 new ResizeObserver(() => fitQuietly()).observe(termHost);
@@ -2299,8 +2399,18 @@ window.addEventListener("beforeunload", () => {
   }
 });
 
+// 核验用：把「开局就是 2×2」的样子摆出来（#panes-demo / #panes-demo-light / #panes-demo-set）。
+// 只改本页的一次性偏好与标记，等下面那句 ensureTerminal 建标签时按四格摊开。
+if (["#panes-demo", "#panes-demo-light", "#panes-demo-set"].includes(location.hash)) {
+  localStorage.setItem(PANES_KEY, "quad");
+  bootPanesPending = true;
+}
 // 启动就把终端画出来，占位文案说明下一步做什么，避免一块空白面板
 ensureTerminal();
+if (location.hash === "#panes-demo-light") applyTheme("light");
+if (location.hash === "#panes-demo-set") toggleSettings(true);
+// 演示页在启动那串 applyX 之后才改的偏好，seg 的选中态要补一次才跟得上
+if (location.hash.startsWith("#panes-demo")) syncSegs();
 
 // ---------- 文件双栏 ----------
 const remoteListEl = document.getElementById("remote-list");
