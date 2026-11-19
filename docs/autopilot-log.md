@@ -2131,3 +2131,70 @@ explorer 不按常规引号规则解析，交给系统再拼一遍会被改坏�
 - Release 里 AppImage 与 RC2 的字节数完全一样（83143160 B），像是构建缓存复用了上一轮产物；
   没影响这一版（Linux 包本来就没装过真机），但下次动 Linux 打包时要核一下是不是真重建了。
 
+## 2026-11-19 · v1.0.7-RC4 · 自定义③ 字号 / 字体 / 密度
+
+**做了什么**
+
+前两轮都在改颜色，这一轮改"看得清不清"。原来的状态很别扭：终端字号一条滑杆管到 18 就封顶，
+界面字号全写死在 `tokens.css` 的 `--fs-11…--fs-20` 里；等宽字体串一笔写死；密度只有两档。
+
+- 界面字号两档（标准 / 大一号）：`html[data-ui-font="large"]` **整块重定义** `--fs-11` 到 `--fs-20`。
+  只放大正文会让标题跟正文脱档，所以是整套刻度一起抬；默认档不写属性（认不出也回默认）。
+- 终端字号放开到 9–24（原 11–18），只改 xterm 的 `options.fontSize`，不碰 `--fs-*`。
+- 等宽字体四选（自动 / JetBrains / Cascadia / Consolas）：`html[data-mono=X]` 只改 `--mono` 一处，
+  界面小号等宽与终端同时换；每个族名串末尾都留 `monospace` 兜底——回落到比例字体等于让终端每一列错位。
+- 密度第三档「宽松」：24 / 28 / 32，相邻正好差 4px；标题栏那颗钮改成三档循环。
+- xterm 不认 CSS 变量，所以换字体/字号必须**当场改真终端对象**再重量格子，否则"字变了但列宽还是旧字体算的"。
+- 两条互不带动写死：调界面字号不动终端字号，调终端字号不动 `--fs-*`。
+
+**验证证据**
+
+- 新增自检 **A23 `#font-test`**（八组判据）：出厂态无 `data-ui-font` / `data-mono`、终端 13px 且族名含
+  JetBrains Mono；「大一号」把 `--fs-13` 13px→14px、真元素字号跟着变大而**终端字号一动不动**；
+  终端 18 时界面 `--fs-13` 一动不动；字号 30 / 8 越界回 13、下界 9 认；换 Consolas 后 `data-mono` 落上、
+  真终端族名以 `Consolas` 打头且末尾有 `monospace`；Cascadia 与 Consolas 族名不同、认不出的名字不留痕回自动；
+  密度三档 24/28/32 且 seg 跟着走；界面与终端共用同一个 `--mono`。
+- 既有 **A16 `#density-test` 从两档扩到三档**：三档都逐条核 `--row` 与九处行高、相邻正好差 4px、切档不横向错位。
+- `python scripts/rc.py` → **23 通过 / 0 失败 / 0 跳过，81.7s**（A23 1.8s）。
+- `check_design_tokens.py` / `check_ui_scale.py` / `node --check ui/app.js` / `cargo fmt --all --check` 全 OK。
+- 反向验证两条都翻红：① 去掉 `applyMono` 里的 `eachTerm(...)` → FAIL「真终端的族名没以 Consolas 打头」
+  「Cascadia 与 Consolas 的族名不同：…撞了」；② 删掉宽松档 `--row:32px` → FAIL「宽松档 --row 应为 32px：28 ≠ 32」
+  「标准 → 宽松 差 0px，应正好 4px」（② 那一跑 JS 没还原、与 ① 叠着跑，输出里同时带 ① 的失败项）。还原后 OK。
+- 无头截图 `_font_tall.png`（1180×1120@2x）：界面字号「大一号」、密度「宽松」、终端字号 18、等宽字体 Consolas
+  四处选中态都对，文字确实变大、行确实变松；`_font_dark.png` / `_font_light.png` 同轮深浅对照。
+- 发版：`95dc066`，tag `v1.0.7-RC4`，Release run `44552237437` con**success**（gate + 三平台），
+  主干 CI `44552220992` success；Release `Portio 1.0.7-RC4`（prerelease）四资产
+  exe 3367657 / dmg 9493220 / deb 4955346 / AppImage 83134968 B。
+- 本地 NSIS 包：`Portio_1.0.7-RC4_x64-setup.exe`（4572646 B）——见下面这条坑。
+
+**这一轮撞上的真坑：C 盘被自己撑爆了**
+
+打包第一次报 `failed to build app`，然后 PowerShell 工具与 computer_use 工具**双双**报
+`write non-interactive command script failed: no space on device (system_error=28)`——
+它们都要把命令写成临时脚本，盘满就连工具都起不来。实测 C 盘 464.6 GB / 剩 **0 MB**，D 盘 1862.9 GB / 剩 513 GB。
+
+量出来才知道是我自己的：`target\debug\incremental` **61.99 GB**、`target\debug` 合计 84 GB。
+删掉 `incremental`（可重建、被 gitignore 的增量缓存）后工具恢复，但八轮下来 `deps` 12.9 GB + `build` 6.8 GB
+仍在，C 盘也就腾出几 GB，`tauri build` 依旧打不出包。
+最后解法：`$env:CARGO_TARGET_DIR="D:\portio-target"` + `$env:TEMP/$env:TMP` 一并指到 D 盘，
+打包成功（2m33s 全新编译，NSIS 产出 4.36 MiB）。**中途试过一次只改 `CARGO_TARGET_DIR`、
+TEMP 还在 C 盘，进程以 `exit code -1073741571`（0xC00000FD 栈溢出）退出**——盘满时连 rustc/node
+的内部临时文件都写不出来，报出来的却是栈溢出，这个错法很坑人。
+`TEMP` 里占头部的（`sewrkmda` 1.06 GB、`XLLogReport` 528 MB、`trae-cn-user-x64` 447 MB、
+`vscode-stable-system-x64` 273 MB、四个 `flutter_tools.*` 各 120–190 MB）**都是别人的、没动**。
+
+**下一步**
+
+1. 自定义④**布局与面板**：会话栏 / 文件面板的启动默认显隐与默认宽度、文件面板显示哪些列
+   （权限列能否关）、启动默认单屏还是 2×2 分屏。
+2. **C 盘空间需要用户拍板**：`target\deps` 12.9 GB / `build` 6.8 GB 还在，目前每轮靠
+   `CARGO_TARGET_DIR` + `TEMP` 指到 D 盘绕过；要不要把整个 `target` 迁到 D 盘（或允许定期清 `target`），
+   以及 `D:\portio-target` / `D:\portio-tmp` 是否保留。
+
+**未验证项**
+
+- 真窗口里没点过这四处设置（桌面锁着，`LogonUI` 在跑），只做了无头截图。
+- JetBrains Mono / Cascadia Mono 是否真装在这台机器上没核；没装就按族名串顺序回落，观感可能与名字不符。
+- 无 SSH 服务器 → 9 号 / 24 号在真实满屏输出（`htop`、`ls --color`）下的可读性未验证。
+- macOS dmg / Linux deb、AppImage 仍只到"CI 构建通过"，未真机装过；Windows 包只做进程启动存活检查的历史口径不变。
+

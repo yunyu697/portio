@@ -57,21 +57,21 @@ down, files go up. The name is **port + io** — an SSH port, and the doorway da
 
 出图脚本：`python scripts/shots.py`（先查 `<title>` 有没有 `ERR:`，再校验 2360×1380，任一门不过即 FAIL）。
 
-## 现在可以下载什么（截至 `v1.0.7-RC3`）
+## 现在可以下载什么（截至 `v1.0.7-RC4`）
 
-最新一批包是 `v1.0.7-RC3`（预发布，从 [Releases](https://github.com/yunyu697/portio/releases) 下）。
+最新一批包是 `v1.0.7-RC4`（预发布，从 [Releases](https://github.com/yunyu697/portio/releases) 下）。
 1.0.6 的 RC1–RC3 只动过物料、文档与脚本，没单独出包；RC4 修了分屏下的查找 Bug、
 RC5 修了「新建连接」带着上一台机器端口与私钥路径的问题、RC6 修了重开之后「最近使用」分组消失的问题、
 RC7 修了「主机密钥变了」那句处理提示没送达界面的问题、RC8 修了并发写日志会丢行的问题、
 RC9 修了「复制诊断信息」碰到坏字节会把整段日志读成空的问题、RC10 修了「定位日志文件」
 在用户目录含空格的机器上按了没反应的问题、1.0.7-RC1 修了日志刚轮转那一下「看日志」读到空的问题，
-这些版本各有自己的包；1.0.7-RC2 起开始做自定义，RC3 又加了终端配色四档，RC3 是最新的一批。
+这些版本各有自己的包；1.0.7-RC2 起开始做自定义，RC3 加了终端配色四档，RC4 又把字号 / 字体 / 密度拆开调，RC4 是最新的一批。
 
 | 平台 | 产物 | 状态 |
 | --- | --- | --- |
-| Windows x64 | `Portio_1.0.7-RC3_x64-setup.exe`（NSIS，3363277 B） | 能装、能跑；未签名 |
-| macOS（Apple Silicon + Intel） | `Portio_1.0.7-RC3_universal.dmg`（9483460 B） | CI 构建通过，**未在真机装过**；未签名 |
-| Linux x64 | `Portio_1.0.7-RC3_amd64.deb`（4947522 B） / `Portio_1.0.7-RC3_amd64.AppImage`（83143160 B） | CI 构建通过，**未在真机装过** |
+| Windows x64 | `Portio_1.0.7-RC4_x64-setup.exe`（NSIS，3367657 B） | 能装、能跑；未签名 |
+| macOS（Apple Silicon + Intel） | `Portio_1.0.7-RC4_universal.dmg`（9493220 B） | CI 构建通过，**未在真机装过**；未签名 |
+| Linux x64 | `Portio_1.0.7-RC4_amd64.deb`（4955346 B） / `Portio_1.0.7-RC4_amd64.AppImage`（83134968 B） | CI 构建通过，**未在真机装过** |
 
 规则：**RC 及以后发包，Alpha 只打 tag**。tag 必须等于仓库里的版本号，对不上就不进打包流程。
 
