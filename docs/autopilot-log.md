@@ -1609,3 +1609,75 @@ M2 原来写在"需要人点"的清单里，但它要验的全是逻辑（面板
 - macOS universal dmg 与 Linux deb / AppImage 只到"CI 构建通过"，**未在真机装过**。
 - 无 SSH 服务器与凭据 → 真实登录、PTY、tmux、SFTP 传输一律未验证（长期阻塞）。
 
+
+## 2026-11-19 · v1.0.6-RC6 · 重开之后「最近使用」空了：前后端把时间字段叫成了两个名字
+
+上一轮把 M2 收进 A18，日志里留给这一轮的是 M3（会话增删改与分组）。M3 里"结果落盘、关掉重开还在"
+这半句正好戳到一处一直被忽略的地方——顺手挖出一个从 Alpha 就在的 Bug。
+
+**发现的 Bug**
+
+`ui/app.js` 存清单时写的是 `last`：
+
+```js
+sessionStore.records = [{ ...rec, last: Date.now() }, ...next].slice(0, 40);
+```
+
+而磁盘那头的 `SessionRecord`（`crates/core/src/store.rs`）字段叫 `last_used`，还被 `#[serde(default)]`
+兜着。于是每次 `sessions_write` 都**认不出** `last`、按默认值 0 落盘——存一次，全部记录"上次用过"归零。
+后果是重开之后：没有一台算"最近用过"，「最近使用」这组直接消失，常用机器全挤进「更早」；排序也退化成
+文件顺序（看着还像对的，只是不再"最近的在最上面"）。不报错、不丢数据，纯粹安静地把一层便利磨掉。
+
+**改法**
+
+- 界面统一改用 `last_used`（`saveSession` 写入、列表排序、最近使用筛选三处）；
+  另留 `lastUsed(s)` 同时认 `last_used` 与老文件里的 `last`，老清单不至于读坏。
+- `#sess-demo` 里那条"从没用过"的播种记录同步改名，否则截图里的分组会怪。
+- 落盘那半步抽出 `write_store_atomic(path, store)`（先写 `.json.tmp` 再改名），并补两条单测：
+  ① 目录不在时自建、写完不留临时文件、整份覆盖不叠加旧行、`last_used` 一路不丢；
+  ② 坏 JSON 在校验那步就被拒、磁盘上原来那份好文件原封不动。
+
+**新增回归 A19 `#sessions-test`**
+
+清单 §2 的 M3 逻辑部分无头全做得掉，于是按使用者的手指顺序走一遍：
+
+1. 加三条不同机器 → 三条、最近存的排最前；
+2. 同一台再存一次 → 不新增一条、内容换成新的并排到最前、列表仍三行；
+3. 清单里不许出现口令字段（口令走另一套加密文件）；
+4. 连存 45 条 → 封顶 40、最老的被挤掉、最新的还在；
+5. 分两组 → 组头与计数对；折叠 → 组头带 `folded`、组员行收起、折叠状态进 localStorage；
+   展开回来；移出分组 → 落回「未分组」；解散最后一组 → 回到「最近使用」；
+6. 删一条 → 清单与列表同时少一行；
+7. 搜索 `web` → 只剩一条、计数 `1/2`；搜不到时列表空；清空复原；
+8. **磁盘上的 `last_used` 读回来要认得出「最近使用」**，老写法 `last` 也认——这条就是本次 Bug 的钉子。
+
+`scripts/rc.py` 加 A19（19 项），`docs/rc-checklist.md` §1 补 A19 行、段首改 A1–A19，
+§2 的 M3 从 `✗ 拖拽` 改成 `✅ 自动化（A19）/ ✗ 拖拽`（拖拽分组仍记在 backlog）。
+
+**验证证据**
+
+- **反向验证**：把 `saveSession` 与排序换回 `last` 再跑 A19 → `SESSIONS-SELFTEST-FAIL`，
+  点名的正是 `磁盘上的 last_used 认得出最近使用：false ≠ true`；换回修好的版本立刻 OK。
+- **整跑**：`python scripts/rc.py` → **19 通过 / 0 失败 / 0 跳过**，109.2s
+  （A1 `cargo test --workspace` **84 passed**，其中 app crate 16 passed 含新增两条落盘单测）。
+- 守卫：`check_design_tokens.py` / `check_ui_scale.py` OK、`node --check ui/app.js` 通过、`check_versions.py` → `OK v1.0.6-RC6`。
+- **发版**：推 `v1.0.6-RC6` tag → run `44482762020`：`gate` 判发包，`windows-x64` / `macos-universal` /
+  `linux-x64` 三个 build success；Release **`Portio 1.0.6-RC6`**（`prerelease: true`）四资产
+  （exe 3353673 B / dmg 9467814 B / deb 4947424 B / AppImage 83143160 B；linux 作业这次跑了约 30 分钟才收口）。
+- 本地另打一份对照包（`tauri build --debug --bundles nsis`）：`Portio_1.0.6-RC6_x64-setup.exe` 4551034 B。
+
+**下一步**
+
+1. 真窗口点检（仍缺）：装上 RC6，打开 → 分屏 → 换格 → `Ctrl+F`；会话栏右键走一遍"分到分组 / 移出 / 解散 / 删"，
+   关掉重开看分组与「最近使用」还在不在。桌面锁着时截不到窗口，得等能解锁。
+2. 清单里最后一个有明显逻辑的自动化机会：M12（已知主机删除后重连走首次信任，Rust 侧能测）。
+   之后 M7 / M8 属"真键盘手感"，只能留给人。
+3. 等用户给的仍是：三平台签名证书、自动更新端点、崩溃上报（C1–C3）与许可证选型（C6）。
+
+**未验证项**
+
+- A19 只在无头里跑过；真机上点着做一遍（含双击连上、右键菜单）未做（截屏时桌面锁着）。
+- 拖拽分到分组一直没做（`docs/backlog.md` 有记）。
+- macOS dmg 与 Linux deb / AppImage 只到"CI 构建通过"，**未在真机装过**。
+- 无 SSH 服务器与凭据 → 真实登录、PTY、tmux、SFTP 传输一律未验证（长期阻塞）。
+

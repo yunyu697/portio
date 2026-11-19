@@ -1,13 +1,12 @@
-docs(release): 对外文字与回归记录跟到 RC5，并补当轮日志
+docs(release): 对外文字与回归记录跟到 RC6，并补当轮日志
 
-RC5 的包已经发出去（run 44477846989 三平台 success），这一提交把对外说法与记录一起对上：
+RC6 的包已经发出去（run 44482762020 四 job success，linux 作业约 30 分钟），这一提交把对外说法与记录一起对上：
 
-- README 版本段（当前在 v1.0.6-RC5，最新包就是这一批）
-- docs/release-notes.md 当前状态 + 两处产物名
-- docs/site/index.html 四处版本串、安装段示例文件名
-- docs/press-kit.md 下载表换 RC5 四产物与体积
-- docs/rc-checklist.md 最近一次整跑改 RC5 / 18 项，§7 补 RC5 行（含反向验证与打包结果）
+- README 版本段（当前在 v1.0.6-RC6，最新包就是这一批）
+- docs/release-notes.md 当前状态（补一句 RC6 修了什么）+ 两处产物名
+- docs/site/index.html 四处版本串与安装段示例名
+- docs/press-kit.md 下载表换 RC6 四产物与体积（3353673 / 9467814 / 4947424 / 83143160）
+- docs/rc-checklist.md 最近一次整跑改 RC6 / 19 项，§7 补 RC6 行（含反向验证与打包结果）
 - docs/autopilot-log.md 追加当轮记录
 
-验证：check_versions.py → OK v1.0.6-RC5；check_design_tokens.py / check_ui_scale.py OK；
-python scripts/rc.py --fast → 17 通过 / 0 失败 / 1 跳过（跳过的是 A1 cargo test，整跑时已 82 passed）。
+验证：check_versions.py → OK v1.0.6-RC6；Select-String 复查 README / release-notes / press-kit / site 里已无 1.0.6-RC5 残留。
