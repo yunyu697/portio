@@ -1,0 +1,13 @@
+docs(release): 对外说法与回归记录跟到 RC9
+
+RC9 的包已发出去（run 44512390674 四 job success），把对外文档与记录一起对上：
+
+- README 版本段 → v1.0.6-RC9（最新包就是这一批；`v1.0.6-RC6` 仍只作版本规则示例保留）
+- docs/release-notes.md 当前状态补一句 RC9 修了什么 + 两处产物名
+- docs/site/index.html 五处版本串与安装段示例名
+- docs/press-kit.md 下载表换 RC9 四产物与体积（3358660 / 9470390 / 4945780 / 83147256）
+- docs/rc-checklist.md 最近一次整跑改 RC9 / 20 项 / 116.6s，§7 补 RC9 行
+- docs/autopilot-log.md 追加当轮记录（含 CI 那条 fmt 红与 tag 落在格式化前提交的事实）
+
+验证：check_versions.py → OK v1.0.6-RC9；Select-String 复查 README / release-notes / press-kit / site
+已无 1.0.6-RC8 残留，press-kit 四产物名与体积与 Release 实际资产一致。

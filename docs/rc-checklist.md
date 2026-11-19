@@ -12,7 +12,7 @@
 | ✗ | 已知缺口：代码里就没有，或明知不合格 |
 | 🚫 | 卡外部条件：缺服务器 / 缺证书 / 缺平台机器，写清差什么 |
 
-**最近一次整跑**：2026-11-19 · `v1.0.6-RC8` · `python scripts/rc.py` → 20 通过 / 0 失败 / 0 跳过（111.4s）；
+**最近一次整跑**：2026-11-19 · `v1.0.6-RC9` · `python scripts/rc.py` → 20 通过 / 0 失败 / 0 跳过（116.6s）；
 人工项与真服务器项仍未跑（见 §7）。
 
 ---
@@ -187,4 +187,5 @@ foreach ($frag in "", "#split-test", "#clip-test", "#fold-test") {
 | 2026-11-19 | `v1.0.6-RC6` | `scripts/rc.py` → **19 通过 / 0 失败 / 0 跳过**，109.2s（新增 A19 `#sessions-test`：会话增删改 / 分组 / 折叠 / 搜索，外加「磁盘上的 last_used 读回来认不认最近使用」；`cargo test --workspace` 84 passed，其中 app crate 新增两条落盘单测）；反向验证：把 `saveSession` 与排序换回 `last`，A19 FAIL 并点名「磁盘上的 last_used 认得出最近使用：false ≠ true」。另出三平台包 `Portio 1.0.6-RC6`（exe 3353673 B / dmg 9467814 B / deb 4947424 B / AppImage 83143160 B，`prerelease: true`；linux 作业跑了约 30 分钟） | 未跑 | 未跑 | 会话删改与分组只剩真机手感；拖拽分组仍未做；mac / linux 包未真机装 |
 | 2026-11-19 | `v1.0.6-RC7` | `scripts/rc.py` → **20 通过 / 0 失败 / 0 跳过**，83.8s（新增 A20 `#hosts-test`：已知主机列出 / 指纹截断 / 按端口删 / 删空后的空态；`cargo test --workspace` 90 passed，多出的是密钥变更标记、建连错误映射、删记录回到首次信任、忘掉某端口不影响同机其它端口四条）；反向验证两处：`connect_error_text` 改回 `e.to_string()` → app 断言 FAIL；核验删除改回只按 host 删 → A20 FAIL 并点名「同机另一端口还在：false ≠ true」。另出三平台包 `Portio 1.0.6-RC7`（exe 3358391 B / dmg 9472094 B / deb 4947594 B / AppImage 83139064 B，`prerelease: true`） | 未跑 | 未跑 | 密钥变更只有单测、没有真服务器换钥匙；真机窗口没点 |
 | 2026-11-19 | `v1.0.6-RC8` | `scripts/rc.py` → **20 通过 / 0 失败 / 0 跳过**，111.4s（`cargo test --workspace` 92 passed，多出的是两条日志并发单测：8 线程 × 120 条必须一条不丢、同线程重入必须被放过且闸能复位）；反向验证：写日志的互斥改回进程级 `AtomicBool` → FAIL 并点名「并发写日志丢了行：只落下来 120 / 960」。另出三平台包 `Portio 1.0.6-RC8`（exe 3356439 B / dmg 9463772 B / deb 4945556 B / AppImage 83139064 B，`prerelease: true`） | 未跑 | 未跑 | 并发只在回环文件上验过；崩溃钩子没真触发过；真机窗口没点 |
+| 2026-11-19 | `v1.0.6-RC9` | `scripts/rc.py` → **20 通过 / 0 失败 / 0 跳过**，116.6s（`cargo test --workspace` 95 passed，多出的是三条「读日志尾巴」单测：损坏文件里坏字节前后完好的行都要拿到、只取最后 N 行与边界、文件不存在读成空）；反向验证：改回 `read_to_string` → FAIL 并点名「坏字节前面完好的行没拿到：""」。另补跑 `cargo fmt --all` 与 `clippy -D warnings`（消掉 run 44505662151 那条 CI 红）；三平台包 `Portio 1.0.6-RC9`（exe 3358660 B / dmg 9470390 B / deb 4945780 B / AppImage 83147256 B，`prerelease: true`） | 未跑 | 未跑 | 只造过损坏内容，真实磁盘坏块没模拟；只剩 `.log.1` 时读不到内容未改；真机窗口没点 |
 每一轮 RC 回归跑完，在表格里加一行；过不了的那几项写进下一轮的「下一步」。

@@ -1829,3 +1829,80 @@ IN_HOOK.store(false, Ordering::SeqCst);
 - 桌面锁着，真窗口仍未点检；mac / linux 包仍只到"CI 构建通过"。
 - 无 SSH 服务器与凭据 → 真实登录、PTY、tmux、SFTP 传输一律未验证（长期阻塞）。
 
+
+## 2026-11-19 · v1.0.6-RC9 · 「复制诊断信息」读不出东西的时候，正是我最需要它的时候
+
+上一轮日志留的下一步就是这一条。`diag_tail`（「复制诊断信息」用的那个命令）长这样：
+
+```rust
+let raw = match std::fs::read_to_string(&path) {
+    Ok(t) => t,
+    Err(_) => return Ok(String::new()),   // 读不动 → 当作没有内容
+};
+```
+
+整份文件一次性当 UTF-8 读进来。文件里只要有**一个**非法字节——半截写入、别的程序往这个文件里写过东西、
+磁盘出错、日志被外部工具转码过——`read_to_string` 就 `Err`，函数返回空串。于是：
+
+- 我看到的"复制诊断信息"是**空的**，看起来像"这台机器一条日志都没有"；
+- 而坏字节**前面**那些完好的行，本来一个字都没丢，也被一起吞掉了；
+- 日志坏掉恰恰是出事的一种，这个按钮本来就是给出事用的。
+
+**改法**
+
+按 `\n` 切字节、逐行 `String::from_utf8_lossy` 解码：坏字节就地变成一个 `�`，坏字节**前后**完好的行都留住；
+`\r\n` 的行尾去掉。抽成两个可测的函数：
+
+- `pub fn tail_of(bytes: &[u8], want: usize) -> String`（纯函数，按行切开取最后 N 行）
+- `pub fn read_tail_file(file: &Path, want: usize) -> String`（读字节 → `tail_of`；文件不存在/读不动读成空）
+- `diag_tail` 只剩"取路径 + 夹 lines 到 1..=200"。
+
+**三条单测**
+
+1. `a_damaged_log_still_yields_the_intact_lines`：先写五行正常日志，再塞一行含
+   `\xff\xfe\x00\x80\x81` 的坏内容，最后接一条正常的尾巴 → 断言第 0 行、第 3 行、最后一条都在；
+   坏行里出现 `�`；共 7 行；输出里没有 `\r`。
+2. `tail_of_keeps_only_the_last_lines_and_handles_edges`：只取最后 2/1 行、N 大于行数、
+   空文件、全是换行、单行无换行、CRLF。
+3. `a_missing_log_reads_as_empty`：文件不存在 → 空串。
+
+**验证证据**
+
+- **反向验证**：把 `read_tail_file` 改回 `read_to_string` 那套 →
+  `a_damaged_log_still_yields_the_intact_lines` FAIL，点名 **「坏字节前面完好的行没拿到：""」**；
+  还原后 `diag::tests` 13 条全 ok。
+- **整跑**：`python scripts/rc.py` → **20 通过 / 0 失败 / 0 跳过**，116.6s
+  （A1 `cargo test --workspace` **95 passed**，比 RC8 的 92 多出的正是这三条）。
+- **发版**：推 `v1.0.6-RC9` → run `44512390674` gate + 三平台 build 全 success；Release
+  **`Portio 1.0.6-RC9`**（`prerelease: true`）四资产：exe 3358660 B / dmg 9470390 B / deb 4945780 B / AppImage 83147256 B。
+- 本地对照包 `Portio_1.0.6-RC9_x64-setup.exe` 4555962 B。
+
+**顺手修掉的一条 CI 红（run 44505662151）**
+
+上一轮 RC8 的并发单测没跑 `cargo fmt`：一个 `assert_eq!` 一行太长，CI 的
+`cargo fmt --all --check` 直接红；顺手跑 clippy 又发现一处 `format!("纯字面串")`。
+本轮一并补上：`cargo fmt --all` → `cargo fmt --all --check` exit 0；
+`cargo clippy --workspace --all-targets -- -D warnings` exit 0；`cargo test --workspace` 95 passed。
+提交 `b8915cf chore(fmt)`。
+
+> 记一笔事实：`v1.0.6-RC9` 这个 tag 落在格式化**之前**的提交 `a91c524` 上。发版 workflow 的 gate 只查
+> "四处版本一致 + tag 该不该发包"，不跑 fmt/clippy——所以包本身没问题；fmt 那条闸在另一条 CI workflow 里，
+> 它跑的是 main 上的新提交 `b8915cf`。以后每轮提交前都要自带 `cargo fmt --all`。
+
+**下一步**
+
+1. 日志这条线已经修完两处（RC8 并发丢行、RC9 损坏文件读空）。下一个候选是
+   `diag_reveal` 的 Windows 分支：`explorer.exe /select,<路径>` 只有一个参数，路径里含空格/中文时
+   能否正确选中文件，只在本机真机点一次才知道（属 M 类手感，锁屏时做不了）。
+2. 或者转去清单 §3 里还没走到的打包项：Windows 只有 NSIS、没有 msi；
+   Linux 只有 deb + AppImage、没有 rpm——这属于"要不要加发包目标"，得用户拍板，登记着。
+3. 再往下的纯代码项：`sessions.rs` 里 `SshError` 写成全路径 `portio_ssh::SshError`（该提到文件顶部 use），
+   这只是整洁度，不是 Bug。
+
+**未验证项**
+
+- 损坏文件只在临时目录里造出来验过；真实磁盘坏块、文件被别的进程同时写、被转码工具改过这类情形没模拟。
+- 日志目录里只剩 `portio.log.1`（刚轮转完、新文件还没建）时「看日志」读不到内容——既有行为，本轮没动。
+- 桌面锁着，真窗口仍未点检；mac / linux 包仍只到"CI 构建通过"。
+- 无 SSH 服务器与凭据 → 真实登录、PTY、tmux、SFTP 传输一律未验证（长期阻塞）。
+
