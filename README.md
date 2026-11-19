@@ -1,5 +1,8 @@
 # Portio
 
+[![CI](https://github.com/yunyu697/portio/actions/workflows/ci.yml/badge.svg)](https://github.com/yunyu697/portio/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/yunyu697/portio?include_prereleases&label=release)](https://github.com/yunyu697/portio/releases)
+
 跨平台的 SSH 终端 + SFTP 文件管理，一个窗口里干完两件事。
 
 > 名字取 **port + io**：port 是 SSH 端口，也是数据的进出口——命令往下走，文件往上走。
@@ -7,6 +10,20 @@
 > 完整使用说明在 [`docs/site/index.html`](docs/site/index.html)（一页、离线、不用联网就能打开）。
 > 下面这份是速览；两处不一致时以那一页为准。
 > 发版文案在 [`docs/release-notes.md`](docs/release-notes.md)，整段可贴到 Release。
+
+## 下载
+
+三平台的包都挂在 [Releases](https://github.com/yunyu697/portio/releases) 上，按系统取一个：
+
+| 系统 | 文件 | 说明 |
+|---|---|---|
+| Windows x64 | `Portio_<版本>_x64-setup.exe` | NSIS 安装包，装给当前用户，需要 WebView2 |
+| macOS（Apple Silicon / Intel 通用） | `Portio_<版本>_universal.dmg` | 一个 dmg 两种芯片都能装 |
+| Linux x64 | `Portio_<版本>_amd64.deb` / `_amd64.AppImage` | Debian/Ubuntu 用 deb，其它发行版用 AppImage |
+
+**发版节奏**：`Alpha` 阶段只打 tag，不产出安装包；**从 RC 起才发包**（RC 挂在预发布里，正式版才进 Latest）。
+所有包**目前都没有代码签名**：Windows 会弹 SmartScreen 提示，macOS 首次打开要按住 Control 点图标选「打开」。
+
 
 ## 这是什么
 

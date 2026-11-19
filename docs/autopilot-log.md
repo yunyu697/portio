@@ -1177,3 +1177,54 @@ M9 → A15、M10 的深浅与密度 → A14/A16）。剩下的人工项都是**�
 与多语言"。先做**多语言的地基**不现实（那是功能扩张），能做的是把发布物料里的**截图素材**用现有构建
 在无头里按统一规格批量出图（固定 1180×690@2x、深浅两套、四个关键场景），这样发布页与 README 就有
 一致的图可用。这条纯做物料、不碰产品代码，符合 RC 冻结的边界。
+
+---
+
+## 2026-11-19 · v1.0.5-RC8 · 把仓库推上 GitHub，CI 与三平台发版跑通
+
+这一轮不碰产品代码——你拍板了"推 GitHub、建 CI、发三平台包、RC 起才发包、Alpha 只打 tag"，
+所以这一轮交付的是**发布管道本身**。
+
+**做了什么**
+
+1. 推前先在本机把 CI 会跑的三关跑了一遍，抓到两处会让 CI 变红的东西：`cargo fmt --all --check` 有格式漂移；
+   clippy 在 Rust 1.99 上报三条新 lint（`manual_is_multiple_of` / `while_let_on_iterator` / `manual_clamp`），
+   另有一条 `x == false`。全修掉，顺带把 rustfmt 重排的九个文件另外提交（`0920664`、`9121e3e`）。
+2. 新建 `.github/workflows/release.yml`（`79661c3`）：打 `v<版本>` tag 就触发；gate 先校验 tag 与
+   仓库里的版本号一致，再按版本分流——含 `-Alpha` 不给发包（build 作业整体跳过，等于只打 tag），
+   含 `-RC` 发预发布，纯版本号发正式版。
+3. 建公开仓库 `github.com/yunyu697/portio`，推 main；只在仓库级配了 `credential.https://github.com.helper`
+   指向 gh 的 keyring token，没动全局 git 配置、没改 git 身份。
+4. 首次推送后 CI 红了：ubuntu 上编译 `portio-app` 需要 webkit2gtk 的 pkg-config 文件，`check` 作业没装依赖。
+   给 check 补上同款 apt 步骤，并把 Linux runner 钉到 22.04（24.04 上没有 `libappindicator3-dev`，
+   换成 `libayatana-appindicator3-dev`）（`becadf6`）。
+5. 首次发版也红了，是**真 Bug**：`lib.rs` 里写的是 `if cfg!(debug_assertions) && ... { win.open_devtools(); }`，
+   `cfg!` 是运行期布尔，Release 编译时这行仍要参与编译，直接 E0599。改成 `#[cfg(debug_assertions)]`
+   属性宏（`cbcabfe`）。
+6. 第二次发版四个作业里有三个跑完了，但整条 run 一直 `pending`：矩阵里的 `macos-13` 作业
+   `runner_name` 为空、永远排队——那个镜像已退役。改成 `macos-latest` + `--target universal-apple-darwin`，
+   一个 dmg 覆盖 Apple Silicon 与 Intel（`d09d5ed`）。
+7. 中途遇到本机直连 github.com:443 不通（`Test-NetConnection` False），给这个仓库单独配了
+   `http.https://github.com.proxy=http://127.0.0.1:7897`，推送立刻恢复。
+
+**验证证据**
+
+- CI 在 `d09d5ed` 上全绿，3m50s：`version rule` + `fmt / clippy / test` + 三平台 `build`（windows-latest /
+  macos-latest / ubuntu-22.04，`npm run build -- --no-bundle`）。
+- 发版 run `44428862667` 三项全 success，Release 已建：`Portio 1.0.5-RC8`，`prerelease: true`，四个包都在——
+  `Portio_1.0.5-RC8_x64-setup.exe`（3349931 B）、`Portio_1.0.5-RC8_universal.dmg`（9451398 B）、
+  `Portio_1.0.5-RC8_amd64.deb`（4939320 B）、`Portio_1.0.5-RC8_amd64.AppImage`（83139064 B）。
+- gate 的分流逻辑在推 tag 之前用 Git bash 空跑过：`v1.0.5-RC8` → `version=1.0.5-RC8`、`publish=true`；
+  `v1.0.5-Alpha9` → `publish=false`。
+
+**下一步**：管道到位之后，剩下的账回到产品上——RC 阶段只修 Bug，下一轮做 S14 里还没开工的
+**首发截图素材**（1180×690@2x、深浅两套、四个关键场景），纯物料、不碰产品代码。
+
+**未验证项**
+
+- Windows 安装包没有签名，SmartScreen 会拦（清单 §5 C1）；macOS dmg 未签名，Gatekeeper 要求右键打开。
+- CI 的 mac/linux 包**只证明能构建**，没在真机上装过、跑过（清单 §4 / 应用内的真实 SSH 项同理）。
+- 从 CI 出来的 exe（3.19 MiB）与本地 debug 包（4.34 MiB）体积不同，属正常；本次没有安装它验证启动。
+- "Alpha 只打 tag 不发包"目前只有本地空跑与 gate 代码保证，还没有真的推过一个 Alpha tag 去跑——怕在仓库里
+  留一条红色记录。下次做 Alpha 单元时会真推一次，作为正式验证。
+- 仓库暂无 LICENSE（清单 §5 C6）：public 仓库没许可证默认"保留所有权利"，与"先免费开源"口径冲突，等你定。
