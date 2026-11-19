@@ -137,7 +137,7 @@ foreach ($frag in "", "#split-test", "#clip-test", "#fold-test") {
 | C2 | 自动更新分发端点（放哪、走什么协议） | S13 的自动更新 |
 | C3 | 崩溃远端上报服务（要不要出网、报到哪） | S13 的远端上报 |
 | C4 | macOS / Linux 机器与打包环境 | 三平台包（CI 已用 GitHub 自家 runner 顶上，仍未在真机上跑过） |
-| C5 | ~~是否建 GitHub 远端、从哪版走 PR、release 何时打~~ | ✅ 已定：`github.com/yunyu697/portio` 公开；打 `v<版本>` tag 即发版，**RC 及以后发包、Alpha 只打 tag**；main 直推 |
+| C5 | ~~是否建 GitHub 远端、从哪版走 PR、release 何时打~~ | ✅ 已定：`github.com/yunyu697/portio` 公开；打 `v<版本>` tag 即发版，**RC 及以后发包、Alpha 只打 tag**；main 直推。判定逻辑已从 workflow 里抽到 `scripts/release_gate.py`，17 个单测（`scripts/test_release_gate.py`）覆盖 Alpha / RC / 正式版、tag 与仓库版本不一致、后缀不认识（旧 bash 会把 `-Beta1` 当正式版发出去） |
 | C6 | 开源许可证选型（MIT / Apache-2.0 / 其它） | 仓库已公开但暂无 LICENSE，默认"保留所有权利"，与"先免费开源"口径冲突 |
 
 ---

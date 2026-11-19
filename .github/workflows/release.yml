@@ -30,25 +30,9 @@ jobs:
         run: python scripts/check_versions.py
       - id: check
         name: 按 tag 决定发不发
-        shell: bash
-        run: |
-          tag="${GITHUB_REF_NAME}"
-          version="${tag#v}"
-          got=$(python -c "import re, io; print(re.search(r'<span class=\"ver\"[^>]*>(.*?)</span>', io.open('ui/index.html', encoding='utf-8').read()).group(1).strip())")
-          echo "tag=$tag / 仓库版本=$got"
-          if [ "$version" != "$got" ]; then
-            echo "::error::tag $tag 与仓库里的版本 $got 不一致，先改版本再打 tag"
-            exit 1
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          case "$version" in
-            *-Alpha*) echo "publish=false"  >> "$GITHUB_OUTPUT"; echo "prerelease=false" >> "$GITHUB_OUTPUT"
-                      echo "这是 Alpha 版：只打 tag，不发包。" ;;
-            *-RC*)    echo "publish=true"   >> "$GITHUB_OUTPUT"; echo "prerelease=true"  >> "$GITHUB_OUTPUT"
-                      echo "这是 RC 版：发预发布包。" ;;
-            *)        echo "publish=true"   >> "$GITHUB_OUTPUT"; echo "prerelease=false" >> "$GITHUB_OUTPUT"
-                      echo "这是正式版：发正式包。" ;;
-          esac
+        # 判定逻辑在 scripts/release_gate.py（有单测覆盖），这里只负责调用：
+        # Alpha → 只打 tag；RC → 预发布；正式版 → 正式包；tag 与仓库版本不一致或后缀不认识 → 判失败。
+        run: python scripts/release_gate.py --tag "${{ github.ref_name }}" --github-output "$GITHUB_OUTPUT"
 
   build:
     name: build（${{ matrix.name }}）

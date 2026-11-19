@@ -11,6 +11,30 @@
 > 只写用户能感知的变化；内部重构放 `### Changed`，未验证的能力写进 `### Known limitations`。
 > 口吻：站在用这个软件的人这一侧说话（"我把 X 改成 Y"），不写成第三方播报。
 
+## [1.0.6-RC2] - 2026-11-19
+
+「Alpha 只打 tag、RC 才发包」这条规则以前只活在 `release.yml` 里的一段内联 bash 里：本地跑不了、
+没有测试、改错了要等真打 tag 才炸。这一版把它搬出来，顺手补掉了兜底分支的一个真问题。
+
+### Fixed
+
+- `release.yml` 的 gate 用 `case` 的 `*` 兜底，把所有不认识的后缀都当正式版处理——`v1.0.6-Beta1`
+  会被当成正式版挂进 Latest。现在未登记的后缀直接判失败，不会静默发包。
+- tag 与仓库版本不一致、tag 缺 `v` 前缀，两种情况都会在 gate 里明确报错退出（以前是 `echo ::error`，
+  行为一样但没有测试保证）。
+
+### Changed
+
+- 判定逻辑抽到 `scripts/release_gate.py`，workflow 只负责调用（`--github-output` 写回 `$GITHUB_OUTPUT`）。
+- 新增 `scripts/test_release_gate.py`：17 个用例覆盖 Alpha / RC / 正式版三条分流、版本不一致、
+  `-Beta1` 这种未知后缀、PATCH 越界（`1.0.11`）、tag 缺前缀、真实仓库版本能被解析、CLI 写输出文件。
+  CI 的 `version` 作业本来就在跑 `unittest discover -s scripts`，这 17 个跟着一起跑。
+
+### Known limitations
+
+- 仍然没有真推过 Alpha tag：分流逻辑现在有单测，但「推一个 Alpha tag → 只产生 tag、不产生 Release」
+  这件事本身还没在 GitHub 上实测过一次。
+
 ## [1.0.6-RC1] - 2026-11-19
 
 这一版没动程序，动的是"对外说法里已经过期的那几处"——同一件事三个页面三种说法，用户读到会以为装错了版本。

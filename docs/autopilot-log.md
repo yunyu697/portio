@@ -1350,3 +1350,41 @@ README、`docs/site/index.html`、`docs/release-notes.md` 三处的版本号与�
 - 文档站是纯静态页，本轮只验证了在本机 Chrome 里能正常渲染，没有在别的浏览器 / 手机上过。
 - 英文侧文案（`press-kit.md`）本轮没跟着改，版本数字改到下次发包时统一处理。
 
+
+## 2026-11-19 · v1.0.6-RC2 · 把「tag → 发包」这条判定做成可测的
+
+上一轮说下一轮要验证「Alpha 只打 tag」这条 gate。真推一个 Alpha tag 顺手，但推之前先看了一眼那段
+判定逻辑，发现它根本没被测试过——而且兜底分支有个真问题。
+
+**做了什么**
+
+1. 判定逻辑从 `release.yml` 的内联 bash 搬到 `scripts/release_gate.py`：读 `ui/index.html` 的版本、
+   和 tag 比对、按 `-Alpha` / `-RC` / 无后缀分流，`--github-output` 写回 `$GITHUB_OUTPUT`。
+   workflow 里那 18 行 `case` 现在只剩一行调用。
+2. **修掉一个会静默发错包的分支**：旧 bash 的 `case` 用 `*` 兜底，不认识的后缀一律当正式版——
+   也就是说 `v1.0.6-Beta1` 会被当成正式版挂进 Latest。现在未登记的后缀直接判失败。
+3. 新增 `scripts/test_release_gate.py` 17 个用例：Alpha / RC / 正式版三条分流、tag 与仓库版本不一致、
+   `-Beta1` 未知后缀、PATCH 越界 `1.0.11`、tag 缺 `v` 前缀、真实仓库版本可解析、CLI 真写输出文件。
+4. `docs/rc-checklist.md` C5 补一句判定逻辑与单测在哪儿。
+
+**验证证据**
+
+- `python -m unittest scripts.test_release_gate -v` → **17 通过**，0.078s。
+- `python -m unittest discover -s scripts -p "test_*.py"` → **29 通过**（版本规则 12 + 判定 17），
+  这条命令就是 CI `version` 作业跑的那条。
+- CLI 真跑：`--tag v1.0.6-RC1` → `publish=True prerelease=True`；`--tag v1.0.5-RC8` → 报
+  "与仓库里的版本 1.0.6-RC1 不一致"、退出码 1；`--tag v1.0.6-Alpha1` → 退出码 0、publish 为假。
+- 两个 workflow 文件用 PyYAML 解析通过（release ok / ci ok）。
+- `set_version.py 1.0.6-RC2` + `check_versions.py` OK；`cargo check --workspace` 15.78s 通过。
+
+**下一步**：分流现在有单测兜底，但"推一个 Alpha tag 真的只产生 tag、不产生 Release"这件事还没在 GitHub
+上实测过。再下一步打算真推一个 `v1.0.6-RC2` 的 Alpha 形态 tag？——不行，tag 必须等于仓库版本，
+所以要做这件事得先选一个历史版本号打 tag；这件事会动远端，先登记，等下次单独一轮做。
+在那之前的下一轮：`docs/press-kit.md` 的版本数字与下载表跟到当前版本（上次留的尾巴）。
+
+**未验证项**
+
+- 真 Alpha tag 的分流行为（单测覆盖了判定，没覆盖 GitHub 上的实际结果）。
+- workflow 的改动只做了本地 YAML 解析，真正的 gate 作业要等下一次 tag 推送才会跑到。
+- macOS / Linux 的包仍然只在 CI 里构建过，没在真机装过。
+
