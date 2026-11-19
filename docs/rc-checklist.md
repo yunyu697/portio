@@ -12,14 +12,14 @@
 | ✗ | 已知缺口：代码里就没有，或明知不合格 |
 | 🚫 | 卡外部条件：缺服务器 / 缺证书 / 缺平台机器，写清差什么 |
 
-**最近一次整跑**：2026-11-19 · `v1.0.7-RC4` · `python scripts/rc.py` → 23 通过 / 0 失败 / 0 跳过（81.7s）；
+**最近一次整跑**：2026-11-20 · `v1.0.7-RC5` · `python scripts/rc.py` → 24 通过 / 0 失败 / 0 跳过（213.2s，A1 在 D 盘全新 target 上编译 157.3s）；
 人工项与真服务器项仍未跑（见 §7）。
 
 ---
 
 ## 1. 本机自动化（一条命令一项，五分钟跑完）
 
-**这一段现在有固定入口**：`python scripts/rc.py` 按顺序跑完 A1–A20，逐项打 `[PASS]` / `[FAIL]` / `[SKIP]`，
+**这一段现在有固定入口**：`python scripts/rc.py` 按顺序跑完 A1–A24，逐项打 `[PASS]` / `[FAIL]` / `[SKIP]`，
 最后一行是汇总，可以直接贴进 §7。全跑约 40 秒（`cargo test` 占大头），只改前端时用 `--fast` 跳过 A1。
 表里保留每项的命令与判据，`rc.py` 出问题时按表手工复现。
 
@@ -48,6 +48,7 @@
 | A21 | 强调色六套预置 | `python scripts/rc.py`（内部打开 `#accent-test`） | 标题 `ACCENT-SELFTEST-OK`：没选过时落默认青；换蓝后 `data-accent` 与 `--accent` 都对，且 `--accent` 就是那张色片的值（不靠两处写死对上）；`--on-accent` 与 `--accent` 不同色；主按钮底色等于 `--accent`（关掉过渡再量）；切浅色后选的还是蓝、主色换成浅色那一档；认不出的值回默认；设置里只有一颗色片是选中态且名字跟着变；**ANSI 绿不跟着主色变**、而终端光标跟着 | ✅ 反向验证 1 条断言 FAIL |
 | A22 | 终端配色方案 | `python scripts/rc.py`（内部打开 `#term-theme-test`） | 标题 `TERM-THEME-SELFTEST-OK`：没选过时是「跟界面」且 `html` 上没有 `data-term`；选 Nord 后底/字/ANSI 绿成套换、底色与界面底色不同源；此时把界面切浅色，终端那套色一动不动（界面底色确实变浅了）；Dracula 与 Nord 两套真的不同；回「跟界面」后属性消失、深色下终端底色回到原值；认不出的值读成「跟界面」；**真终端对象的 `options.theme`** 也跟着换了；换主色不动 Nord 的 ANSI 绿、光标仍跟主色 | 待反向验证 |
 | A23 | 字号 / 字体 / 密度三件 | `python scripts/rc.py`（内部打开 `#font-test`） | 标题 `FONT-SELFTEST-OK`：出厂态无 `data-ui-font` / `data-mono`、终端 13px 且族名含 JetBrains Mono；界面字号「大一号」把 `--fs-13` 从 13px 抬到 14px、真元素算出来的字号跟着变大，而**终端字号一动不动**；终端字号 18 时界面 `--fs-13` 一动不动（两套互不带动）；字号 30 / 8 越界读回 13、下界 9 认；换 Consolas 后 `data-mono` 落上、**真终端族名以 Consolas 打头且末尾有 monospace 兜底**；Cascadia 与 Consolas 族名不同、认不出的名字不留痕回「自动」；密度三档 24 / 28 / 32、相邻正好差 4px、seg 跟着走；界面与终端共用同一个 `--mono` 令牌 | ✅ 反向验证两条都翻红：去掉 `eachTerm` 换字体那行 → FAIL「真终端的族名没以 Consolas 打头」；删掉宽松档 `--row:32px` → FAIL「宽松档 --row 应为 32px：28 ≠ 32」「标准 → 宽松 差 0px」 |
+| A24 | 启动时的面板显隐 | `python scripts/rc.py`（内部打开 `#boot-test`） | 标题 `BOOT-SELFTEST-OK`：出厂态两个 seg 都是「记住上次」、盘里没有 boot 键；三档语义四种组合逐个核（记住上次用记忆态 / 总是展开恒展开 / 总是收起恒收起）；改「启动时」**眼前的会话栏与文件面板都还开着**，且 `portio.sidebarFolded` / `portio.filesFolded` 两个记忆键一个字节都没变；模拟启动：总是收起 → 会话栏真收起（`--sidebar` 归 0）、文件面板进 `files-folded` 且折叠钮 `aria-pressed=true`；总是展开 → 两处都回来、宽度回到记忆值（不是 0）；认不出的档位读成「记住上次」且不回写垃圾；seg 选中项跟着落盘值走 | ✅ 反向验证两条都翻红：① 在 `applyBootMode` 里顺手 `applyBootSide()` / `applyBootFiles()`（把设置当命令用）→ FAIL「选了「总是收起」后眼前的会话栏还开着：true ≠ false」「…文件面板还开着」；② 在 `setFoldUI` 里顺手写 `portio.sidebarFolded`（启动覆盖污染记忆）→ FAIL「启动覆盖不改会话栏记忆态："1" ≠ "0"」。还原后 `BOOT-SELFTEST-OK` |
 
 ### 怎么跑 A6–A9（无头）
 
@@ -196,4 +197,5 @@ foreach ($frag in "", "#split-test", "#clip-test", "#fold-test") {
 | 2026-11-19 | `v1.0.7-RC2` | `scripts/rc.py` → **21 通过 / 0 失败 / 0 跳过**，67.4s（新增 A21 `#accent-test` 1.5s）；反向验证：把 `root.dataset.accent = want` 改成恒等 `"teal"`（只记 localStorage、界面没换）→ FAIL 并点出 8 条，含「换色后 data-accent 是 azure："teal" ≠ "azure"」「ANSI 绿不跟着主色变：true ≠ false」。check_design_tokens / check_ui_scale / node --check 均 OK。三平台包 `Portio 1.0.7-RC2`（exe 3359627 B / dmg 9477429 B / deb 4946390 B / AppImage 83143160 B，`prerelease: true`）；main CI run 44535030414 五项全 success | 未跑 | 未跑 | 真窗口里没点过（桌面锁着）；六套色在真实终端滚动内容上的观感只看静态截图 |
 | 2026-11-19 | `v1.0.7-RC3` | `scripts/rc.py` → **22 通过 / 0 失败 / 0 跳过**，50.4s（新增 A22 `#term-theme-test` 1.2s）；反向验证两条：① 去掉 `eachTerm` 那一行（CSS 换了真终端没换）→ FAIL 点名「真终端的背景就是 Nord 的底："#090c10" ≠ "#2e3440"」；② 把 `delete root.dataset.term` 改成 `dataset.term = "auto"` → FAIL「没选过时 html 上没有 data-term："auto" ≠ undefined」。check_design_tokens / check_ui_scale / node --check 均 OK（第一版自检写了 9 处字面色值被 check_design_tokens 拦下，已改成令牌互比）。三平台包 `Portio 1.0.7-RC3`（exe 3363277 B / dmg 9483460 B / deb 4947522 B / AppImage 83143160 B，`prerelease: true`） | 未跑 | 未跑 | 真窗口里没点过（桌面锁着）；无 SSH 服务器，真实会话里大量 ANSI 内容下的观感未验证 |
 | 2026-11-19 | `v1.0.7-RC4` | `scripts/rc.py` → **23 通过 / 0 失败 / 0 跳过**，81.7s（新增 A23 `#font-test` 1.8s）；反向验证两条：① 去掉 `applyMono` 里的 `eachTerm(t => t.options.fontFamily = termFont())`（CSS 换了、真终端没换）→ FAIL 点名「真终端的族名没以 Consolas 打头：\"JetBrains Mono\",…」「Cascadia 与 Consolas 的族名不同：…撞了」；② 删掉 `html[data-density="comfortable"]{--row:32px}` → FAIL「宽松档 --row 应为 32px：28 ≠ 32」「标准 → 宽松 差 0px，应正好 4px」（② 那一跑 JS 没还原、与 ① 叠着跑，所以输出里同时带着 ① 的失败项）。还原后 `FONT-SELFTEST-OK`。check_design_tokens / check_ui_scale / node --check / cargo fmt --all --check 均 OK。三平台包 `Portio 1.0.7-RC4`（exe 3367657 B / dmg 9493220 B / deb 4955346 B / AppImage 83134968 B，`prerelease: true`） | 未跑 | 未跑 | 真窗口里没点过（桌面锁着）；JetBrains / Cascadia 是否真装在这台机器上没核（族名串按回落走）；无 SSH 服务器，9 号 / 24 号在真实满屏输出下的可读性未验证；本地 NSIS 包改用 `CARGO_TARGET_DIR=D:\portio-target` 才打出来（C 盘见下） |
+| 2026-11-20 | `v1.0.7-RC5` | `scripts/rc.py` → **24 通过 / 0 失败 / 0 跳过**，213.2s（新增 A24 `#boot-test` 2.2s；A1 在 `CARGO_TARGET_DIR=D:\portio-target` 上全新编译 157.3s，97 passed）；反向验证两条：① `applyBootMode` 里顺手立刻改眼前布局 → FAIL「选了「总是收起」后眼前的会话栏还开着」「…文件面板还开着」；② `setFoldUI` 里顺手写 `portio.sidebarFolded` → FAIL「启动覆盖不改会话栏记忆态："1" ≠ "0"」。还原后 `BOOT-SELFTEST-OK`。check_design_tokens / check_ui_scale / node --check 均 OK。三平台包 `Portio 1.0.7-RC5`（字节数见 §7 下一行 / Release 页） | 未跑 | 未跑 | 真窗口里没真重启过一次（桌面锁着），「重开 Portio 后按偏好收放」是靠自检里模拟启动那条判据兜的；无 SSH 服务器，`总是收起` 在真实会话里省出来的宽度有什么观感未验证 |
 每一轮 RC 回归跑完，在表格里加一行；过不了的那几项写进下一轮的「下一步」。

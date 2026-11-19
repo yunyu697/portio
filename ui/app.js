@@ -362,6 +362,27 @@ function markSeg(id, value) {
     btn.classList.toggle("on", btn.dataset.v === String(value));
   }
 }
+// ---------- 启动默认布局（会话栏 / 文件面板） ----------
+// 「记住上次」就是原来的行为：折叠状态一直落盘。另外两档是给"每次都要同一个开局"的人用的——
+// 干活时常常是纯终端全屏，也有人一开机就要看见两侧面板。这一层只决定**启动那一刻**的样子：
+// 改它不许立刻动当前窗口，也不许顺手把「记住上次」那份记忆改掉。
+// （三档常量与读写在 syncSegs 之前——启动早期就会有人调 syncSegs，放在这里会撞暂时性死区）
+const BOOT_MODES = ["remember", "open", "folded"];
+const BOOT_NAME = { remember: "记住上次", open: "总是展开", folded: "总是收起" };
+const BOOT_SIDE_KEY = "portio.bootSide";
+const BOOT_FILES_KEY = "portio.bootFiles";
+function readBoot(key) {
+  const v = localStorage.getItem(key);
+  return BOOT_MODES.includes(v) ? v : "remember"; // 认不出的值回「记住上次」，别把开局锁死在一个没人认得的档上
+}
+function applyBootMode(key, mode) {
+  localStorage.setItem(key, BOOT_MODES.includes(mode) ? mode : "remember");
+  syncSegs();
+}
+// 三档落到布尔值（true = 收起）：记住上次 → 用记忆态；总是展开 → false；总是收起 → true
+function bootFold(mode, remembered) {
+  return mode === "open" ? false : mode === "folded" ? true : remembered;
+}
 function syncSegs() {
   markSeg("seg-theme", localStorage.getItem("portio.theme") ?? "dark");
   markSeg("seg-density", root.dataset.density ?? "standard");
@@ -369,6 +390,8 @@ function syncSegs() {
   markSeg("seg-mono", readMono());
   markSeg("seg-scroll", readScrollback());
   markSeg("seg-term", readTerm());
+  markSeg("seg-boot-side", readBoot(BOOT_SIDE_KEY));
+  markSeg("seg-boot-files", readBoot(BOOT_FILES_KEY));
   syncAccentDots();
   const font = document.getElementById("set-font");
   if (font) font.value = String(readFontSize());
@@ -493,6 +516,18 @@ document.getElementById("seg-mono").addEventListener("click", (e) => {
   if (!btn) return;
   applyMono(btn.dataset.v);
   toast(`等宽字体：${MONO_NAME[btn.dataset.v] ?? MONO_NAME.auto}`);
+});
+document.getElementById("seg-boot-side").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  applyBootMode(BOOT_SIDE_KEY, btn.dataset.v);
+  toast(`会话栏启动时：${BOOT_NAME[btn.dataset.v] ?? BOOT_NAME.remember}（下次打开生效）`);
+});
+document.getElementById("seg-boot-files").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  applyBootMode(BOOT_FILES_KEY, btn.dataset.v);
+  toast(`文件面板启动时：${BOOT_NAME[btn.dataset.v] ?? BOOT_NAME.remember}（下次打开生效）`);
 });
 document.getElementById("acc-row").addEventListener("click", (e) => {
   const dot = e.target.closest(".acc-dot");
@@ -630,14 +665,15 @@ function dragWith(axis, onMove) {
   };
 }
 
+// ---------- 启动默认布局：三档怎么落到折叠态（具体读写见 syncSegs 之前那一块） ----------
 // 会话栏折叠：收起后整块让给终端，只留一条把手；鼠标移上去箭头才亮
 const FOLD_KEY = "portio.sidebarFolded";
 let sidebarFolded = localStorage.getItem(FOLD_KEY) === "1";
-function applyFold(folded) {
+// 只改界面，不落盘：启动时按「启动时」偏好强行展开/收起，不能借此改掉记忆态
+function setFoldUI(folded) {
   sidebarFolded = folded;
   mainEl.classList.toggle("collapsed", folded);
   document.getElementById("gutter-v").classList.toggle("folded", folded);
-  localStorage.setItem(FOLD_KEY, folded ? "1" : "0");
   if (folded) {
     root.style.setProperty("--sidebar", "0px");
   } else {
@@ -645,6 +681,13 @@ function applyFold(folded) {
   }
   // 折叠展开改变了终端可用宽度，布局稳定后再 fit 一次，否则列数不对
   requestAnimationFrame(() => fitQuietly());
+}
+function applyFold(folded) {
+  setFoldUI(folded);
+  localStorage.setItem(FOLD_KEY, folded ? "1" : "0");
+}
+function applyBootSide() {
+  setFoldUI(bootFold(readBoot(BOOT_SIDE_KEY), localStorage.getItem(FOLD_KEY) === "1"));
 }
 
 document.getElementById("gutter-v").addEventListener("pointerdown", dragWith("x", (ev) => {
@@ -663,10 +706,10 @@ document.getElementById("gutter-v").addEventListener("click", () => {
 // 入口是终端标题条上那颗常驻按钮——文件面板收起来之后它自己没了，只能靠它再打开。
 const FFOLD_KEY = "portio.filesFolded";
 let filesFolded = localStorage.getItem(FFOLD_KEY) === "1";
-function applyFilesFold(folded) {
+// 同样拆成"只改界面"与"改界面 + 落盘"两半，启动时的强行展开/收起不许改记忆态
+function setFilesFoldUI(folded) {
   filesFolded = folded;
   splitEl.classList.toggle("files-folded", folded);
-  localStorage.setItem(FFOLD_KEY, folded ? "1" : "0");
   const btn = document.getElementById("files-fold");
   if (btn) {
     btn.setAttribute("aria-label", folded ? "展开文件面板" : "折叠文件面板");
@@ -678,6 +721,13 @@ function applyFilesFold(folded) {
   if (gut) gut.title = folded ? "点击展开文件面板" : "拖动调整终端与文件面板比例";
   // 终端宽度变了，等一帧让网格落定再量，否则列数按旧宽度算
   requestAnimationFrame(() => fitQuietly());
+}
+function applyFilesFold(folded) {
+  setFilesFoldUI(folded);
+  localStorage.setItem(FFOLD_KEY, folded ? "1" : "0");
+}
+function applyBootFiles() {
+  setFilesFoldUI(bootFold(readBoot(BOOT_FILES_KEY), localStorage.getItem(FFOLD_KEY) === "1"));
 }
 
 document.getElementById("files-fold").addEventListener("click", () => applyFilesFold(!filesFolded));
@@ -907,10 +957,23 @@ applyTerm(readTerm());
 applyUiFont(readUiFont());
 applyMono(readMono());
 applySidebar(readNum(PREF.sidebar.key, 264));
-if (sidebarFolded) applyFold(true);
+applyBootSide();
 applySplit(Math.min(PREF.split.max, Math.max(PREF.split.min, readNum(PREF.split.key, 0.5))));
-if (filesFolded) applyFilesFold(true);
+applyBootFiles();
 applyDrawer(readNum(PREF.drawer.key, 172));
+
+// 核验用：把两处「启动时」摆出来给截图看（#boot-demo / #boot-demo-light）——
+// 会话栏设成「总是收起」、文件面板设成「总是展开」，再按启动那一刻的口径落一遍，
+// 所以画面里会话栏已经让位、右侧文件面板还在。这句放在尺寸恢复之后，
+// 因为 setFoldUI / setFilesFoldUI 要碰 mainEl / splitEl（它们在更早的段落里才初始化）。
+if (location.hash === "#boot-demo" || location.hash === "#boot-demo-light") {
+  applyBootMode(BOOT_SIDE_KEY, "folded");
+  applyBootMode(BOOT_FILES_KEY, "open");
+  applyBootSide();
+  applyBootFiles();
+  if (location.hash === "#boot-demo-light") applyTheme("light");
+  toggleSettings(true);
+}
 
 
 // ---------- 尽快把窗口放出来 ----------
@@ -4231,7 +4294,118 @@ if (location.hash.startsWith("#term-palette")) {
   }, 400);
 }
 
-// ---------- 无头自检：#font-test（界面字号 / 终端字号 / 等宽字体 / 密度三档） ----------
+// ---------- 无头自检：#boot-test（会话栏 / 文件面板的「启动时」三档） ----------
+// 这一层最容易错在两处：把「启动时」当成"立刻改现在的布局"，或者顺手把记忆态一起改掉——
+// 那会让人选了"总是展开"之后再想回"记住上次"，上一次手动收起的事实已经没了。
+// 判据围着这件事转：
+//   ① 出厂态两个 seg 都是「记住上次」，盘里没有 boot 键；
+//   ② 三档语义：remember 用记忆态、open 恒展开、folded 恒收起（四种组合逐个核）；
+//   ③ 改「启动时」当前窗口一点不动，也不碰 FOLD / FFOLD 这两个记忆键；
+//   ④ 模拟下次启动：folded → 会话栏真收起（--sidebar 归 0）、文件面板真收掉（files-folded + aria-pressed）；
+//      open → 两者都放回来；
+//   ⑤ 认不出的档位回「记住上次」且盘里不留垃圾；
+//   ⑥ seg 选中项跟着落盘的值走。
+if (location.hash === "#boot-test") {
+  (function bootTest() {
+    const bad = [];
+    const seen = {};
+    const byId = (id) => document.getElementById(id);
+    const tok = (name) => getComputedStyle(root).getPropertyValue(name).trim();
+    function expect(what, got, want) {
+      if (JSON.stringify(got) !== JSON.stringify(want)) {
+        bad.push(`${what}：${JSON.stringify(got)} ≠ ${JSON.stringify(want)}`);
+      }
+    }
+    function onSeg(id) {
+      const box = byId(id);
+      return box ? [...box.querySelectorAll("button.on")].map((b) => b.dataset.v) : [];
+    }
+    const sideFolded = () => mainEl.classList.contains("collapsed");
+    const filesFoldedNow = () => splitEl.classList.contains("files-folded");
+
+    const prevSide = localStorage.getItem(FOLD_KEY);
+    const prevFiles = localStorage.getItem(FFOLD_KEY);
+    const prevBootSide = localStorage.getItem(BOOT_SIDE_KEY);
+    const prevBootFiles = localStorage.getItem(BOOT_FILES_KEY);
+    try {
+      // ① 出厂态
+      localStorage.removeItem(BOOT_SIDE_KEY);
+      localStorage.removeItem(BOOT_FILES_KEY);
+      syncSegs();
+      expect("没选过时会话栏「启动时」是记住上次", onSeg("seg-boot-side"), ["remember"]);
+      expect("没选过时文件面板「启动时」是记住上次", onSeg("seg-boot-files"), ["remember"]);
+      expect("没选过时读到的也是记住上次", readBoot(BOOT_SIDE_KEY), "remember");
+
+      // ② 三档语义
+      expect("记住上次 + 记忆态收起 → 收起", bootFold("remember", true), true);
+      expect("记住上次 + 记忆态展开 → 展开", bootFold("remember", false), false);
+      expect("总是展开 + 记忆态收起 → 仍展开", bootFold("open", true), false);
+      expect("总是收起 + 记忆态展开 → 仍收起", bootFold("folded", false), true);
+
+      // ③ 改「启动时」不动眼前布局、也不动记忆态
+      applyFold(false);
+      applyFilesFold(false);
+      const sideMem = localStorage.getItem(FOLD_KEY);
+      const filesMem = localStorage.getItem(FFOLD_KEY);
+      applyBootMode(BOOT_SIDE_KEY, "folded");
+      applyBootMode(BOOT_FILES_KEY, "folded");
+      expect("选了「总是收起」后眼前的会话栏还开着", sideFolded(), false);
+      expect("选了「总是收起」后眼前文件面板还开着", filesFoldedNow(), false);
+      expect("选「启动时」不许改会话栏记忆态", localStorage.getItem(FOLD_KEY), sideMem);
+      expect("选「启动时」不许改文件面板记忆态", localStorage.getItem(FFOLD_KEY), filesMem);
+
+      // ④ 模拟下次启动：两处都收起
+      applyBootSide();
+      applyBootFiles();
+      expect("「总是收起」后会话栏真收起了", sideFolded(), true);
+      expect("「总是收起」后 --sidebar 归 0", tok("--sidebar"), "0px");
+      expect("「总是收起」后文件面板真收掉了", filesFoldedNow(), true);
+      expect("折叠钮的 aria-pressed 跟着变", byId("files-fold").getAttribute("aria-pressed"), "true");
+      expect("启动覆盖不改会话栏记忆态", localStorage.getItem(FOLD_KEY), sideMem);
+
+      // 改成「总是展开」再模拟一次：两处都放回来
+      const memWidth = tok("--sidebar");
+      applyBootMode(BOOT_SIDE_KEY, "open");
+      applyBootMode(BOOT_FILES_KEY, "open");
+      applyBootSide();
+      applyBootFiles();
+      expect("「总是展开」后会话栏回来了", sideFolded(), false);
+      expect("「总是展开」后文件面板回来了", filesFoldedNow(), false);
+      expect("折叠钮的 aria-pressed 跟着回 false", byId("files-fold").getAttribute("aria-pressed"), "false");
+      expect("会话栏宽度回到记忆值（不是 0）", /px$/.test(tok("--sidebar")) && tok("--sidebar") !== "0px", true);
+      seen.width = { remembered: memWidth, after: tok("--sidebar") };
+
+      // ⑤ 认不出的档位
+      localStorage.setItem(BOOT_SIDE_KEY, "sometimes");
+      expect("认不出的档位读成记住上次", readBoot(BOOT_SIDE_KEY), "remember");
+      applyBootMode(BOOT_SIDE_KEY, "sometimes");
+      expect("认不出的档位不回写进盘", localStorage.getItem(BOOT_SIDE_KEY), "remember");
+
+      // ⑥ 落盘与 seg 选中
+      applyBootMode(BOOT_FILES_KEY, "folded");
+      expect("文件面板落盘", localStorage.getItem(BOOT_FILES_KEY), "folded");
+      expect("文件面板 seg 选中的只有总是收起", onSeg("seg-boot-files"), ["folded"]);
+      applyBootMode(BOOT_SIDE_KEY, "remember");
+      expect("会话栏 seg 选中的只有记住上次", onSeg("seg-boot-side"), ["remember"]);
+    } catch (err) {
+      bad.push(`走启动布局的过程抛了异常：${err && err.message ? err.message : err}`);
+    } finally {
+      // 收拾现场：两个 boot 键与两组折叠态都还原成进来时的样子
+      if (prevBootSide === null) localStorage.removeItem(BOOT_SIDE_KEY);
+      else localStorage.setItem(BOOT_SIDE_KEY, prevBootSide);
+      if (prevBootFiles === null) localStorage.removeItem(BOOT_FILES_KEY);
+      else localStorage.setItem(BOOT_FILES_KEY, prevBootFiles);
+      applyFold(prevSide === "1");
+      applyFilesFold(prevFiles === "1");
+      syncSegs();
+    }
+
+    document.title = bad.length
+      ? `BOOT-SELFTEST-FAIL ${JSON.stringify(bad)} ${JSON.stringify(seen)}`
+      : `BOOT-SELFTEST-OK ${JSON.stringify(seen)}`;
+  })();
+}
+
 // 这四件事最怕的是"牵一发而动全身"：调界面字号把终端里的字挤小、换字体只换了 CSS
 // 而 xterm 还拿旧族名在量格子、密度多一档却把某处行高写成别的数。
 // 所以每一条都拿"改前 / 改后"互相比，并且必须落到**真终端对象**（xterm 不认 CSS 变量）：
