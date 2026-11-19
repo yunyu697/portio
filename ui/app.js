@@ -202,6 +202,38 @@ function applyDensity(density) {
   localStorage.setItem("portio.density", density);
   syncSegs();
 }
+// ---------- 强调色 ----------
+// 主色可换：每套只改「跟主色一起走的四个令牌」（--accent / --on-accent /
+// --mark-accent / --term-cursor，色值全在 tokens.css 末段）。
+// 终端 ANSI 调色板不跟着动：红绿黄蓝是终端语义（git diff、ls 上色），
+// 跟着主色走会让人分不清"这是成功还是我选了蓝色"。
+const ACCENT_KEY = "portio.accent";
+const ACCENTS = ["teal", "azure", "violet", "amber", "rose", "lime"];
+const ACCENT_NAME = { teal: "青", azure: "蓝", violet: "紫", amber: "琥珀", rose: "玫瑰", lime: "青柠" };
+function readAccent() {
+  const v = localStorage.getItem(ACCENT_KEY);
+  return ACCENTS.includes(v) ? v : "teal";
+}
+function applyAccent(id) {
+  const want = ACCENTS.includes(id) ? id : "teal"; // 认不出的值一律回默认，别把界面弄成没主色
+  root.dataset.accent = want;
+  localStorage.setItem(ACCENT_KEY, want);
+  // 终端光标也是主色的一份投影（--term-cursor），换色后要把主题重挂一遍才生效
+  eachTerm((t) => { t.options.theme = terminalTheme(); });
+  syncAccentDots();
+}
+function syncAccentDots() {
+  const row = document.getElementById("acc-row");
+  if (!row) return;
+  const cur = root.dataset.accent ?? readAccent();
+  for (const dot of row.querySelectorAll(".acc-dot")) {
+    const on = dot.dataset.sw === cur;
+    dot.classList.toggle("on", on);
+    dot.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+  const name = document.getElementById("acc-name");
+  if (name) name.textContent = ACCENT_NAME[cur] ?? ACCENT_NAME.teal;
+}
 // 标题栏按钮是"一键换观感"：按当前实际显示的主题取反，直接落成明确偏好。
 // 之前按 dark→light→system 轮转，"系统自动"在系统本身是深色时等于没变化，
 // 用户看到的就是"要点两次才变亮"——三选项照旧留在设置面板里。
@@ -255,6 +287,7 @@ function syncSegs() {
   markSeg("seg-theme", localStorage.getItem("portio.theme") ?? "dark");
   markSeg("seg-density", root.dataset.density ?? "standard");
   markSeg("seg-scroll", readScrollback());
+  syncAccentDots();
   const font = document.getElementById("set-font");
   if (font) font.value = String(readFontSize());
   const out = document.getElementById("font-val");
@@ -332,6 +365,12 @@ function toggleSettings(open) {
   }
 }
 if (location.hash === "#settings") toggleSettings(true);
+// 核验用：无头页面上把强调色换成蓝再打开设置，给截图用（跟 #theme-light 同类）
+if (location.hash === "#accent-demo" || location.hash === "#accent-demo-light") {
+  applyAccent("azure");
+  if (location.hash === "#accent-demo-light") applyTheme("light");
+  toggleSettings(true);
+}
 document.getElementById("btn-settings").addEventListener("click", () => toggleSettings());
 document.getElementById("btn-set-close").addEventListener("click", () => toggleSettings(false));
 settingsModal.addEventListener("click", (e) => {
@@ -344,6 +383,12 @@ document.getElementById("seg-theme").addEventListener("click", (e) => {
 document.getElementById("seg-density").addEventListener("click", (e) => {
   const btn = e.target.closest("button");
   if (btn) applyDensity(btn.dataset.v);
+});
+document.getElementById("acc-row").addEventListener("click", (e) => {
+  const dot = e.target.closest(".acc-dot");
+  if (!dot) return;
+  applyAccent(dot.dataset.sw);
+  toast(`强调色：${ACCENT_NAME[dot.dataset.sw]}`);
 });
 document.getElementById("seg-scroll").addEventListener("click", (e) => {
   const btn = e.target.closest("button");
@@ -741,6 +786,7 @@ applyTheme(localStorage.getItem("portio.theme") ?? "dark");
 if (location.hash === "#theme-light") applyTheme("light");
 if (location.hash === "#theme-dark") applyTheme("dark");
 applyDensity(localStorage.getItem("portio.density") ?? "standard");
+applyAccent(readAccent());
 applySidebar(readNum(PREF.sidebar.key, 264));
 if (sidebarFolded) applyFold(true);
 applySplit(Math.min(PREF.split.max, Math.max(PREF.split.min, readNum(PREF.split.key, 0.5))));
@@ -3805,5 +3851,108 @@ if (location.hash === "#hosts-test") {
     document.title = bad.length
       ? `HOSTS-SELFTEST-FAIL ${JSON.stringify(bad)} ${JSON.stringify(seen)}`
       : `HOSTS-SELFTEST-OK ${JSON.stringify(seen)}`;
+  })();
+}
+
+// ---------- 无头自检：#accent-test（强调色六套预置） ----------
+// 验的不是"我点了按钮"——是"主色真的走到该去的地方，且没走到不该去的地方"：
+// ① 换色后 --accent 与那张色片取的是同一个值；② 压在主色上的文字不许跟主色撞；
+// ③ 主按钮的底色确实跟着主色走；④ 切深浅主题不改选定的色、但深浅两档主色不同；
+// ⑤ 认不出的值回默认；⑥ 命令行里选中的那颗色片只有一颗；⑦ ANSI 绿不许被主色拐走。
+if (location.hash === "#accent-test") {
+  (function accentTest() {
+    const bad = [];
+    const seen = {};
+    const byId = (id) => document.getElementById(id);
+    const tok = (name) => getComputedStyle(root).getPropertyValue(name).trim();
+    // 把令牌名换算成浏览器算出来的 rgb，才能和组件的 backgroundColor 直接比
+    function rgbOf(token) {
+      const probe = document.createElement("div");
+      probe.style.background = `var(${token})`;
+      document.body.append(probe);
+      const out = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return out;
+    }
+    function expect(what, got, want) {
+      if (JSON.stringify(got) !== JSON.stringify(want)) {
+        bad.push(`${what}：${JSON.stringify(got)} ≠ ${JSON.stringify(want)}`);
+      }
+    }
+    // 断言"不相等"时别写四个参数，写清比较本身
+    function expectDiff(what, got, want) {
+      if (JSON.stringify(got) === JSON.stringify(want)) {
+        bad.push(`${what}：${JSON.stringify(got)} 与 ${JSON.stringify(want)} 撞了，应该不同`);
+      }
+    }
+    function dotsOn() {
+      return [...byId("acc-row").querySelectorAll(".acc-dot.on")].map((d) => d.dataset.sw);
+    }
+
+    const prevTheme = localStorage.getItem("portio.theme") ?? "dark";
+    const prevAccent = readAccent();
+    try {
+      // ① 起点干净：不带选择时落默认青
+      localStorage.removeItem(ACCENT_KEY);
+      applyAccent(readAccent());
+      expect("没选过时是默认的青", root.dataset.accent, "teal");
+
+      // ② 换蓝：界面主色与那颗色片必须取到同一个值（不靠两处写死对上）
+      applyAccent("azure");
+      const azureAccent = tok("--accent");
+      expect("换色后 data-accent 是 azure", root.dataset.accent, "azure");
+      expect("--accent 就是蓝那张色片的值", azureAccent, tok("--acc-azure"));
+      expect("主色确实换了（跟青不一样）", azureAccent === tok("--acc-teal"), false);
+      expect("落盘记下了所选颜色", localStorage.getItem(ACCENT_KEY), "azure");
+
+      // ③ 压在主色上的文字不许跟主色撞，否则按钮上的字直接消失
+      expect("--on-accent 与 --accent 不同色", tok("--on-accent") === azureAccent, false);
+
+      // ④ 主按钮真的跟着主色走（不是只有色片好看）。
+      // 换色时有 160ms 过渡，量之前先把这颗按钮的过渡关掉，否则读到的是过渡中的颜色
+      const primary = document.querySelector(".btn.primary");
+      primary.style.transition = "none";
+      void primary.offsetHeight;
+      expect("主按钮底色等于 --accent", getComputedStyle(primary).backgroundColor, rgbOf("--accent"));
+      primary.style.transition = "";
+
+      // ⑤ 切深浅主题：选的色不变，主色要换成那一档的值
+      const darkAccent = tok("--accent");
+      applyTheme("light");
+      expect("切到浅色后选的还是蓝", root.dataset.accent, "azure");
+      expect("浅色档主色换成浅的那一支", tok("--accent") === darkAccent, false);
+      expect("浅色档主色就是浅色那套令牌", tok("--accent"), tok("--acc-azure"));
+      applyTheme(prevTheme);
+
+      // ⑥ 认不出的值回默认，别把界面弄成没主色
+      applyAccent("chartreuse");
+      expect("认不出的颜色回默认青", root.dataset.accent, "teal");
+
+      // ⑦ 命令行里选中的色片只有一颗，且是当前那套
+      applyAccent("rose");
+      expect("选中的色片只有一颗", dotsOn(), ["rose"]);
+      expect("设置里显示当前色的名字", byId("acc-name").textContent, "玫瑰");
+
+      // ⑧ 终端语义色不许被主色拐走：ANSI 绿与主色是两回事
+      const green = tok("--ansi-green");
+      const accent = tok("--accent");
+      expect("ANSI 绿不跟着主色变", green === accent, false);
+      // 但终端光标要跟着，它只是主色的一份投影
+      expect("终端光标跟着主色", tok("--term-cursor"), accent);
+
+      seen.on = dotsOn();
+      seen.accent = tok("--accent");
+      seen.ansiGreen = green;
+    } catch (err) {
+      bad.push(`走强调色设置的过程抛了异常：${err && err.message ? err.message : err}`);
+    } finally {
+      // 收拾现场：还原主题与颜色，别把自检的选择留在机器上
+      applyTheme(prevTheme);
+      applyAccent(prevAccent);
+    }
+
+    document.title = bad.length
+      ? `ACCENT-SELFTEST-FAIL ${JSON.stringify(bad)} ${JSON.stringify(seen)}`
+      : `ACCENT-SELFTEST-OK ${JSON.stringify(seen)}`;
   })();
 }

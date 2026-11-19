@@ -42,6 +42,9 @@ html[data-theme="light"]{
   --bg:#f4f6f8; --surface:#ffffff; --surface-2:#f7f9fa; --surface-3:#eef2f5;
   --line:#d5dde5; --line-soft:rgba(13,16,20,.09); --line-strong:#bcc9d5;
   --text:#1a222c; --text-2:#5a6673; --text-3:#8b96a5;
+  /* 浅色下的强调色色片：同一批色相各压暗一档，色片在白底上才看得清 */
+  --acc-teal:#12897a; --acc-azure:#1f6db5; --acc-violet:#6b4fb5;
+  --acc-amber:#9a6a15; --acc-rose:#b04a63; --acc-lime:#5f8f2a;
   --accent:#12897a; --term-bg:#ffffff;
   /* 浅色下标记不能再用深底板：改成浅色窗体＋深青描线 */
   --mark-body:#eaf3f5; --mark-line:#7fa5ad; --mark-accent:#12897a;
@@ -57,3 +60,51 @@ html[data-theme="light"]{
 }
 
 html[data-density="compact"]{ --row:24px; }
+
+/* ---------- 强调色（强调色预置） ----------
+   界面主色可换：每套只改「跟主色一起走的四个令牌」——
+   --accent（主色本身）、--on-accent（压在主色上的文字）、
+   --mark-accent（标题栏标记的亮青描线）、--term-cursor（终端光标）。
+   ANSI 调色板不跟着变：红绿黄蓝是终端语义（git diff、ls 上色），
+   跟着主色走会让人分不清"这是成功还是我选了蓝色"。
+   色值只住在这个文件里，界面文件一律 var(--accent)。 */
+:root{
+  --acc-teal:#2fb39a; --acc-azure:#4f9fdd; --acc-violet:#a488e8;
+  --acc-amber:#d9a24a; --acc-rose:#e07a92; --acc-lime:#8fc94f;
+}
+html[data-accent="teal"]{
+  --accent:#2fb39a; --on-accent:#04100e; --mark-accent:#2fd8c2; --term-cursor:#2fb39a;
+}
+html[data-theme="light"][data-accent="teal"]{
+  --accent:#12897a; --on-accent:#ffffff; --mark-accent:#12897a; --term-cursor:#12897a;
+}
+html[data-accent="azure"]{
+  --accent:#4f9fdd; --on-accent:#04121f; --mark-accent:#79c3f2; --term-cursor:#4f9fdd;
+}
+html[data-theme="light"][data-accent="azure"]{
+  --accent:#1f6db5; --on-accent:#ffffff; --mark-accent:#1f6db5; --term-cursor:#1f6db5;
+}
+html[data-accent="violet"]{
+  --accent:#a488e8; --on-accent:#12081f; --mark-accent:#c3aef7; --term-cursor:#a488e8;
+}
+html[data-theme="light"][data-accent="violet"]{
+  --accent:#6b4fb5; --on-accent:#ffffff; --mark-accent:#6b4fb5; --term-cursor:#6b4fb5;
+}
+html[data-accent="amber"]{
+  --accent:#d9a24a; --on-accent:#1a1204; --mark-accent:#f0c072; --term-cursor:#d9a24a;
+}
+html[data-theme="light"][data-accent="amber"]{
+  --accent:#9a6a15; --on-accent:#ffffff; --mark-accent:#9a6a15; --term-cursor:#9a6a15;
+}
+html[data-accent="rose"]{
+  --accent:#e07a92; --on-accent:#1e0a10; --mark-accent:#f5a3b5; --term-cursor:#e07a92;
+}
+html[data-theme="light"][data-accent="rose"]{
+  --accent:#b04a63; --on-accent:#ffffff; --mark-accent:#b04a63; --term-cursor:#b04a63;
+}
+html[data-accent="lime"]{
+  --accent:#8fc94f; --on-accent:#101a05; --mark-accent:#b0e07a; --term-cursor:#8fc94f;
+}
+html[data-theme="light"][data-accent="lime"]{
+  --accent:#5f8f2a; --on-accent:#ffffff; --mark-accent:#5f8f2a; --term-cursor:#5f8f2a;
+}

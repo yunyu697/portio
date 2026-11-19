@@ -402,6 +402,21 @@
     color:var(--text-2);font-size:var(--fs-12)}
   .set .field > label b{color:var(--text);font-family:var(--mono);font-weight:400}
   .set .hosts{display:grid;gap:var(--sp-2)}
+  /* 强调色采样行：六颗色片一排，当前那颗加一圈主色描边（色值全在 tokens.css） */
+  .set .acc-row{display:flex;align-items:center;gap:var(--sp-2)}
+  .set .acc-dot{width:var(--ctl);height:var(--ctl);padding:0;border:1px solid var(--line);
+    border-radius:var(--r-6);cursor:pointer;transition:box-shadow var(--dur) var(--ease),
+    border-color var(--dur) var(--ease)}
+  .set .acc-dot:hover{border-color:var(--line-strong)}
+  /* 选中环：先用底色隔开一道，再套主色环——主色块上直接画主色环等于没画 */
+  .set .acc-dot.on{box-shadow:0 0 0 var(--r-hair) var(--surface),0 0 0 var(--sp-1) var(--accent);
+    border-color:transparent}
+  .set .acc-dot[data-sw="teal"]{background:var(--acc-teal)}
+  .set .acc-dot[data-sw="azure"]{background:var(--acc-azure)}
+  .set .acc-dot[data-sw="violet"]{background:var(--acc-violet)}
+  .set .acc-dot[data-sw="amber"]{background:var(--acc-amber)}
+  .set .acc-dot[data-sw="rose"]{background:var(--acc-rose)}
+  .set .acc-dot[data-sw="lime"]{background:var(--acc-lime)}
   .set .hz{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;
     gap:var(--sp-3);height:var(--ctl);padding:0 var(--sp-2) 0 var(--sp-3);border:1px solid var(--line);
     border-radius:var(--r-6);background:var(--surface-2)}
@@ -480,7 +495,7 @@
         <rect x="11.2" y="16.1" width="4.2" height="1.5" rx=".75" fill="var(--mark-accent)" opacity=".5"/>
         <rect x="15.4" y="11.3" width="3.6" height="1.4" rx=".7" fill="var(--mark-accent)"/>
       </svg>
-      <b data-tauri-drag-region>Portio</b><span class="ver" data-tauri-drag-region>1.0.7-RC1</span>
+      <b data-tauri-drag-region>Portio</b><span class="ver" data-tauri-drag-region>1.0.7-RC2</span>
     </div>
     <!-- 标签条本身就是标题栏里最大的一片空白，之前没挂 drag 区域，
          于是整条中间地段都点不动窗口。挂上后：空白处可拖、可双击最大化，标签项照常点击。 -->
@@ -670,6 +685,18 @@
             <button data-v="light">浅色</button>
             <button data-v="system">跟随系统</button>
           </div>
+        </div>
+        <div class="field">
+          <label>强调色 <b id="acc-name">青</b></label>
+          <div class="acc-row" id="acc-row">
+            <button class="acc-dot" type="button" data-sw="teal" title="青（默认）" aria-label="强调色 青"></button>
+            <button class="acc-dot" type="button" data-sw="azure" title="蓝" aria-label="强调色 蓝"></button>
+            <button class="acc-dot" type="button" data-sw="violet" title="紫" aria-label="强调色 紫"></button>
+            <button class="acc-dot" type="button" data-sw="amber" title="琥珀" aria-label="强调色 琥珀"></button>
+            <button class="acc-dot" type="button" data-sw="rose" title="玫瑰" aria-label="强调色 玫瑰"></button>
+            <button class="acc-dot" type="button" data-sw="lime" title="青柠" aria-label="强调色 青柠"></button>
+          </div>
+          <p class="hint">主色只管界面（按钮、选中、把手、光标）；终端里红绿黄蓝的语义色不跟着变。</p>
         </div>
         <div class="field">
           <label>界面密度</label>
