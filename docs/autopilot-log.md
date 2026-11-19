@@ -2259,3 +2259,14 @@ Chrome 无头探针漏写 `--dump-dom` 时，**stdout 与 stderr 都是空的、
 - 无 SSH 服务器：`总是收起` 在真实会话里省出来的那点宽度，实际多出几列、观感如何未验证。
 - 「总是收起」在启动后手动展开，本次会话保持展开——这条行为是刻意设计，但没在真窗口里走过一遍。
 
+**发版补记（同轮晚些时候写完）**
+
+- Release run `44563959577`：gate + windows-x64 + linux-x64 全 success，**macOS 那一格第一次是 `cancelled`**
+  （排队 15 分钟后被取消、一个 step 都没跑、日志为空），三平台因此先只上传了 exe / deb / AppImage。
+  用 `gh run rerun 44563959577 --failed` 重跑，macOS 跑完转 success，dmg 补上，整轮才齐。
+- Release `Portio 1.0.7-RC5`（`prerelease: true`、非草稿）四资产：
+  exe **3367447** B / dmg **9498340** B / deb **4955524** B / AppImage **83147256** B。
+- main CI `44563942066` success。
+- 对外文案同步：README 版本段、`docs/release-notes.md` 当前状态、`docs/press-kit.md` 下载表（实际字节数）、
+  `docs/site/index.html` 五处版本串、`docs/rc-checklist.md` §7 行的四资产字节数。
+- 排期 `排期-v0.1.md` 的「续 20」段改 RC5，记录表追加一行。
