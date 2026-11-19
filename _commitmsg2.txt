@@ -1,10 +1,13 @@
-chore(fmt): 补跑 cargo fmt，消掉 CI 的 fmt 闸与 clippy 提示
+docs(release): 对外说法与回归记录跟到 RC10
 
-上一轮 RC8 的并发单测里有两处没跑 fmt/clippy：`assert_eq!` 一行过长（CI 的
-`cargo fmt --all --check` 拦下，run 44505662151 因此红），另有一处 `format!("字面串")`。
+RC10 的包已发出去（run 44518772700 四 job success），把对外文档与记录一起对上：
 
-- `cargo fmt --all` → `cargo fmt --all --check` exit 0
-- `cargo clippy --workspace --all-targets -- -D warnings` exit 0
-- `cargo test --workspace` 95 passed；`cargo test -p portio-app diag` 13 passed
+- README 版本段 → v1.0.6-RC10，并改准一句事实（RC1–RC3 只改物料所以没出包，RC4 起每版都有自己的包）
+- docs/release-notes.md 当前状态补一句 RC10 修了什么 + 两处产物名
+- docs/site/index.html 五处版本串
+- docs/press-kit.md 下载表换 RC10 四产物与体积（3358285 / 9470333 / 4944570 / 83134968）
+- docs/rc-checklist.md 最近一次整跑改 RC10 / 20 项 / 86.2s，§7 补 RC10 行
+- docs/autopilot-log.md 追加当轮记录（含反向验证打出的真实命令行、main CI 五项全绿）
 
-只动空白与一处 `format!`→字面串，行为不变。
+验证：check_versions.py → OK v1.0.6-RC10；Select-String 复查四份文档已无 1.0.6-RC9 残留，
+press-kit 四产物名与体积与 Release 实际资产一致。

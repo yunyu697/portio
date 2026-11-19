@@ -1906,3 +1906,63 @@ let raw = match std::fs::read_to_string(&path) {
 - 桌面锁着，真窗口仍未点检；mac / linux 包仍只到"CI 构建通过"。
 - 无 SSH 服务器与凭据 → 真实登录、PTY、tmux、SFTP 传输一律未验证（长期阻塞）。
 
+
+## 2026-11-19 · v1.0.6-RC10 · 那个「定位日志文件」按钮，在我这台机器上是哑的
+
+上一轮日志的自检清单里写着：`diag_reveal` 的 Windows 分支值得实机点一次。真去读代码时发现，
+它不只是"要验证"，更像是本来就不会成功：
+
+```rust
+Command::new("explorer.exe")
+    .arg(format!("/select,{}", path.display()))
+```
+
+Rust 的 `Command::arg` 在 Windows 上会给含空格的参数加引号。`/select,<路径>` 是一个参数，
+而我的日志路径是 `C:\Users\Tyler Zhang\AppData\Local\…\portio.log`——用户目录里有空格。
+于是送出去的命令行变成：
+
+```
+"explorer.exe" "/select,C:\Users\Tyler Zhang\AppData\Local\…\portio.log"
+```
+
+引号把 `/select,` 一起包了进去。资源管理器解析到的开关名是 `/select,C:\Users\Tyler`，
+剩下的 `Zhang\AppData\…` 被当成别的参数——它去选一个不存在的路径。这个按钮在"用户名带空格"
+的机器上（我猜这是 Windows 上最常见的一类用户名）一直是没反应的，而用户无从知道是它坏了。
+
+资源管理器要的形态是 `/select,"C:\完整\路径"`：引号只包路径。改法两步：
+`select_arg` 拼 `/select,"<路径>"`；送出去时用 `CommandExt::raw_arg` 逐字写进命令行——
+explorer 不按常规引号规则解析，交给系统再拼一遍会被改坏。命令构造抽成
+`reveal_command(&path)`，生产路径和测试用同一处，这样测试才拦得住回归。
+
+**验证证据**
+
+- **反向验证**：把 `reveal_command` 改回 `.arg(format!("/select,{}", …))` →
+  新加的 `select_arg_keeps_the_switch_outside_the_quotes` FAIL，并把真实命令行打到日志里：
+  `"explorer.exe" "/select,C:\\Users\\Tyler Zhang\\AppData\\Local\\portio\\logs\\portio.log"`
+  （引号正好落在 `/select` 前面，就是那个 Bug 的样子）；还原后 ok。
+- **单测**：含空格的英文路径、含空格的中文路径（`D:\日志 目录\portio.log`）都断言"引号只包路径"；
+  再用 `Command` 的真实命令行断言"旧写法把开关括进引号、新写法没有"——不需要真开窗口。
+- **整跑**：`python scripts/rc.py` → **20 通过 / 0 失败 / 0 跳过**，86.2s
+  （`cargo test --workspace` **96 passed**，比 RC9 多出的正是这一条）；`cargo fmt --all --check` 与
+  `clippy -D warnings` 均 exit 0。
+- **CI**：main run `44518756656` 五项全 success（fmt/clippy/test 也绿了——上一轮 `b8915cf` 的补救生效）。
+- **发版**：推 `v1.0.6-RC10` → run `44518772700` gate + 三平台 build 全 success；Release
+  **`Portio 1.0.6-RC10`**（`prerelease: true`、`draft: false`）四资产：
+  exe 3358285 B / dmg 9470333 B / deb 4944570 B / AppImage 83134968 B。本地对照包 4558534 B。
+
+**下一步**
+
+1. 日志这条线还有一处真的没修：**轮转刚发生、`portio.log` 还是空的、内容都在 `portio.log.1` 里**时，
+   「看日志」与「复制诊断信息」都读到空。修法是"当前文件为空则回落到 `.1`"，属于下一个候选单元。
+2. 实机点检仍欠着：装上 RC10 → 设置 → 运行日志 →「定位」看资源管理器是不是真选中了那个文件。
+   桌面锁着做不了，等哪一轮桌面是开的时候补。
+3. 其余仍是等用户拍板的老项：许可证、打包目标（msi / rpm）、历史 tag 补打。
+
+**未验证项**
+
+- 资源管理器窗口里"是否真的选中了那个文件"**没有实机确认**：跑测试时 `LogonUI.exe` 在跑（桌面锁着），
+  开了窗口也截不到、看不见。命令行构造对了是测试证明的，窗口行为要靠实机点一次。
+- 只验证了 Windows 分支；mac `open -R` 与 linux `xdg-open` 这条路没动，也没在对应机器上跑过。
+- 桌面锁着，真窗口仍未点检；mac / linux 包仍只到"CI 构建通过"。
+- 无 SSH 服务器与凭据 → 真实登录、PTY、tmux、SFTP 传输一律未验证（长期阻塞）。
+
