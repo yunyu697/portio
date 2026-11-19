@@ -2016,3 +2016,56 @@ explorer 不按常规引号规则解析，交给系统再拼一遍会被改坏�
 - 桌面锁着，真窗口仍未点检；mac / linux 包仍只到"CI 构建通过"。
 - 无 SSH 服务器与凭据 → 真实登录、PTY、tmux、SFTP 传输一律未验证（长期阻塞）。
 
+
+## 2026-11-19 · v1.0.7-RC2 · 自定义开做：主色可换（六套预置）
+
+你说了句「现在软件的自定义程度太低了」。这句我认——以前能调的只有三样：主题（深/浅/跟随系统）、
+密度（标准/紧凑）、终端字号（11–18），主色、终端配色、字体、面板布局全钉死。
+
+按定下的四个方向（D-10 记录在 `docs/decisions.md`）逐轮做，本轮先铺地基：**把主色从写死变成可换**。
+
+**做了什么**
+
+- `ui/tokens.css` 末段开一组强调色预置：`html[data-accent="<名字>"]`，六套——teal 青（默认）/ azure 蓝 /
+  violet 紫 / amber 琥珀 / rose 玫瑰 / lime 青柠，深浅各一档（浅色下同一批色相压暗一档，白底上才看得清）。
+  每套只换**跟主色一起走的四个令牌**：`--accent`、`--on-accent`、`--mark-accent`、`--term-cursor`。
+- **ANSI 八色刻意不动**：红绿黄蓝是终端语义（`git diff`、`ls` 上色），跟着主色走会让人分不清
+  "这是成功还是我选了蓝色"。这条写进规范 §2 规则，新元素进 §10 #41。
+- 设置面板「主题」下面加了一排色片：`--ctl` 见方、`--r-6`、底色取 `--acc-*`，当前那颗用
+  "底色隔一道 + 主色环"（`0 0 0 --r-hair --surface, 0 0 0 --sp-1 --accent`）——
+  第一版直接画主色环，蓝色环套在蓝色块上等于没画，截图一看就知道错了。
+- 落盘 `portio.accent`，认不出的值回默认青；换色后把终端主题重挂一遍，光标才跟着变。
+- 新增演示钩子 `#accent-demo` / `#accent-demo-light`（与 `#theme-light` 同类，只给截图用）。
+
+**验证证据**
+
+- **新增自检 A21 `#accent-test`**（`ui/app.js` 末尾 + `scripts/rc.py` 分派链 A20 之后 + `rc-checklist` §1 一行）。
+  验的不是"我点了按钮"，而是"主色真的走到该去的地方、且没走到不该去的地方"：① 没选过时落默认青；
+  ② 换蓝后 `--accent` 与那张色片取到同一个值（不靠两处写死对上）；③ `--on-accent` 不许与 `--accent` 同色；
+  ④ 主按钮底色等于 `--accent`（关掉 160ms 过渡再量，否则读到过渡中的颜色——第一版就是这么挂的）；
+  ⑤ 切浅色后选的还是蓝、主色换成浅色那一档；⑥ 认不出的值回默认；⑦ 只有一颗色片是选中态；
+  ⑧ **ANSI 绿不跟着主色变**、而终端光标跟着。
+- **反向验证**：把 `root.dataset.accent = want` 改成恒等 `"teal"`（只记 localStorage、界面没换）→ A21 FAIL
+  并点出 8 条，原文含「换色后 data-accent 是 azure：\"teal\" ≠ \"azure\"」「--accent 就是蓝那张色片的值：
+  \"#2fb39a\" ≠ \"#4f9fdd\"」「ANSI 绿不跟着主色变：true ≠ false」；还原后 OK。
+- **整跑**：`python scripts/rc.py` → **21 通过 / 0 失败 / 0 跳过**（67.4s，A21 1.5s）；
+  `check_design_tokens.py`、`check_ui_scale.py`、`node --check ui/app.js`、`cargo fmt --all --check` 全 OK。
+- **截图核验**（无头 1180×690@2x，深浅各一张）：色片、选中环、主按钮、字号滑杆拇指都跟着主色；
+  深色下蓝色选中环有底色隔开，看得清。
+- **CI**：main run `44535030414` 五项全 success。
+- **发版**：`v1.0.7-RC2` → run `44535047553` gate + 三平台 build 全 success；Release `Portio 1.0.7-RC2`
+  （`prerelease: true`）四资产：exe 3359627 B / dmg 9477429 B / deb 4946390 B / AppImage 83143160 B；
+  本地对照包 4556762 B。
+
+**下一步**
+
+1. 自定义②**终端配色方案**：把终端配色从界面主题解耦，先给 Portio（现状）/ Dracula / Solarized Dark / Nord
+  四套，进 `html[data-term="<名字>"]`，落盘 `portio.termTheme`，配 `#term-theme-test`。
+2. 自定义③字号/字体/密度、自定义④布局与面板，顺序与要点都写进 `docs/backlog.md` 的「自定义」段。
+
+**未验证项**
+
+- 真窗口里没点过这套色片（桌面锁着，`LogonUI` 在跑），只做了无头截图。
+- 六套色在真实终端滚动内容上的观感（大量 ANSI 上色时为不为难眼睛）只看了静态截图。
+- mac / linux 包仍只到"CI 构建通过"；无 SSH 服务器与凭据 → 真实登录、PTY、SFTP 一律未验证（长期阻塞）。
+
