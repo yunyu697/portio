@@ -1760,3 +1760,72 @@ M12 的"能看见的那半句"按顺序走一遍：三条记录画三行、计�
 - macOS dmg 与 Linux deb / AppImage 只到"CI 构建通过"，**未在真机装过**。
 - 无 SSH 服务器与凭据 → 真实登录、PTY、tmux、SFTP 传输一律未验证（长期阻塞）。
 
+
+## 2026-11-19 · v1.0.6-RC8 · 崩溃那一行日志，可能根本写不进去
+
+上一轮日志留的下一步是"去清单 §3 挑一条打包 / 升级 / 日志类的收尾"。翻了 `crates/app/src/diag.rs`
+（运行日志与崩溃采集，338 行），撞到一个不需要服务器就能证明的缺陷。
+
+**发现的 Bug**
+
+`write_entry` 用一个进程级的 `AtomicBool` 挡重入：
+
+```rust
+static IN_HOOK: AtomicBool = AtomicBool::new(false);
+if IN_HOOK.swap(true, Ordering::SeqCst) { return; }   // 有人正在写 → 这一条直接扔掉
+...
+IN_HOOK.store(false, Ordering::SeqCst);
+```
+
+这个开关本来的意思只有一句："写日志自己炸了，崩溃钩子又要写一遍，别递归。"可它是**进程级**的，
+于是"别的线程正在写"也被当成了重入。现实里同时写日志的地方不止一处：
+
+- 界面那边 `window.onerror` 与 `unhandledrejection` 都走 `diag_log`，一次抛一串错误就是连续几条；
+- 几个 tokio 任务同时报错；
+- 最要命的一种：一个任务正在写日志时另一个任务 panic —— 崩溃那条**静默消失**，日志里连"丢过"都看不出来。
+
+**改法（两道闸各管一件事）**
+
+- **同线程重入**：换成 `thread_local` 的 `Cell<bool>`，配一个 `Drop` 自动复位。
+  panic 展开时必定复位，不然这个线程从此所有日志都会静默消失（比丢一条更坏）。
+- **跨线程**：排一把 `Mutex<()>`，一个写完再放下一个；前一个写的人炸了（poison）用
+  `into_inner()` 接着写，不让一次异常把整个日志功能废掉。
+- 顺带把落盘那半步抽成 `write_entry_to(file, level, source, message)`，让并发这条路能在单测里真跑
+  （不用为了测一句日志去造一个 `AppHandle`）。
+
+**两条单测**
+
+1. `concurrent_writers_never_lose_a_line`：8 线程 × 120 条 → 磁盘上必须**正好 960 行**；
+   每行只含一条日志（`[ERROR]` 出现次数 = 1，拦"两条的字插到同一行"）；120 个内容逐条都在、无重复。
+2. `reentry_on_the_same_thread_is_skipped_and_the_gate_resets`：重入被放过（不落盘、不递归），
+   且闸放开之后下一条必须真落盘——拦"闸卡死"。
+
+**验证证据**
+
+- **反向验证**：把互斥改回老写法（进程级 `AtomicBool` + `swap` 就 `return`）→
+  `concurrent_writers_never_lose_a_line` FAIL，点名
+  **「并发写日志丢了行：只落下来 120 / 960」**（8 个线程各写 120，最后只有 120 条落盘，其余 840 条全被丢）；
+  还原后立刻 ok。
+- **整跑**：`python scripts/rc.py` → **20 通过 / 0 失败 / 0 跳过**，111.4s
+  （A1 `cargo test --workspace` **92 passed**，比 RC7 那轮 90 条多出的正是这两条）。
+- 守卫：`check_design_tokens.py` / `check_ui_scale.py` 未涉及界面、仍随 A3/A4 全绿；`check_versions.py` → `OK v1.0.6-RC8`。
+- **发版**：推 `v1.0.6-RC8` → run `44503329899` gate + 三平台 build 全 success；Release
+  **`Portio 1.0.6-RC8`**（`prerelease: true`）四资产：exe 3356439 B / dmg 9463772 B / deb 4945556 B / AppImage 83139064 B。
+- 本地对照包 `tauri build --debug --bundles nsis` → `Portio_1.0.6-RC8_x64-setup.exe` 4556946 B。
+
+**下一步**
+
+1. 日志这条线还剩一处同性质的地方：`diag_tail`（「复制诊断信息」）用 `read_to_string` 读整份日志，
+   文件里只要有一个坏字节就整段返回空——**恰好是"日志坏了、我更需要把它交出去"的时候**。
+   下一轮若还走日志线，就把它改成按字节读 + 容错解码，并补一条"半截/损坏文件里仍能拿到前面几行"的单测。
+2. 或者换去 `diag_reveal`（Windows 走 `explorer.exe /select,<带空格的中文路径>`）——这条只在真机上能验，
+   属于 M 类手感。
+
+**未验证项**
+
+- 并发"不丢行"只在回环临时文件上证明过（8 线程 / 960 行）；真实机器上磁盘慢、日志目录被占用、
+  杀软扫描锁文件这类情形没模拟。
+- 崩溃钩子这条路没有真的触发过一次 panic 去录日志（要真让应用崩一次才能验），只有单测覆盖重入与复位。
+- 桌面锁着，真窗口仍未点检；mac / linux 包仍只到"CI 构建通过"。
+- 无 SSH 服务器与凭据 → 真实登录、PTY、tmux、SFTP 传输一律未验证（长期阻塞）。
+
