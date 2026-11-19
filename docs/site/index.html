@@ -215,7 +215,7 @@ html{scroll-behavior:smooth}
     <a href="#import">从别的工具搬过来</a>
     <a href="#files">文件与传输</a>
     <a href="#terminal">终端与快捷键</a>
-    <a href="#look">设置与外观</a>
+    <a href="#look">自定义</a>
     <a href="#trouble">出问题先看这里</a>
     <a href="#where">文件都放在哪</a>
     <a href="#ver">版本与进度</a>
@@ -386,7 +386,7 @@ html{scroll-behavior:smooth}
   <ul>
     <li><strong>双击目录</strong>进入；<strong>双击文件</strong>就传输（远端文件下载，本地文件上传到当前远端目录）。</li>
     <li><strong>拖拽</strong>：把系统里的文件拖到本地栏，等于上传到当前远端目录。</li>
-    <li><strong>权限列</strong>：远端行最右边是 <code>ls -l</code> 形态的权限串（<code>drwxr-xr-x</code>），看不出来源时为 <code>—</code>。</li>
+    <li><strong>权限列</strong>：远端行最右边是 <code>ls -l</code> 形态的权限串（<code>drwxr-xr-x</code>），看不出来源时为 <code>—</code>。嫌窄可以关掉（设置 → 文件面板 · 权限列），关掉那 68 像素还给文件名。</li>
     <li><strong>右键</strong>：远端行能下载 / 删除 / 重命名 / 新建目录；本地行能上传 / 重命名 / 在系统里打开。</li>
   </ul>
   <h3>传输队列</h3>
@@ -444,21 +444,60 @@ html{scroll-behavior:smooth}
 
 <!-- ===== 设置与外观 ===== -->
 <section id="look">
-  <h2><span class="n">08</span>设置与外观</h2>
-  <p>标题栏右上角三个图标：主题、快捷键一览、设置。</p>
+  <h2><span class="n">08</span>自定义</h2>
+  <p>标题栏右上角三颗图标：主题、快捷键一览、设置。设置里十六项，分两批：<strong>改完立刻生效的</strong>，
+  和<strong>只管下一次打开时的</strong>。后者不会为了你改一个设置就把眼前的窗口重排一遍——它说的是下次。</p>
+
+  <h3>改完立刻生效</h3>
   <table>
     <thead><tr><th class="w">设置项</th><th>可选</th></tr></thead>
     <tbody>
-      <tr><td class="w">主题</td><td>深色 / 浅色 / 跟随系统（点一下轮换）</td></tr>
-      <tr><td class="w">界面密度</td><td>标准 / 紧凑（紧凑会把行高收窄一档，一屏多看几行）</td></tr>
-      <tr><td class="w">终端字号</td><td>11–18</td></tr>
-      <tr><td class="w">终端滚动缓冲</td><td>2000 / 8000 / 20000 行</td></tr>
-      <tr><td class="w">已知主机</td><td>列出已信任的主机与指纹，可逐条删除</td></tr>
+      <tr><td class="w">主题</td><td>深色 / 浅色 / 跟随系统（点标题栏那颗钮也能轮换）</td></tr>
+      <tr><td class="w">强调色</td><td>青（默认）/ 蓝 / 紫 / 琥珀 / 玫瑰 / 青柠。主色只管界面——按钮、选中、把手、终端光标；
+      终端里红绿黄蓝那套语义色不跟着变，<code>grep</code> 出来的绿还是绿。</td></tr>
+      <tr><td class="w">界面字号</td><td>标准 / 大一号。只抬界面文字（会话名、按钮、路径），终端里的字不动。</td></tr>
+      <tr><td class="w">界面密度</td><td>紧凑 / 标准 / 宽松，行高 24 / 28 / 32 像素，相邻两档差 4。只改高度，左右位置一寸不挪。</td></tr>
+      <tr><td class="w">终端配色</td><td>跟界面 / Dracula / Solarized / Nord。选了预设之后，界面切深浅都不再带动终端——
+      终端那套色自己站住；光标始终跟主色走。</td></tr>
+      <tr><td class="w">终端字号</td><td>9–24，拖动即时生效；换字号会按新格子重算列数，读数跟着变。</td></tr>
+      <tr><td class="w">等宽字体</td><td>自动 / JetBrains / Cascadia / Consolas。机器上没装这一家就按次序回落，
+      绝不回落到比例字体——那会让每一列都错位。</td></tr>
+      <tr><td class="w">文件面板 · 权限列</td><td>显示 / 隐藏。藏起来那 68 像素还给文件名，行高和右对齐的两列一动不动。</td></tr>
+      <tr><td class="w">终端滚动缓冲</td><td>2000 行 / 8000 行 / 20000 行（新开的终端按这个来）</td></tr>
+    </tbody>
+  </table>
+
+  <h3>只管下一次打开</h3>
+  <table>
+    <thead><tr><th class="w">设置项</th><th>可选</th></tr></thead>
+    <tbody>
+      <tr><td class="w">会话栏 · 启动时</td><td>记住上次 / 总是展开 / 总是收起</td></tr>
+      <tr><td class="w">文件面板 · 启动时</td><td>记住上次 / 总是展开 / 总是收起</td></tr>
+      <tr><td class="w">面板宽度 · 打开时</td><td>记住上次 / 用默认。用默认 = 会话栏回到下面那档宽度、终端与文件各占一半、
+      传输队列回到一行高；分栏和抽屉不另给档。</td></tr>
+      <tr><td class="w">默认会话栏宽度</td><td>窄 200 / 标准 264 / 宽 328（像素）</td></tr>
+      <tr><td class="w">终端 · 开局格数</td><td>单屏 / 2×2 四格。只管打开时第一个标签摆几格，新开的标签仍是一格；
+      四格平摊，窄窗里每格会很窄。</td></tr>
+    </tbody>
+  </table>
+
+  <div class="note">
+    「记住上次」与「用默认」是两层，不是二选一：拖出来的宽度永远记着，选「用默认」只是开机时不拿它当准。
+    哪天换回「记住上次」，上次拖到 360 它就还是 360——不会被默认值顶掉。
+  </div>
+
+  <h3>面板与维护</h3>
+  <table>
+    <thead><tr><th class="w">设置项</th><th>可选</th></tr></thead>
+    <tbody>
+      <tr><td class="w">已知主机</td><td>列出已信任的主机与指纹，可逐条删除；删一条只是让它下次重新走首次信任，不是关掉校验</td></tr>
       <tr><td class="w">运行日志</td><td>日志路径、当前体积、「打开位置」「复制诊断」</td></tr>
     </tbody>
   </table>
+
   <p>这些都记在本机，下次打开还是你调的样子。界面元素的高度、间距、颜色都走同一套令牌，
-  深色浅色两套主题对得上——同一个钮在两个主题里不该长得不一样。</p>
+  深色浅色两套主题对得上——同一个钮在两个主题里不该长得不一样。这一页的每一项、
+  每一个档位都有一条脚本对着代码核（<code>scripts/check_site.py</code>），跟不上就会红。</p>
 </section>
 
 <!-- ===== 故障排查 ===== -->
