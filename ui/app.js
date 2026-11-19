@@ -418,6 +418,38 @@ function applyBootPanes(id) {
   localStorage.setItem(PANES_KEY, PANES_MODES.includes(id) ? id : "single");
   syncSegs();
 }
+// ---------- 面板宽度：记忆层之外再给一层默认 ----------
+// 原来只有一层：拖过就落盘，开机照上次的来。可"开机就要某个固定宽度"的人没得选，
+// 而上一次拖出来的宽窄，常常只是临时为某台机器、某个文件面板调的。
+// 所以拆成两层：remember 照旧看记忆层；default 每次开机回到下面那档默认宽度
+//（分栏回 50/50、传输队列回一行高——一个「默认布局」该有的样子）。
+// 这一层只决定开机那一刻：改它不许当场改宽度，也不许把记忆层擦掉——
+// 拖出来的宽度仍记在盘里，换回「记住上次」就还是它。
+const LAYOUT_KEY = "portio.bootLayout";
+const LAYOUT_MODES = ["remember", "default"];
+const LAYOUT_NAME = { remember: "记住上次", default: "用默认" };
+const DEFW_KEY = "portio.defWidth";
+// 三档都落在 180–420 的拖拽区间里，且是 4px 的整数倍（对应规范 §1 的 4px 刻度）
+const DEFW_MODES = [200, 264, 328];
+const DEFW_NAME = { 200: "窄", 264: "标准", 328: "宽" };
+const DEFW_FALLBACK = 264;
+function readLayoutMode() {
+  const v = localStorage.getItem(LAYOUT_KEY);
+  return LAYOUT_MODES.includes(v) ? v : "remember"; // 认不出的值回「记住上次」：别让人一开机就丢了自己刚拖的宽度
+}
+function applyLayoutMode(id) {
+  localStorage.setItem(LAYOUT_KEY, LAYOUT_MODES.includes(id) ? id : "remember");
+  syncSegs();
+}
+function readDefWidth() {
+  const n = Number(localStorage.getItem(DEFW_KEY));
+  return DEFW_MODES.includes(n) ? n : DEFW_FALLBACK; // 认不出的值回「标准」，别把侧栏开成个怪宽度
+}
+function applyDefWidth(px) {
+  const n = Number(px);
+  localStorage.setItem(DEFW_KEY, String(DEFW_MODES.includes(n) ? n : DEFW_FALLBACK));
+  syncSegs();
+}
 function syncSegs() {
   markSeg("seg-theme", localStorage.getItem("portio.theme") ?? "dark");
   markSeg("seg-density", root.dataset.density ?? "standard");
@@ -429,6 +461,8 @@ function syncSegs() {
   markSeg("seg-boot-files", readBoot(BOOT_FILES_KEY));
   markSeg("seg-perm", readPerm());
   markSeg("seg-panes", readPanes());
+  markSeg("seg-layout", readLayoutMode());
+  markSeg("seg-defw", String(readDefWidth()));
   syncAccentDots();
   const font = document.getElementById("set-font");
   if (font) font.value = String(readFontSize());
@@ -580,6 +614,19 @@ document.getElementById("seg-panes").addEventListener("click", (e) => {
   applyBootPanes(btn.dataset.v);
   toast(`开局格数：${PANES_NAME[btn.dataset.v] ?? PANES_NAME.single}（下次打开生效）`);
 });
+document.getElementById("seg-layout").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  // 只管开机：改完不动眼前宽度（跟「启动时」两行同一套口径）
+  applyLayoutMode(btn.dataset.v);
+  toast(`面板宽度：${LAYOUT_NAME[btn.dataset.v] ?? LAYOUT_NAME.remember}（下次打开生效）`);
+});
+document.getElementById("seg-defw").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  applyDefWidth(btn.dataset.v);
+  toast(`默认会话栏宽度：${DEFW_NAME[Number(btn.dataset.v)] ?? DEFW_NAME[DEFW_FALLBACK]}（下次打开生效）`);
+});
 document.getElementById("acc-row").addEventListener("click", (e) => {
   const dot = e.target.closest(".acc-dot");
   if (!dot) return;
@@ -652,13 +699,17 @@ document.getElementById("btn-log-copy").addEventListener("click", async () => {
   copyText(`${head}\n\n最近日志：\n${tail || "(空)"}`);
 });
 
-// ---------- 可拖拽尺寸：三处，都持久化 ----------
+// ---------- 可拖拽尺寸：三处，记忆层 ----------
+// 每个尺寸拆两半：setX 只改界面，applyX 改界面 + 落盘（给用户手拖用）。
+// 拆的理由跟面板收放那次一样——开机按「打开时」偏好落尺寸时，不许顺手把记忆层改写掉；
+// 否则「用默认」开一次，上次拖出来的宽度就没了。
 const PREF = {
   sidebar: { key: "portio.sidebar", min: 180, max: 420 },
   split: { key: "portio.split", min: 0.32, max: 0.66 },
   // 抽屉的最小高度就是一行标题条：收起时只剩「传输队列 0 … 展开」这一行
   drawer: { key: "portio.drawer", min: 28, max: 360 },
 };
+const DEFAULT_DRAWER = 172;
 
 function readNum(key, fallback) {
   const raw = localStorage.getItem(key);
@@ -667,21 +718,29 @@ function readNum(key, fallback) {
 }
 
 // 侧栏宽度
-function applySidebar(px) {
+function setSidebarUI(px) {
   root.style.setProperty("--sidebar", `${Math.round(px)}px`);
+}
+function applySidebar(px) {
+  setSidebarUI(px);
   localStorage.setItem(PREF.sidebar.key, String(Math.round(px)));
 }
 // 终端:文件比例
-function applySplit(ratio) {
+function setSplitUI(ratio) {
   root.style.setProperty("--split", `${(ratio * 100).toFixed(2)}%`);
+}
+function applySplit(ratio) {
+  setSplitUI(ratio);
   localStorage.setItem(PREF.split.key, ratio.toFixed(4));
 }
+function clampSplit(ratio) {
+  return Math.min(PREF.split.max, Math.max(PREF.split.min, ratio));
+}
 // 抽屉高度
-let drawerLast = 172;
-function applyDrawer(px) {
+let drawerLast = DEFAULT_DRAWER;
+function setDrawerUI(px) {
   const h = Math.round(px);
   root.style.setProperty("--drawer", `${h}px`);
-  localStorage.setItem(PREF.drawer.key, String(h));
   // 收到一行高就算"收起"：正文整块隐藏，别在标题条下面留半指宽的空白
   const collapsed = h <= PREF.drawer.min + 2;
   document.getElementById("drawer").classList.toggle("collapsed", collapsed);
@@ -689,6 +748,21 @@ function applyDrawer(px) {
   if (head) head.querySelector(".right").textContent = collapsed ? "展开" : "收起";
   // 抽屉一变，终端可用高度跟着变，量一次尺寸
   requestAnimationFrame(() => fitQuietly());
+}
+function applyDrawer(px) {
+  setDrawerUI(px);
+  localStorage.setItem(PREF.drawer.key, String(Math.round(px)));
+}
+// 侧栏宽度该用哪个：记住上次 → 记忆层；用默认 → 默认档。折叠态不归它管（setFoldUI 自己归零）。
+function layoutWidth() {
+  return readLayoutMode() === "default" ? readDefWidth() : readNum(PREF.sidebar.key, readDefWidth());
+}
+// 开机落一次三处尺寸：只动界面、不写盘，记忆层原样留着
+function applyBootLayout() {
+  const useDefault = readLayoutMode() === "default";
+  if (!sidebarFolded) setSidebarUI(useDefault ? readDefWidth() : readNum(PREF.sidebar.key, readDefWidth()));
+  setSplitUI(useDefault ? 0.5 : clampSplit(readNum(PREF.split.key, 0.5)));
+  setDrawerUI(useDefault ? DEFAULT_DRAWER : readNum(PREF.drawer.key, DEFAULT_DRAWER));
 }
 
 // 把手不再按像素贴边：位置由栅格与 CSS 的 calc() 决定（见 index.html 的 .main/.split/.gutter-h），
@@ -728,7 +802,7 @@ function setFoldUI(folded) {
   if (folded) {
     root.style.setProperty("--sidebar", "0px");
   } else {
-    applySidebar(readNum(PREF.sidebar.key, 264));
+    setSidebarUI(layoutWidth());
   }
   // 折叠展开改变了终端可用宽度，布局稳定后再 fit 一次，否则列数不对
   requestAnimationFrame(() => fitQuietly());
@@ -1008,11 +1082,11 @@ applyTerm(readTerm());
 applyUiFont(readUiFont());
 applyMono(readMono());
 applyPerm(readPerm());
-applySidebar(readNum(PREF.sidebar.key, 264));
+// 尺寸这一层：先按「启动时」定两块面板的收放（展开时会顺手把该用的宽度落上去），
+// 再按「打开时」那一档落三处尺寸。两步都只动界面，记忆层一个字都不改。
 applyBootSide();
-applySplit(Math.min(PREF.split.max, Math.max(PREF.split.min, readNum(PREF.split.key, 0.5))));
+applyBootLayout();
 applyBootFiles();
-applyDrawer(readNum(PREF.drawer.key, 172));
 
 // 核验用：把两处「启动时」摆出来给截图看（#boot-demo / #boot-demo-light）——
 // 会话栏设成「总是收起」、文件面板设成「总是展开」，再按启动那一刻的口径落一遍，
@@ -1662,6 +1736,83 @@ if (location.hash === "#panes-test") {
     syncSegs();
   }
   document.title = fails.length ? "ERR: " + fails.join(" / ") : `PANES-SELFTEST-OK ${JSON.stringify(seen)}`;
+}
+
+// 带 #layout-test 核一遍「面板宽度」两层：记忆层照旧记、默认层只给开机用、认不出的值各回各的默认
+if (location.hash === "#layout-test") {
+  const fails = [];
+  const ok = (cond, msg) => { if (!cond) fails.push(msg); };
+  const seen = {};
+  const prev = {
+    layout: localStorage.getItem(LAYOUT_KEY),
+    defw: localStorage.getItem(DEFW_KEY),
+    side: localStorage.getItem(PREF.sidebar.key),
+    split: localStorage.getItem(PREF.split.key),
+    drawer: localStorage.getItem(PREF.drawer.key),
+  };
+  const segOn = (id) =>
+    [...document.querySelectorAll(`#${id} button`)].filter((b) => b.classList.contains("on")).map((b) => b.dataset.v)[0];
+  const varOf = (name) => root.style.getPropertyValue(name);
+  try {
+    // ① 出厂态：两层都没选过 → 记住上次 / 标准，盘里不该有键
+    localStorage.removeItem(LAYOUT_KEY);
+    localStorage.removeItem(DEFW_KEY);
+    syncSegs();
+    ok(readLayoutMode() === "remember", `没选过时读到的应是记住上次：${readLayoutMode()}`);
+    ok(segOn("seg-layout") === "remember", `出厂时 seg 应选记住上次：${segOn("seg-layout")}`);
+    ok(segOn("seg-defw") === "264", `出厂时宽度档应选标准：${segOn("seg-defw")}`);
+    ok(localStorage.getItem(LAYOUT_KEY) === null && localStorage.getItem(DEFW_KEY) === null, "出厂时盘里不该有这两个键");
+
+    // ② 拖一次宽度：记忆层落盘、界面跟着走
+    setFoldUI(false);
+    applySidebar(360);
+    ok(varOf("--sidebar") === "360px", `拖完 --sidebar 应是 360px：${varOf("--sidebar")}`);
+    ok(localStorage.getItem(PREF.sidebar.key) === "360", `拖完应落盘 360：${localStorage.getItem(PREF.sidebar.key)}`);
+
+    // ③ 切成「用默认 + 窄」：按开机口径重落一次 → 侧栏 200、分栏 50/50、抽屉 172，
+    //    但记忆层一点不许被改写（盘里仍是 360 / 0.66 / 200）
+    applySplit(0.66);
+    applyDrawer(200);
+    applyLayoutMode("default");
+    applyDefWidth(200);
+    applyBootLayout();
+    ok(varOf("--sidebar") === "200px", `用默认应落到 200px：${varOf("--sidebar")}`);
+    ok(varOf("--split") === "50.00%", `用默认分栏应回 50.00%：${varOf("--split")}`);
+    ok(varOf("--drawer") === "172px", `用默认抽屉应回 172px：${varOf("--drawer")}`);
+    ok(localStorage.getItem(PREF.sidebar.key) === "360", `用默认不许改写宽度记忆：${localStorage.getItem(PREF.sidebar.key)}`);
+    ok(localStorage.getItem(PREF.split.key) === "0.6600", `用默认不许改写分栏记忆：${localStorage.getItem(PREF.split.key)}`);
+    ok(localStorage.getItem(PREF.drawer.key) === "200", `用默认不许改写抽屉记忆：${localStorage.getItem(PREF.drawer.key)}`);
+
+    // ④ 换回「记住上次」：再落一次 → 三处都回到记忆层
+    applyLayoutMode("remember");
+    applyBootLayout();
+    ok(varOf("--sidebar") === "360px", `记住上次应回到 360px：${varOf("--sidebar")}`);
+    ok(varOf("--split") === "66.00%", `记住上次分栏应回到 66.00%：${varOf("--split")}`);
+    ok(varOf("--drawer") === "200px", `记住上次抽屉应回到 200px：${varOf("--drawer")}`);
+    seen.layout = [varOf("--sidebar"), varOf("--split"), varOf("--drawer")];
+
+    // ⑤ 认不出的值：各回各的默认，且不许把垃圾回写进盘
+    localStorage.setItem(LAYOUT_KEY, "auto");
+    localStorage.setItem(DEFW_KEY, "300");
+    ok(readLayoutMode() === "remember", `认不出的布局档应读成记住上次：${readLayoutMode()}`);
+    ok(readDefWidth() === 264, `不在三档里的宽度应读成标准：${readDefWidth()}`);
+    applyLayoutMode("auto");
+    applyDefWidth(300);
+    ok(localStorage.getItem(LAYOUT_KEY) === "remember", `认不出的布局档不该回写进盘：${localStorage.getItem(LAYOUT_KEY)}`);
+    ok(localStorage.getItem(DEFW_KEY) === "264", `不在三档里的宽度不该回写进盘：${localStorage.getItem(DEFW_KEY)}`);
+  } finally {
+    // 清场：五个键按原样放回，尺寸与选中态都按开机口径重落一遍
+    for (const [k, v] of [
+      [LAYOUT_KEY, prev.layout], [DEFW_KEY, prev.defw], [PREF.sidebar.key, prev.side],
+      [PREF.split.key, prev.split], [PREF.drawer.key, prev.drawer],
+    ]) {
+      if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v);
+    }
+    applyBootSide();
+    applyBootLayout();
+    syncSegs();
+  }
+  document.title = fails.length ? "ERR: " + fails.join(" / ") : `LAYOUT-SELFTEST-OK ${JSON.stringify(seen)}`;
 }
 
 new ResizeObserver(() => fitQuietly()).observe(termHost);
@@ -2411,6 +2562,17 @@ if (location.hash === "#panes-demo-light") applyTheme("light");
 if (location.hash === "#panes-demo-set") toggleSettings(true);
 // 演示页在启动那串 applyX 之后才改的偏好，seg 的选中态要补一次才跟得上
 if (location.hash.startsWith("#panes-demo")) syncSegs();
+
+// 核验用：把「用默认 + 宽」的样子摆出来（#layout-demo / #layout-demo-light / #layout-demo-set）。
+// 演示页是在启动那串 applyX 之后才改偏好，所以改完要按开机口径重落一次尺寸，再补一次选中态。
+if (["#layout-demo", "#layout-demo-light", "#layout-demo-set"].includes(location.hash)) {
+  applyLayoutMode("default");
+  applyDefWidth(328);
+  applyBootLayout();
+  if (location.hash === "#layout-demo-light") applyTheme("light");
+  if (location.hash === "#layout-demo-set") toggleSettings(true);
+  syncSegs();
+}
 
 // ---------- 文件双栏 ----------
 const remoteListEl = document.getElementById("remote-list");

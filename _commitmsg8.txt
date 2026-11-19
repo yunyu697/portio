@@ -1,0 +1,16 @@
+feat(layout): 面板宽度分两层（记住上次 / 用默认 + 默认宽度三档）
+
+原来三处尺寸只有一层：拖过就落盘、开机照盘里的再落一次，只要开机改用默认，上次拖出来的宽度就被默认值顶掉。
+现在拆开——setSidebarUI / setSplitUI / setDrawerUI 只改界面，applySidebar / applySplit / applyDrawer 才写记忆层；
+新增 applyBootLayout()，remember 读记忆键，default 只读 portio.defWidth（窄 200 / 标准 264 / 宽 328），
+分栏固定 50/50、抽屉固定一行高，开机按偏好落尺寸一个字都不写盘。
+顺带修掉 setFoldUI 展开时误调 applySidebar 的隐式落盘。
+新建 A27 #layout-test（出厂态 / 拖拽落盘 / 用默认三处回默认且记忆层不改 / 换回记住上次原样回到 360px-66%-200px / 认不出的值各回各默认且不回写）。
+
+验证：python scripts\rc.py → 27 通过 / 0 失败 / 0 跳过，192.2s
+（A1 cargo test --workspace 97 passed 130.4s，A27 1.7s，标题 LAYOUT-SELFTEST-OK {"layout":["360px","66.00%","200px"]}）；
+反向验证三条全翻红：① 开机落尺寸顺手落盘 → 「用默认不许改写宽度记忆：200」「记住上次应回到 360px：200px」；
+② readLayoutMode 去白名单 → 「认不出的布局档应读成记住上次：auto」；③ 分栏不退 50% → 「用默认分栏应回 50.00%：66.00%」。
+check_design_tokens / check_ui_scale / node --check 均 OK；check_versions OK v1.0.7-RC8；
+截图 _layout_dark / _layout_light / _layout_set / _layout_narrow（会话栏右缘 x≈655/2360 → 327.5px≈328，分栏 50/50）。
+未验证：真窗口重启后三档默认宽度、用默认下拖拽再换回记住上次的手感、拖拽两端边界。
