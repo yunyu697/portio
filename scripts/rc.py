@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / SKIP。
 
-对应 docs/rc-checklist.md §1 的 A1–A24。以前这些步骤散在日志里，每轮都要手打一遍命令，
+对应 docs/rc-checklist.md §1 的 A1–A25。以前这些步骤散在日志里，每轮都要手打一遍命令，
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
 
 用法：
@@ -275,6 +275,7 @@ def main(argv: list[str]) -> int:
         ("A22", "#term-theme-test = TERM-THEME-SELFTEST-OK（终端配色三套：成套换/跟界面主题解耦/真终端对象也换了/与强调色互不干扰）", True),
         ("A23", "#font-test = FONT-SELFTEST-OK（界面字号两档与终端字号互不带动/字号越界回落/等宽字体四选落到真终端且带 monospace 兜底/密度三档各差 4px）", True),
         ("A24", "#boot-test = BOOT-SELFTEST-OK（启动布局三档：记住上次/总是展开/总是收起，改设置不动眼前布局也不污染记忆态，模拟启动后两处面板真的收放）", True),
+    ("A25", "#perm-test = PERM-SELFTEST-OK（文件面板权限列：关掉后整条轨道收走、名字列吃掉那 68px、右对齐两列与行高一点不动，认不出的值回「显示」且不回写）", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -356,9 +357,12 @@ def main(argv: list[str]) -> int:
         elif code == "A23":
             # 字号 / 字体 / 密度三套设置轮着换、每处都要读真终端对象，给 8s 虚拟时间
             status, detail = a_page(chrome, profile, "#font-test", "FONT-SELFTEST-OK", "1180,690", 8000)
-        else:
+        elif code == "A24":
             # 启动布局三档来回切、还要模拟两次启动（收放面板会改终端宽高、要重量格子），给 8s 虚拟时间
             status, detail = a_page(chrome, profile, "#boot-test", "BOOT-SELFTEST-OK", "1180,690", 8000)
+        else:
+            # 权限列开关要在同一条真行上量「关前 / 关后」的列宽与右缘，给 8s 虚拟时间
+            status, detail = a_page(chrome, profile, "#perm-test", "PERM-SELFTEST-OK", "1180,690", 8000)
         results.append((code, label, status, detail))
         print(f"[{status}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
 

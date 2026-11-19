@@ -232,6 +232,10 @@
   .fp-row{display:grid;grid-template-columns:16px minmax(0,1fr) 64px 80px;align-items:center;gap:4px;
           height:var(--row);padding:0 8px;cursor:default;font-size:var(--fs-12)}
   .fp-row.has-perm{grid-template-columns:16px minmax(0,1fr) 68px 64px 80px}
+  /* 权限列可以关掉：关掉时整条轨道收走（不是把单元格留空），名字列吃掉那 68px。
+     只换列，不动行高——密度那一档的规矩在这里一样适用。 */
+  html[data-perm="hide"] .fp-row.has-perm{grid-template-columns:16px minmax(0,1fr) 64px 80px}
+  html[data-perm="hide"] .fp-row .pm{display:none}
   .fp-row:hover{background:var(--surface-2)}
   .fp-row.sel{background:var(--surface-3);box-shadow:inset 2px 0 0 var(--accent)}
   .fp-row .ico{color:var(--text-3);font-size:var(--fs-11);text-align:center}
@@ -495,7 +499,7 @@
         <rect x="11.2" y="16.1" width="4.2" height="1.5" rx=".75" fill="var(--mark-accent)" opacity=".5"/>
         <rect x="15.4" y="11.3" width="3.6" height="1.4" rx=".7" fill="var(--mark-accent)"/>
       </svg>
-      <b data-tauri-drag-region>Portio</b><span class="ver" data-tauri-drag-region>1.0.7-RC5</span>
+      <b data-tauri-drag-region>Portio</b><span class="ver" data-tauri-drag-region>1.0.7-RC6</span>
     </div>
     <!-- 标签条本身就是标题栏里最大的一片空白，之前没挂 drag 区域，
          于是整条中间地段都点不动窗口。挂上后：空白处可拖、可双击最大化，标签项照常点击。 -->
@@ -754,6 +758,14 @@
             <button data-v="folded">总是收起</button>
           </div>
           <p class="hint">只管下次打开 Portio 时这两块面板的样子，眼前这一下不动手；宽度和分栏比例照旧记你上次拖出来的。</p>
+        </div>
+        <div class="field">
+          <label>文件面板 · 权限列</label>
+          <div class="seg" id="seg-perm">
+            <button data-v="show">显示</button>
+            <button data-v="hide">隐藏</button>
+          </div>
+          <p class="hint">远端行上那串 <code>drwxr-xr-x</code>。嫌它挤就藏起来——那 68 像素会还给文件名，行高不动。本地行本来就没有这一列。</p>
         </div>
 
         <div class="field">

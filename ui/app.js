@@ -383,6 +383,26 @@ function applyBootMode(key, mode) {
 function bootFold(mode, remembered) {
   return mode === "open" ? false : mode === "folded" ? true : remembered;
 }
+// ---------- 文件面板的权限列 ----------
+// 远端行比本地行多一列 drwxr-xr-x。它有用（看得出可执行 / 可写），也真占地方：
+// 窄窗里 68px 常常是从文件名里抢来的。所以给一个开关，关掉时**整条轨道收走**、名字列吃掉那 68px，
+// 行高一点不动（密度那档的规矩照旧）。本地行本来没有这一列，开关不碰它。
+const PERM_KEY = "portio.permCols";
+const PERM_MODES = ["show", "hide"];
+function readPerm() {
+  const v = localStorage.getItem(PERM_KEY);
+  return PERM_MODES.includes(v) ? v : "show"; // 认不出的值回「显示」，别把一列信息无声地藏掉
+}
+function applyPerm(id) {
+  const want = PERM_MODES.includes(id) ? id : "show";
+  localStorage.setItem(PERM_KEY, want);
+  if (want === "hide") {
+    root.dataset.perm = "hide";
+  } else {
+    delete root.dataset.perm; // 默认档不留属性，省得以后改默认时被旧值压着
+  }
+  syncSegs();
+}
 function syncSegs() {
   markSeg("seg-theme", localStorage.getItem("portio.theme") ?? "dark");
   markSeg("seg-density", root.dataset.density ?? "standard");
@@ -392,6 +412,7 @@ function syncSegs() {
   markSeg("seg-term", readTerm());
   markSeg("seg-boot-side", readBoot(BOOT_SIDE_KEY));
   markSeg("seg-boot-files", readBoot(BOOT_FILES_KEY));
+  markSeg("seg-perm", readPerm());
   syncAccentDots();
   const font = document.getElementById("set-font");
   if (font) font.value = String(readFontSize());
@@ -528,6 +549,13 @@ document.getElementById("seg-boot-files").addEventListener("click", (e) => {
   if (!btn) return;
   applyBootMode(BOOT_FILES_KEY, btn.dataset.v);
   toast(`文件面板启动时：${BOOT_NAME[btn.dataset.v] ?? BOOT_NAME.remember}（下次打开生效）`);
+});
+document.getElementById("seg-perm").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  // 这一档是立刻看得见效果的：藏起来那一下，文件名马上多出 68px，不用等下次打开
+  applyPerm(btn.dataset.v);
+  toast(btn.dataset.v === "hide" ? "文件面板：权限列已隐藏" : "文件面板：权限列已显示");
 });
 document.getElementById("acc-row").addEventListener("click", (e) => {
   const dot = e.target.closest(".acc-dot");
@@ -956,6 +984,7 @@ applyAccent(readAccent());
 applyTerm(readTerm());
 applyUiFont(readUiFont());
 applyMono(readMono());
+applyPerm(readPerm());
 applySidebar(readNum(PREF.sidebar.key, 264));
 applyBootSide();
 applySplit(Math.min(PREF.split.max, Math.max(PREF.split.min, readNum(PREF.split.key, 0.5))));
@@ -973,6 +1002,37 @@ if (location.hash === "#boot-demo" || location.hash === "#boot-demo-light") {
   applyBootFiles();
   if (location.hash === "#boot-demo-light") applyTheme("light");
   toggleSettings(true);
+}
+
+// 核验用：把权限列藏起来的样子摆出来（#perm-demo / #perm-demo-light 看文件面板本身，
+// #perm-demo-set 额外把设置面板也打开看那两档）。无头页没有后端，文件面板里只有一行
+// "空目录"提示，所以塞两条真行进去才看得出列怎么挪的。
+if (location.hash === "#perm-demo" || location.hash === "#perm-demo-light" || location.hash === "#perm-demo-set") {
+  const fakeRemote = [
+    ["▸", "dir", "release-notes-v0.4-draft", "drwxr-xr-x", "—", "2026-11-20 09:12"],
+    ["·", "", "portio_1.0.7-RC5_x64-setup.exe", "-rw-rw-r--", "4.36 MB", "2026-11-20 09:12"],
+  ];
+  const fakeLocal = [
+    ["·", "", "portio-installer-notes.md", "6.2 KB", "2026-11-20 09:12"],
+  ];
+  const fill = (host, rows, perm) => {
+    if (!host) return;
+    host.textContent = "";
+    for (const r of rows) {
+      const row = document.createElement("div");
+      row.className = `fp-row${r[1] ? " " + r[1] : ""}${perm ? " has-perm" : ""}`;
+      row.innerHTML =
+        `<span class="ico">${r[0]}</span><span class="nm">${r[2]}</span>` +
+        (perm ? `<span class="pm">${r[3]}</span>` : "") +
+        `<span class="sz">${perm ? r[4] : r[3]}</span><span class="tm">${perm ? r[5] : r[4]}</span>`;
+      host.append(row);
+    }
+  };
+  fill(document.getElementById("remote-list"), fakeRemote, true);
+  fill(document.getElementById("local-list"), fakeLocal, false);
+  applyPerm("hide");
+  if (location.hash === "#perm-demo-light") applyTheme("light");
+  if (location.hash === "#perm-demo-set") toggleSettings(true);
 }
 
 
@@ -4403,6 +4463,147 @@ if (location.hash === "#boot-test") {
     document.title = bad.length
       ? `BOOT-SELFTEST-FAIL ${JSON.stringify(bad)} ${JSON.stringify(seen)}`
       : `BOOT-SELFTEST-OK ${JSON.stringify(seen)}`;
+  })();
+}
+
+// ---------- 无头自检：#perm-test（文件面板的权限列能不能真关掉） ----------
+// 这一列最容易做错成"把单元格 display:none，轨道还留着 68px 空位"——
+// 看着像藏了，文件名其实一点没变宽。判据围着这件事转：
+//   ① 出厂态：没有 data-perm、seg 选「显示」、盘里没有这个键；
+//   ② 关掉之后整条轨道收走（grid 从 5 列变 4 列），权限单元格真看不见；
+//   ③ 名字列吃掉那 68px（多出来的宽度就在 68 上下），而大小 / 时间两列的右缘**一点不动**（右对齐不许挪）；
+//   ④ 行高一点不动（等于 --row）、行宽一点不动；
+//   ⑤ 本地行本来就 4 列，不受影响；
+//   ⑥ 认不出的值读成「显示」，且不回写垃圾；
+//   ⑦ 落盘与 seg 选中。
+if (location.hash === "#perm-test") {
+  (function permTest() {
+    const bad = [];
+    const seen = {};
+    const byId = (id) => document.getElementById(id);
+    const tok = (name) => getComputedStyle(root).getPropertyValue(name).trim();
+    const px = (v) => Math.round(parseFloat(v) * 2) / 2;
+    function expect(what, got, want) {
+      if (JSON.stringify(got) !== JSON.stringify(want)) {
+        bad.push(`${what}：${JSON.stringify(got)} ≠ ${JSON.stringify(want)}`);
+      }
+    }
+    function near(what, got, want, tol) {
+      if (!(Math.abs(got - want) <= tol)) bad.push(`${what}：${got} ≠ ${want}（差 ${px(got - want)}）`);
+    }
+    function onSeg(id) {
+      const box = byId(id);
+      return box ? [...box.querySelectorAll("button.on")].map((b) => b.dataset.v) : [];
+    }
+    const cols = (el) => getComputedStyle(el).gridTemplateColumns.split(/\s+/).filter(Boolean).length;
+
+    // 无头页里文件列表只有"空目录"提示，塞一条远端行与一条本地行进来量
+    const injected = [];
+    function injectRow(host, cls, html) {
+      if (!host) return null;
+      host.textContent = "";
+      const row = document.createElement("div");
+      row.className = cls;
+      row.innerHTML = html;
+      host.append(row);
+      injected.push(host);
+      return row;
+    }
+    const remoteRow = injectRow(
+      byId("remote-list"),
+      "fp-row has-perm",
+      '<span class="ico">▸</span><span class="nm">release-notes-v0.4-draft.md</span>' +
+        '<span class="pm">drwxr-xr-x</span><span class="sz">—</span><span class="tm">2026-11-20 09:12</span>',
+    );
+    const localRow = injectRow(
+      byId("local-list"),
+      "fp-row",
+      '<span class="ico">·</span><span class="nm">notes.md</span><span class="sz">6.2 KB</span>' +
+        '<span class="tm">2026-11-20 09:12</span>',
+    );
+
+    const prev = localStorage.getItem(PERM_KEY);
+    try {
+      // ① 出厂态
+      localStorage.removeItem(PERM_KEY);
+      applyPerm("show");
+      localStorage.removeItem(PERM_KEY);
+      syncSegs();
+      expect("没选过时不留 data-perm", root.dataset.perm ?? null, null);
+      expect("没选过时 seg 选显示", onSeg("seg-perm"), ["show"]);
+      expect("没选过时读到的也是显示", readPerm(), "show");
+      expect("远端行出厂态是 5 列", cols(remoteRow), 5);
+
+      const pmEl = remoteRow.querySelector(".pm");
+      const nmEl = remoteRow.querySelector(".nm");
+      const szEl = remoteRow.querySelector(".sz");
+      const before = {
+        pmW: px(pmEl.getBoundingClientRect().width),
+        nmW: px(nmEl.getBoundingClientRect().width),
+        szRight: px(szEl.getBoundingClientRect().right),
+        rowW: px(remoteRow.getBoundingClientRect().width),
+        rowH: px(remoteRow.getBoundingClientRect().height),
+      };
+      expect("权限列真的占着宽度", before.pmW > 60, true);
+
+      // ② 关掉
+      applyPerm("hide");
+      void document.body.offsetHeight; // 强制重排，量终态
+      expect("关掉后 data-perm 落盘在根上", root.dataset.perm, "hide");
+      expect("关掉后权限单元格看不见", getComputedStyle(pmEl).display, "none");
+      expect("关掉后远端行只剩 4 列", cols(remoteRow), 4);
+      const hid = {
+        nmW: px(nmEl.getBoundingClientRect().width),
+        szRight: px(szEl.getBoundingClientRect().right),
+        rowW: px(remoteRow.getBoundingClientRect().width),
+        rowH: px(remoteRow.getBoundingClientRect().height),
+      };
+      // ③ 名字列吃掉那 68px（还有 4px 的 gap），右对齐两列一动不动
+      near("关掉后名字列多出来的宽度", px(hid.nmW - before.nmW), 68 + 4, 2);
+      near("关掉后大小列的右缘不许挪", hid.szRight, before.szRight, 0.5);
+      // ④ 行高与行宽不许跟着变
+      near("关掉后行宽不许变", hid.rowW, before.rowW, 0.5);
+      near("关掉后行高等于 --row", hid.rowH, px(tok("--row")), 0.5);
+      // ⑤ 本地行不受影响（它本来就没有这一列）
+      expect("本地行一直是 4 列", cols(localRow), 4);
+      seen.perm = { pmW: before.pmW, nmGain: px(hid.nmW - before.nmW), rowH: hid.rowH };
+
+      // ⑥ 认不出的值
+      localStorage.setItem(PERM_KEY, "collapse");
+      expect("认不出的值读成显示", readPerm(), "show");
+      applyPerm("collapse");
+      expect("认不出的值不回写进盘", localStorage.getItem(PERM_KEY), "show");
+
+      // ⑦ 落盘与 seg 选中，再开回来列数要回 5
+      applyPerm("hide");
+      expect("落盘", localStorage.getItem(PERM_KEY), "hide");
+      expect("seg 选中的只有隐藏", onSeg("seg-perm"), ["hide"]);
+      applyPerm("show");
+      void document.body.offsetHeight;
+      expect("开回来又是 5 列", cols(remoteRow), 5);
+      near("开回来名字列宽度回到原值", px(nmEl.getBoundingClientRect().width), before.nmW, 0.5);
+      expect("开回来 seg 选中的只有显示", onSeg("seg-perm"), ["show"]);
+    } catch (err) {
+      bad.push(`走权限列的过程抛了异常：${err && err.message ? err.message : err}`);
+    } finally {
+      // 收拾现场：删掉塞进去的行、把键与根属性还原成进来时的样子
+      for (const host of injected) {
+        if (!host) continue;
+        host.textContent = "";
+        const hint = document.createElement("span");
+        hint.className = "hint";
+        hint.textContent = "空目录";
+        host.append(hint);
+      }
+      if (prev === null) localStorage.removeItem(PERM_KEY);
+      else localStorage.setItem(PERM_KEY, prev);
+      applyPerm(prev ?? "show");
+      syncSegs();
+    }
+
+    document.title = bad.length
+      ? `PERM-SELFTEST-FAIL ${JSON.stringify(bad)} ${JSON.stringify(seen)}`
+      : `PERM-SELFTEST-OK ${JSON.stringify(seen)}`;
   })();
 }
 
