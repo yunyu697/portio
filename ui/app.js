@@ -15,6 +15,21 @@ window.addEventListener("error", (e) => {
 // withGlobalTauri 打开后 window.__TAURI__.core.invoke 可用；纯浏览器预览时降级为 null。
 const bridge = window.__TAURI__?.core ?? null;
 
+// 截图 / 核验钩子允许带参数：写成 `#split-demo?theme=light`，先把 `?` 之后的参数摘出来，
+// 主 hash 还原成 `#split-demo`。下面各处 demo 与自检判断用的都是 location.hash，
+// 带着 `?` 会让 `location.hash === "#split-demo"` 这类精确判断全部失效。
+// theme 直接写进 localStorage，后面 applyTheme 读的就是它。
+(function () {
+  const raw = location.hash;
+  if (!raw.includes("?")) return;
+  const params = new URLSearchParams(raw.slice(raw.indexOf("?") + 1));
+  const t = params.get("theme");
+  if (t === "light" || t === "dark" || t === "system") localStorage.setItem("portio.theme", t);
+  try {
+    history.replaceState(null, "", "#" + raw.slice(1, raw.indexOf("?")));
+  } catch {}
+})();
+
 // ---------- 运行日志 ----------
 // 前端异常 / Promise 未处理拒绝都写进本机日志（Rust 侧 diag_log 落盘），只写本机、不出网。
 // 没有 Tauri 桥（纯浏览器预览）时直接不记，不要因为记日志再抛一次错。
@@ -1916,7 +1931,7 @@ if (location.hash.startsWith("#find-demo")) {
   }, 60);
 }
 
-if (location.hash.startsWith("#sess-demo") || location.hash.includes("ctx-demo")) {
+if (location.hash.startsWith("#sess-demo") || location.hash.startsWith("#import-demo") || location.hash.startsWith("#split-demo") || location.hash.includes("ctx-demo")) {
   saveSession({ host: "web-01.example.com", port: 22, user: "deploy", auth: "key", keyfile: "~/.ssh/id_ed25519" });
   saveSession({ host: "10.0.8.12", port: 2222, user: "root", auth: "password" });
   // 再塞一条"从没用过"的记录，好核对"更早"这组标题
@@ -1928,6 +1943,8 @@ if (location.hash.startsWith("#sess-demo") || location.hash.includes("ctx-demo")
     document.getElementById("sess-search").value = q;
     renderSessions();
   }
+  // 截图用：把导入来源的下拉真正展开（走的是按钮自己的 click，不是另画一份菜单）
+  if (location.hash.startsWith("#import-demo")) setImportOpen(true);
 } else if (!location.hash.startsWith("#groups-demo")) {
   loadSessions();
 }
