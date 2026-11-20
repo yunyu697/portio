@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / 未验。
 
-对应 docs/rc-checklist.md §1 的 A1–A39。以前这些步骤散在日志里，每轮都要手打一遍命令，
+对应 docs/rc-checklist.md §1 的 A1–A40。以前这些步骤散在日志里，每轮都要手打一遍命令，
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
 
 用法：
@@ -38,6 +38,10 @@ Known Folder API，不认进程环境变量（实测新目录里什么都没长�
 所以只能：跑前把 `theme.txt` / `sessions.json` / `known_hosts` 按字节存下 → 跑 → 收进程 →
 按原字节写回（原本没有的那份收走）→ 再读一遍逐字节核对。同时还得证明确实写了：
 跑完 `sessions.json` 没冒出来、没变化，说明这两条根本没走真后端，那还是「没核」。
+**窄窗那条得真能在真窗口里变窄，而视口命令是会话级的**：A40 用调试口的
+`Emulation.setDeviceMetricsOverride` 把布局视口换成 1024 / 900 两档再跑 `#narrow-test`——
+这条命令一断连接就失效（`cdp_call` 每次都是新会话），所以两档得在一根长连的会话里跑完。
+判据拿界面自报的 innerWidth 跟要求的对：对不上就是拿一档宽窗冒充窄窗，自检再绿也不算核过。
 环境变量可覆盖探测结果：PORTIO_CHROME、PORTIO_NODE、PORTIO_CARGO、PORTIO_7Z。
 """
 
@@ -182,22 +186,55 @@ def with_path(bin_dir: str | None) -> dict:
 
 # ---------- 各项检查 -------------------------------------------------------
 
+# A1 第一次没跑成，可能压根不是代码的事：rustc 的 LLVM 会直接报 `out of memory` /
+# `页面文件太小，无法完成操作 (os error 1455)`——这台机器 C 盘只剩 0.2 GB、页面文件长不大，
+# 提交量顶到上限时多路并行编译就编不动。这既不能当代码坏了，也不能就此放过：
+# 记下证据、降并行度重跑；降下来还挂，或者报的是别的原因，那才判红。
+RESOURCE_SPOTS = ("out of memory", "页面文件太小", "os error 1455",
+                  "cannot allocate memory", "STATUS_STACK_BUFFER_OVERRUN")
+A1_RETRY_JOBS = (2, 1)
+
+
+def resource_bad(out: str) -> bool:
+    """这段输出像不像「机器扛不住」而不是「代码不对」。"""
+    low = (out or "").lower()
+    return any(s.lower() in low for s in RESOURCE_SPOTS)
+
+
+def resource_reason(out: str) -> str:
+    """把到底是哪种资源不足写成一句话，别让人以为是自己改坏了。"""
+    text = out or ""
+    low = text.lower()
+    if "out of memory" in low:
+        return "rustc 的 LLVM 报 out of memory（这台机器提交量顶到上限了）"
+    if "os error 1455" in low or "页面文件太小" in text:
+        return "页面文件太小（os error 1455，C 盘没地方让它再长）"
+    return "编译时资源不足"
+
+
 def a1_cargo_test() -> tuple[str, str]:
     cargo = find_cargo()
     if not cargo:
         return SKIP, "找不到 cargo（设 PORTIO_CARGO 或用 --fast 跳过）"
     env = with_path(str(Path(cargo).parent))
+    note = ""
     proc = run([cargo, "test", "--workspace"], timeout=1200, env=env)
+    for jobs in A1_RETRY_JOBS:
+        if proc.returncode == 0 or not resource_bad(proc.stdout + proc.stderr):
+            # 过了，或者报的是代码问题：后一种绝不拿「降并行度重跑」糊过去
+            break
+        note = f"第一次是机器扛不住（{resource_reason(proc.stdout + proc.stderr)}），降到 {jobs} 路重跑"
+        proc = run([cargo, "test", "--workspace", "-j", str(jobs)], timeout=1200, env=env)
     passed = failed = 0
     for m in re.finditer(r"test result: \w+\. (\d+) passed; (\d+) failed", proc.stdout):
         passed += int(m.group(1))
         failed += int(m.group(2))
     if proc.returncode != 0 or failed:
-        return FAIL, f"returncode={proc.returncode}, failed={failed}; {tail(proc.stdout + proc.stderr)}"
+        return FAIL, f"returncode={proc.returncode}, failed={failed}; {tail(proc.stdout + proc.stderr, 8)}"
     if not passed:
         return FAIL, "没有解析到测试结果，可能编译就没过"
     # 各 crate 的分布不进摘要行，太长；失败时要看全文就回滚到手动跑
-    return PASS, f"{passed} passed, {failed} failed"
+    return PASS, f"{passed} passed, {failed} failed" + (f"；{note}" if note else "")
 
 
 def a2_node_syntax(node: str | None) -> tuple[str, str]:
@@ -1572,6 +1609,259 @@ def a39_appdata_selftests() -> tuple[str, str]:
     return status, f"{detail}（{kind_label(kind)}）"
 
 
+# ---------- A40：窄窗那条自检，在真窗口里按两档宽度跑 ---------------------
+
+# `#narrow-test` 量的是真实几何，可它到现在只在无头里按 `--window-size` 跑过两档（A13）。
+# 真窗口只有一个宽度（tauri.conf 固定 1180×690），要它能窄，得先能给这个子进程换宽度。
+# 不用动 Rust：调试口自己就带着换视口的命令 `Emulation.setDeviceMetricsOverride`——
+# 把布局视口改成 1024 / 900，CSS 跟着重排，量的还是真实几何。
+# 坑在**这是会话级命令**：开一条新 websocket 发一次、连接一断就失效。而 `cdp_call` 每次都是新会话，
+# 照它的写法「这条会话里设视口、那条会话里读标题」，读到的会是退回 1180 的那份。
+# 所以两档必须在一根长连的会话里跑完：设视口 → 导航 → 读标题 → 再设视口 → 再导航。
+# 判据里最要命的一层是「视口到底换没换」：命令失效时界面照样 1180 宽、自检照样报绿，
+# 那就是拿一档宽窗冒充窄窗。所以拿界面自己报的 innerWidth 跟我要的对，对不上就红。
+NARROW_VIEWPORTS = ((1024, 620), (900, 620))
+NARROW_EXPECT = "NARROW-SELFTEST-OK"
+NARROW_WAIT = 20.0
+NARROW_SIG_EXPR = ("JSON.stringify({hash:location.hash,ready:document.readyState,"
+                   "title:document.title,w:window.innerWidth,h:window.innerHeight})")
+
+
+class CdpSession:
+    """一根长连的调试会话。视口这类命令是会话级的：断一次就回原样。"""
+
+    def __init__(self, ws_url: str, timeout: float = 8.0):
+        self.sock = ws_open(ws_url, timeout)
+        self._id = 0
+
+    def call(self, method: str, params: dict, timeout: float = 8.0) -> dict:
+        self._id += 1
+        mine = self._id
+        ws_send_text(self.sock, json.dumps({"id": mine, "method": method,
+                                            "params": params}).encode())
+        whole = b""
+        while True:
+            fin, buf = ws_recv_frame(self.sock)
+            whole += buf
+            if not fin:
+                continue
+            msg = json.loads(whole.decode("utf-8"))
+            whole = b""
+            if msg.get("id") == mine:
+                return msg
+
+    def value(self, expr: str, timeout: float = 8.0):
+        """在这条会话里跑一句只读的话；它自己炸了就把原因抛出去。"""
+        msg = self.call("Runtime.evaluate",
+                        {"expression": expr, "returnByValue": True}, timeout)
+        det = msg.get("exceptionDetails")
+        if det:
+            exc = ((det.get("exception") or {}).get("description")) or det.get("text")
+            raise RuntimeError(exc or "界面里那句话炸了")
+        return ((msg.get("result") or {}).get("result") or {}).get("value")
+
+    def close(self) -> None:
+        try:
+            self.sock.close()
+        except OSError:
+            pass
+
+
+def set_viewport(sess, width: int, height: int) -> bool:
+    """把这条会话的布局视口改成 width×height，回「调试口收下了没」。"""
+    msg = sess.call("Emulation.setDeviceMetricsOverride",
+                    {"width": width, "height": height,
+                     "deviceScaleFactor": 0, "mobile": False})
+    return not msg.get("error")
+
+
+def run_narrow(sess, width: int, height: int, wait: float = NARROW_WAIT,
+               sleep=time.sleep, clock=time.time) -> tuple[str, str, str, int]:
+    """换视口 → 导航跑窄窗自检，回（档位, 期望前缀, 标题, 界面实际视口宽）。"""
+    tag = f"{width}x{height}"
+    set_viewport(sess, width, height)
+    # 带查询串才叫真重载：只改 fragment 是同文档导航，启动那段自检不会跑
+    sess.call("Page.navigate", {"url": f"http://tauri.localhost/?nw={tag}#narrow-test"})
+    deadline = clock() + wait
+    title, seen = "", 0
+    while True:
+        try:
+            sig = json.loads(sess.value(NARROW_SIG_EXPR) or "{}")
+        except (RuntimeError, OSError, ValueError):
+            # 导航那一瞬间执行环境会被换掉，读一句会失手；这是轮询里正常的一下，
+            # 真失手到底的话下面会超时、标题空着、判红——不许在这儿悄悄当通过
+            sig = {}
+        if sig.get("hash") == "#narrow-test" and sig.get("ready") == "complete":
+            title = str(sig.get("title") or "")
+            seen = int(sig.get("w") or 0)
+            if NARROW_EXPECT in title or "ERR:" in title:
+                break
+        if clock() > deadline:
+            break
+        sleep(0.25)
+    return tag, NARROW_EXPECT, title, seen
+
+
+def narrow_rows(title: str) -> dict:
+    """把自检写进标题的那串几何捞出来（标题后半截就是 JSON）。"""
+    i = (title or "").find("{")
+    if i < 0:
+        return {}
+    try:
+        return json.loads(title[i:])
+    except (json.JSONDecodeError, ValueError):
+        return {}
+
+
+def reported_width(title: str) -> int | None:
+    """自检自己说它是在多宽的窗口里量的（标题里那个 `w=`）。"""
+    m = re.search(r"w=(\d+)", title or "")
+    return int(m.group(1)) if m else None
+
+
+def narrow_verdict(rows: list[tuple[str, str, str, int]], fresh_used: bool,
+                   real_untouched: bool | None, theme_ok: bool | None) -> tuple[str, str]:
+    """把两档窄窗逐层判（纯函数，好测）。
+
+    隔离与「别碰我的」这层跟 A38 一样，多出来的是「视口真换了」：
+    界面自报的 innerWidth 跟我要的不一致，就是拿宽窗冒充窄窗，自检再绿也不算核过；
+    两档几何一模一样，说明压根没重排，那也只算核了一档。
+    """
+    if len(rows) < 2:
+        return FAIL, "两档窄窗没跑齐（等于没核）"
+    bad: list[str] = []
+    geo: dict[int, dict] = {}
+    for tag, expect, title, seen in rows:
+        want = int(str(tag).split("x")[0])
+        if "ERR:" in (title or ""):
+            bad.append(f"{tag}：界面自己报了红：{title}")
+            continue
+        if not (title or "").startswith(expect):
+            bad.append(f"{tag}：没跑出结果（标题 {title or '空'}，期望以 {expect} 开头）")
+            continue
+        said = reported_width(title)
+        if said != want:
+            bad.append(f"{tag}：自检说自己在 {said} 宽里量的，它不是 {want}——这档没在窄窗里跑")
+            continue
+        if seen != want:
+            bad.append(f"{tag}：界面实际的视口是 {seen} 宽，不是 {want}——视口没换过来，这档等于没核")
+            continue
+        geo[want] = narrow_rows(title)
+    if bad:
+        return FAIL, "；".join(bad)
+    for w, g in geo.items():
+        got = (g.get("fold") or {}).get("term")
+        if not isinstance(got, int) or got <= 0:
+            bad.append(f"{w} 宽那档量不到折叠态终端宽度")
+    if bad:
+        return FAIL, "；".join(bad)
+    # 从宽往窄排：视口收窄一档，终端就得跟着窄一点。反过来排的话，
+    # 判据本身就成了「窄的这档要比宽的那档更宽」，第一跑就自己撞红
+    order = sorted(geo, reverse=True)
+    for a, b in zip(order, order[1:]):
+        ta = (geo[a].get("fold") or {}).get("term")
+        tb = (geo[b].get("fold") or {}).get("term")
+        if not tb < ta:
+            bad.append(f"视口从 {a} 收窄到 {b}，终端宽度却从 {ta} 变到 {tb}——两档没真重排")
+    if bad:
+        return FAIL, "；".join(bad)
+    if not fresh_used:
+        return FAIL, "一次性 profile 里没冒出 localStorage 库——隔离没生效，这两档是在我自己的偏好里跑的"
+    if real_untouched is False:
+        return FAIL, "跑完我自己的偏好库被动过（文件数 / 字节 / 时间戳变了）——隔离没挡住"
+    if real_untouched is None:
+        return FAIL, "量不到我自己的偏好库在哪儿，隔离有没有挡住这轮没核到"
+    if theme_ok is False:
+        return FAIL, "窗口底色文件没写回原样（theme.txt 跟我跑前存的那份不一样）"
+    terms = "、".join(f"{w} 宽 {int((geo[w].get('fold') or {}).get('term'))}px" for w in order)
+    return PASS, (f"{len(rows)} 档在真窗口里跑过（{'、'.join(r[0] for r in rows)}）；"
+                  f"折叠态终端宽度按档收窄（{terms}），视口是真换过来的；"
+                  "我自己的偏好库一个字节没动，底色文件写回原样")
+
+
+def probe_narrow(exe: Path, version: str, wait: float = FRESH_PROFILE_WAIT,
+                 port: int | None = None, popen=subprocess.Popen, kill=kill_tree,
+                 views=NARROW_VIEWPORTS, runner=run_narrow, opener=CdpSession,
+                 mkdtemp=tempfile.mkdtemp, sleep=time.sleep) -> tuple[str, str]:
+    """拉起 exe（一次性 profile），在一根长连会话里换两档视口把窄窗自检跑完，收干净并核隔离。"""
+    port = port or free_port()
+    prof = Path(mkdtemp(prefix="portio-narrow-"))
+    db = localStorage_dir()
+    theme = app_data_file("theme.txt")
+    db_before = profile_stamp(db)
+    theme_before = theme.read_bytes() if theme and theme.exists() else None
+    env = dict(os.environ)
+    # 同一份隔离：调试口与一次性偏好目录只给这一个子进程
+    env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = f"--remote-debugging-port={port}"
+    env["WEBVIEW2_USER_DATA_FOLDER"] = str(prof)
+    started = time.time()
+    proc = popen([str(exe)], cwd=str(exe.parent), env=env,
+                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    rows: list[tuple[str, str, str, int]] = []
+    sess = None
+    err: Exception | None = None
+    try:
+        page = None
+        seen: list[str] = []
+        while time.time() - started < wait:
+            if proc.poll() is not None:
+                return FAIL, f"{time.time() - started:.0f}s 内进程自己退了（码 {proc.returncode}）"
+            targets = cdp_targets(port)
+            if targets:
+                seen = [t.get("url") or "" for t in targets]
+            page = next((t for t in targets
+                         if "tauri.localhost" in (t.get("url") or "")), None)
+            if page:
+                break
+            time.sleep(0.5)
+        if not page:
+            why = f"调试口里的页面一直是 {seen[-1] or '空的'}" if seen else "调试口一直没开"
+            return FAIL, f"{time.time() - started:.0f}s 内没进到界面（{why}）——自检没跑过，等于没核"
+        sess = opener(page["webSocketDebuggerUrl"])
+        # 同 A38：空 profile 首启那帧也报 complete（那是 about:blank），等的是版本串
+        deadline = time.time() + wait
+        ver = ""
+        while time.time() < deadline:
+            ver = str(sess.value(VER_EXPR) or "").strip()
+            if ver:
+                break
+            sleep(0.3)
+        if not ver:
+            return FAIL, (f"{time.time() - started:.0f}s 内那个版本串还没出现——"
+                          "界面没进到本应用（空白页也算加载完了，别被它骗）")
+        if version and ver != version:
+            return SKIP, (f"这份 exe 里的界面是 {ver}，仓库是 {version}——不是本版构建，"
+                          "窄窗两档在真窗口里跑不跑得动这轮没核到")
+        for width, height in views:
+            rows.append(runner(sess, width, height))
+    except Exception as e:  # noqa: BLE001 - 连不上就把原因报出来，不许当通过
+        err = e
+    finally:
+        if sess is not None:
+            sess.close()
+        if proc.poll() is None:
+            kill(proc.pid)
+            sleep(1.5)  # 等它把库文件关掉、时间戳落地，不然「有没有动」量不准
+        fresh_used = fresh_profile_db(prof) is not None
+        db_after = profile_stamp(db)
+        theme_ok = restore_bytes(theme, theme_before)
+        shutil.rmtree(prof, ignore_errors=True)
+    if err is not None:
+        return FAIL, f"进了界面但自检没跑成：{err}"
+    return narrow_verdict(rows, fresh_used, db_before == db_after, theme_ok)
+
+
+def a40_narrow_viewports() -> tuple[str, str]:
+    """A40：窄窗那条自检，在真窗口里按两档视口跑得动吗。"""
+    if sys.platform != "win32":
+        return SKIP, "只在 Windows 上核（mac / linux 没有 WebView2 这套调试口）"
+    exe, kind = find_app_exe(app_exe_dirs())
+    if exe is None:
+        return SKIP, "还没构建 portio-app.exe（先 npm run build 或 tauri build）"
+    status, detail = probe_narrow(exe, current_version())
+    return status, f"{detail}（{kind_label(kind)}）"
+
+
 def split_ids(items: list[str]) -> list[str]:
     """把 `A10 A11` / `A10,A11` 拆成编号列表：大写、去空、去重、按出现顺序。
 
@@ -1683,6 +1973,7 @@ def main(argv: list[str]) -> int:
         ("A37", "那几条自检在真窗口里也跑得动（真后端 + 真偏好里跑 split/clip/fold/ctx/find/find-pane/transfer 七条；跑前存下偏好、跑完一字不差写回去）", True),
         ("A38", "会改设置的那批自检也在真窗口里跑（换一份一次性 profile 跑 panes/layout/density/accent/term-theme/boot/perm/font/theme 九条；跑完核我自己的偏好库一个字节没动、底色文件写回原样）", True),
         ("A39", "会写盘的那两条自检也在真窗口 + 真后端里跑（#sessions-test / #hosts-test；跑前把 theme.txt / sessions.json / known_hosts 按字节存下，跑完收进程再按原字节收回、逐字节核对；还要证明会话清单确实落了盘）", True),
+        ("A40", "#narrow-test 在真窗口里按 1024 / 900 两档视口跑（调试口改布局视口，两档得一根长连胜跑完；判据拿界面自报的 innerWidth 对我要求的那档，对不上就是拿宽窗冒充窄窗；一次性 profile 里跑，核我自己的偏好库没被动）", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -1821,6 +2112,9 @@ def main(argv: list[str]) -> int:
         elif code == "A39":
             # 会写盘的那两条：真窗口 + 真后端，跑前存字节、跑完收回、再读一遍核对
             status, detail = a39_appdata_selftests()
+        elif code == "A40":
+            # 窄窗那条：真窗口 + 两档视口（一根长连会话里设视口、导航、读标题）
+            status, detail = a40_narrow_viewports()
         results.append((code, label, status, detail))
         print(f"[{LABEL[status]}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
 

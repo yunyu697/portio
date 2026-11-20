@@ -83,5 +83,127 @@ class WiredTest(unittest.TestCase):
         self.assertIn(want, ci.read_text(encoding="utf-8"), "CI 那边也得还是这一条")
 
 
+class ResourceTest(unittest.TestCase):
+    """A1 第一次挂在「机器扛不住」时要能认出来，别把环境问题报成代码问题。"""
+
+    def test_llvm_oom_is_recognised(self):
+        self.assertTrue(rc.resource_bad("rustc-LLVM ERROR: out of memory"))
+
+    def test_windows_pagefile_error_is_recognised(self):
+        self.assertTrue(rc.resource_bad(
+            "failed to mmap file 'libtest.rlib': 页面文件太小，无法完成操作。 (os error 1455)"))
+
+    def test_real_compile_error_is_not_a_resource_problem(self):
+        self.assertFalse(rc.resource_bad(
+            "error[E0308]: mismatched types --> crates/core/src/lib.rs:12:5"))
+
+    def test_empty_output_is_not_a_resource_problem(self):
+        self.assertFalse(rc.resource_bad(""))
+        self.assertFalse(rc.resource_bad(None))
+
+    def test_reason_names_the_runtime_problem(self):
+        self.assertIn("out of memory", rc.resource_reason("rustc-LLVM ERROR: out of memory"))
+        self.assertIn("os error 1455", rc.resource_reason("(os error 1455): 页面文件太小"))
+
+    def test_reason_falls_back(self):
+        self.assertIn("资源不足", rc.resource_reason("cannot allocate memory"))
+
+
+class A1RetryWiredTest(unittest.TestCase):
+    def setUp(self):
+        self.text = Path(rc.__file__).read_text(encoding="utf-8")
+
+    def test_retry_ladder_is_at_most_two_steps(self):
+        self.assertEqual(rc.A1_RETRY_JOBS, (2, 1))
+
+    def test_only_resource_failures_are_retried(self):
+        body = self.text.split("def a1_cargo_test", 1)[1]
+        self.assertIn("resource_bad(proc.stdout + proc.stderr)", body)
+        self.assertIn("绝不拿「降并行度重跑」糊过去", body)
+
+    def test_retry_keeps_the_same_command(self):
+        body = self.text.split("def a1_cargo_test", 1)[1]
+        self.assertIn('run([cargo, "test", "--workspace"]', body)
+        self.assertIn('run([cargo, "test", "--workspace", "-j", str(jobs)]', body)
+
+    def test_pass_detail_says_it_retried(self):
+        body = self.text.split("def a1_cargo_test", 1)[1]
+        self.assertIn("if note else", body)
+
+    def test_failure_keeps_more_context(self):
+        # 上一次就是因为 tail 只留 4 行，真正的错误被截没了，只剩一段 "^" 标记
+        body = self.text.split("def a1_cargo_test", 1)[1]
+        self.assertIn("tail(proc.stdout + proc.stderr, 8)", body)
+
+
+OOM_OUT = """   Compiling portio-app v1.0.9-RC5
+rustc-LLVM ERROR: out of memory
+error[E0786]: found invalid metadata files for crate `test`
+    = note: failed to mmap file 'libtest.rlib': 页面文件太小，无法完成操作。 (os error 1455)
+error: could not compile `portio-ssh` (example "smoke")
+"""
+
+OK_OUT = """test result: ok. 47 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.38s
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.73s
+"""
+
+
+class RetryFlowTest(unittest.TestCase):
+    """撞上「机器扛不住」时真的会降并行度重跑，而且结论里会说明——整条链路跑一遍。"""
+
+    def _fake_run(self, replies):
+        calls = []
+
+        class R:
+            def __init__(self, code, out):
+                self.returncode, self.stdout, self.stderr = code, out, ""
+
+        def run(cmd, timeout, cwd=None, env=None):
+            calls.append(cmd)
+            reply = replies[min(len(calls) - 1, len(replies) - 1)]
+            return R(*reply)
+
+        return run, calls
+
+    def test_oom_then_success_is_pass_with_note(self):
+        run, calls = self._fake_run([(101, OOM_OUT), (0, OK_OUT)])
+        old = rc.run
+        rc.run = run
+        try:
+            status, detail = rc.a1_cargo_test()
+        finally:
+            rc.run = old
+        self.assertEqual(status, rc.PASS)
+        self.assertIn("72 passed, 0 failed", detail)
+        self.assertIn("机器扛不住", detail)
+        self.assertIn("降到 2 路重跑", detail)
+        self.assertIn("-j", calls[1])
+
+    def test_code_error_is_not_retried(self):
+        # 报的是代码问题就不许重跑：否则等于拿重试把真的红糊过去
+        run, calls = self._fake_run([
+            (101, "error[E0308]: mismatched types --> crates/core/src/lib.rs:12:5\n"), (0, OK_OUT)])
+        old = rc.run
+        rc.run = run
+        try:
+            status, detail = rc.a1_cargo_test()
+        finally:
+            rc.run = old
+        self.assertEqual(status, rc.FAIL)
+        self.assertEqual(len(calls), 1)
+        self.assertIn("mismatched types", detail)
+
+    def test_oom_all_the_way_down_is_still_fail(self):
+        run, calls = self._fake_run([(101, OOM_OUT), (101, OOM_OUT), (101, OOM_OUT)])
+        old = rc.run
+        rc.run = run
+        try:
+            status, _ = rc.a1_cargo_test()
+        finally:
+            rc.run = old
+        self.assertEqual(status, rc.FAIL)
+        self.assertEqual(len(calls), 3)  # 默认 → 2 路 → 1 路，不再往下拖
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
