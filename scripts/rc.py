@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / SKIP。
+"""一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / 未验。
 
 对应 docs/rc-checklist.md §1 的 A1–A32。以前这些步骤散在日志里，每轮都要手打一遍命令，
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
@@ -11,7 +11,9 @@
     python scripts/rc.py A11          # 只跑这一项（改一项时可边改边核）
     python scripts/rc.py A10 A11      # 只跑这几项（也认 A10,A11 这种写法）
 
-退出码：全部 PASS 或 SKIP 为 0；有任何一项 FAIL 为 1；编号写错为 2。
+退出码：0 = 每一项都真跑过且过；1 = 有 FAIL；2 = 编号写错；3 = 没有 FAIL 但有未验项
+（安装包还没打、截图清单还没出、缺 Chrome、`--fast` 跳了 A1 都算）。
+未验和通过分开算的理由：绿的意思是「核过了」，不是「没查到问题」。
 环境变量可覆盖探测结果：PORTIO_CHROME、PORTIO_NODE、PORTIO_CARGO。
 """
 
@@ -36,6 +38,10 @@ UI = ROOT / "ui"
 BUNDLE_DIR = ROOT / "target" / "debug" / "bundle" / "nsis"
 
 PASS, FAIL, SKIP = "PASS", "FAIL", "SKIP"
+# 屏幕上报的记号。内部状态仍叫 SKIP（老日志与清单按这个字找），
+# 但对人要说清它是「没核」，不是「核过」。
+LABEL = {PASS: "PASS", FAIL: "FAIL", SKIP: "未验"}
+EXIT_OK, EXIT_FAIL, EXIT_BAD_ID, EXIT_PENDING = 0, 1, 2, 3
 
 
 # ---------- 环境探测 -------------------------------------------------------
@@ -464,6 +470,38 @@ def select_items(plan: list[tuple], wanted: list[str]) -> tuple[list[tuple], lis
 
 # ---------- 主流程 --------------------------------------------------------
 
+def summarize(results: list[tuple[str, str, str, str]], elapsed: float) -> tuple[int, list[str]]:
+    """把逐项结果收成「退出码 + 要打印的几行」。
+
+    以前这里是「没有 FAIL 就退出 0」，于是整跑里那项**没跑**的（安装包还没打、
+    截图清单还没出、缺 Chrome、`--fast` 跳了 A1）也跟着混进了绿。
+    绿的意思是「核过了」，不是「没查到问题」——没核的既不能算过，也不能算失败，
+    所以单列成「未验」，并且给一个自己的退出码（3），让脚本没法把它当全绿收下。
+
+    失败优先于未验：有 FAIL 时先把「该怎么修」说清楚，未验的留到失败修完再说。
+    """
+    counts = {s: sum(1 for r in results if r[2] == s) for s in (PASS, FAIL, SKIP)}
+    summary = (
+        f"汇总：{counts[PASS]} 通过 / {counts[FAIL]} 失败 / {counts[SKIP]} 未验，"
+        f"共 {len(results)} 项，{elapsed:.1f}s"
+    )
+    failed = [r[0] for r in results if r[2] == FAIL]
+    pending = [r for r in results if r[2] == SKIP]
+    if failed:
+        lines = [summary, "失败项：" + "、".join(failed), "逐项照 docs/rc-checklist.md §1 的「通过判据」修。"]
+        return EXIT_FAIL, lines
+    if pending:
+        lines = [summary, "未验项：" + "、".join(r[0] for r in pending) + "（没核过，不许当通过记）"]
+        for code, _label, _status, detail in pending:
+            why = (detail or "没说原因").strip()
+            if len(why) > 72:
+                why = why[:71] + "…"
+            lines.append(f"  - {code}：{why}")
+        lines.append("补验后整体才算绿：缺包先打包、缺图先 python scripts\\shots.py、只是改了前端就重跑全量。")
+        return EXIT_PENDING, lines
+    return EXIT_OK, [summary]
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="Portio 自动化回归（rc-checklist §1）")
     ap.add_argument("--fast", action="store_true", help="跳过 A1 的 cargo test")
@@ -538,7 +576,7 @@ def main(argv: list[str]) -> int:
     for code, label, on in plan:
         if not on:
             results.append((code, label, SKIP, "本轮用 --fast 跳过"))
-            print(f"[SKIP] {code}  {label}  ← --fast")
+            print(f"[{LABEL[SKIP]}] {code}  {label}  ← --fast")
             continue
         t0 = time.time()
         if code == "A1":
@@ -623,21 +661,15 @@ def main(argv: list[str]) -> int:
             # A32：跑 cargo fmt / clippy，跟 CI 那关同一个口径
             status, detail = a32_lints()
         results.append((code, label, status, detail))
-        print(f"[{status}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
+        print(f"[{LABEL[status]}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
 
     shutil.rmtree(profile, ignore_errors=True)
 
-    counts = {s: sum(1 for r in results if r[2] == s) for s in (PASS, FAIL, SKIP)}
-    elapsed = time.time() - started
+    code, lines = summarize(results, time.time() - started)
     print("-" * 72)
-    print(f"汇总：{counts[PASS]} 通过 / {counts[FAIL]} 失败 / {counts[SKIP]} 跳过，共 {len(results)} 项，{elapsed:.1f}s")
-    if counts[FAIL]:
-        print("失败项：" + "、".join(r[0] for r in results if r[2] == FAIL))
-        print("逐项照 docs/rc-checklist.md §1 的「通过判据」修。")
-        return 1
-    if counts[SKIP] and ver:
-        print("有跳过项时，回归记录里要写清跳过原因，别写成通过。")
-    return 0
+    for line in lines:
+        print(line)
+    return code
 
 
 if __name__ == "__main__":

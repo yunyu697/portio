@@ -12,18 +12,23 @@
 | ✗ | 已知缺口：代码里就没有，或明知不合格 |
 | 🚫 | 卡外部条件：缺服务器 / 缺证书 / 缺平台机器，写清差什么 |
 
-**最近一次整跑**：2026-11-20 · `v1.0.8-RC4` · `python scripts/rc.py`（全量，含 A1）→ **31 通过 / 0 失败 / 1 跳过，246.6s**（唯一跳过的是 A11：整跑时 `1.0.8-RC4` 的安装包还没打，它点了名「这些是旧包、不算」；打完包单跑 `python scripts/rc.py A11` 转 PASS。本轮 A1 与 A32 都是冷缓存：cargo test 现编、fmt/clippy 45.8s，所以总时长比上一轮长）；
+**最近一次整跑**：2026-11-20 · `v1.0.8-RC6` · `python scripts/rc.py`（全量，含 A1）→ **32 通过 / 0 失败 / 0 未验，224.6s，退出码 0**（这回先打包再整跑，A11 不再落在未验里：`Portio_1.0.8-RC6_x64-setup.exe` 4586339 字节。A1 105.9s 只重编了测试侧的指纹，A32 47.8s；上一轮同一句汇总还写着「1 跳过」并以退出码 0 收工，那正是这一版要堵的口子）；
 人工项与真服务器项仍未跑（见 §7）。
 
 ---
 
 ## 1. 本机自动化（一条命令一项，五分钟跑完）
 
-**这一段现在有固定入口**：`python scripts/rc.py` 按顺序跑完 A1–A32，逐项打 `[PASS]` / `[FAIL]` / `[SKIP]`，
+**这一段现在有固定入口**：`python scripts/rc.py` 按顺序跑完 A1–A32，逐项打 `[PASS]` / `[FAIL]` / `[未验]`，
 最后一行是汇总，可以直接贴进 §7。全跑一分钟上下（`cargo test` 占大头），只改前端时用 `--fast` 跳过 A1；
 只想核其中几项就直接写编号——`python scripts/rc.py A11`、`python scripts/rc.py A10 A11`、
 `python scripts/rc.py A10,A11` 都认，只跑选中的那几项；编号写错会回一句「不认识的编号」并以退出码 2 结束，
 不会静悄悄跑 0 项。
+
+**「未验」不是「通过」**（2026-11-20 起）：以前只要没有 FAIL 就退出 0，于是这一版还没打包、
+截图清单还没出、机器上没 Chrome、`--fast` 跳了 A1 这些**没跑**的项，都混在同一句「通过 / 跳过」里
+看着像全绿。现在没核过的单列「未验」，退出码也分开：**0 = 每项都真跑过且过；1 = 有失败；
+2 = 编号写错；3 = 没有失败但有未验项**。整跑若拿不到 0，回归记录里必须写清是哪几项没验、为什么。
 表里保留每项的命令与判据，`rc.py` 出问题时按表手工复现。
 
 | # | 项 | 怎么验 | 通过判据 | 最近结果 |
@@ -38,7 +43,7 @@
 | A8 | 复制粘贴按键映射 | 无头打开 `ui/index.html#clip-test` | 标题 `CLIP-SELFTEST-OK 10` | ✅ 10/10 |
 | A9 | 文件面板折叠 | 无头打开 `ui/index.html#fold-test` | 标题 `FOLD-SELFTEST-OK`，且折叠态 `files` 宽 = 0、把手 = 10、回展开 = 原宽 | ✅（open 360/340/9 → fold 480/0/10 → back 360/340） |
 | A10 | 启动不带控制台黑窗 | 读 `portio-app.exe` 的 PE `OptionalHeader+68`；找 exe 时仓库 `target/debug` 与 `CARGO_TARGET_DIR/debug` 都看、取 mtime 最新那份（改前只盯仓库 target，本机构建落在 D 盘时就判的是上一次的旧 exe） | `Subsystem = 2`（GUI），并打印判定用的是哪个目录 | ✅ Subsystem=2 ← D:\portio-target\debug |
-| A11 | 安装包是本版本的那个、体积像话 | `python scripts/rc.py`（内部按界面里的版本号找 `Portio_<当前版本>_x64-setup.exe`：bundle/nsis、仓库根、`CARGO_TARGET_DIR` 三处） | 找到同名文件且体积落在 2–30 MiB；**找不到就 SKIP 并点名眼前的旧包**，不拿旧包充数（改前取 mtime 最新的那个，2026-11-20 全量回归拿着两个版本前的 RC3 包就判过了） | ✅ 改后单测 9 条 |
+| A11 | 安装包是本版本的那个、体积像话 | `python scripts/rc.py`（内部按界面里的版本号找 `Portio_<当前版本>_x64-setup.exe`：bundle/nsis、仓库根、`CARGO_TARGET_DIR` 三处） | 找到同名文件且体积落在 2–30 MiB；**找不到就报「未验」并点名眼前的旧包**，不拿旧包充数（改前取 mtime 最新的那个，2026-11-20 全量回归拿着两个版本前的 RC3 包就判过了） | ✅ `Portio_1.0.8-RC6_x64-setup.exe` 4586339 字节（4.37 MiB）← `D:\portio-target\debug\bundle\nsis`；单测 9 条 |
 | A12 | 九处面板右键菜单 | 无头打开 `ui/index.html#ctx-test` | 标题 `CTX-SELFTEST-OK 9`：每处都拦住浏览器默认菜单，且开的是自己那份（条目文字逐条比对） | ✅ 9/9 |
 | A13 | 窄窗几何 | `python scripts/rc.py`（内部用 `--window-size` 跑 1024 / 900 两档） | 两档标题都是 `NARROW-SELFTEST-OK`：导入下拉整条留在 180 宽的侧栏里、条目文字被裁住、抽屉收起正好一行高（正文 0）、文件面板折叠后终端吃满整列、设置卡与「完成」按钮全在窗里、整页无横向滚动、右键菜单贴右缘会内收 | ✅ 1024 / 900 |
 | A14 | 深浅两套主题几何与对比度 | 无头打开 `ui/index.html#theme-test` | 标题 `THEME-SELFTEST-OK`：11 个分区在两套主题下左上角与宽高完全一致（`worstShift 0`）、主题按钮的太阳/月亮图标按主题互换、六组令牌对比度都在下限之上（分隔线 ≥1.25、强线 ≥1.5、正文 ≥10、次要 ≥4.5、弱化 ≥2.9） | ✅ worstShift 0 |
@@ -222,5 +227,6 @@ foreach ($frag in "", "#split-test", "#clip-test", "#fold-test") {
 | 2026-11-20 | `v1.0.8-RC4` | `scripts/rc.py` → **31 通过 / 0 失败 / 1 跳过**，246.6s（A1 与 A32 都是冷缓存：cargo test 现编、fmt/clippy 45.8s；唯一跳过的是 A11，整跑时 RC4 的包还没打，打完包单跑转 PASS）；反向验证：把 `findGroups` 的折行拼接条件临时改成 `false` → FAIL「跨折行的 Portio_wrap 搜不到（退回逐行扫了？）」，还原即 PASS | 未跑 | 未跑 | 折成两行的长命令现在搜得出来：先按 `isWrapped` 拼逻辑行再扫，命中回映射成（行, 格），跨折行按格累加长度交给 `select()`；只拼自动折行、不跨硬换行，末行补位空白不算内容（这个 xterm 的 `BufferLine` 没有 `getTrimmedLength`，自己数） |
 
 | 2026-11-20 | `v1.0.8-RC5` | `scripts/rc.py` → **31 通过 / 0 失败 / 1 跳过**，337.3s（A1 冷：进位改了 `Cargo.lock` 里三个 crate 的版本，三个包都得重编，224.4s；A32 fmt/clippy 51.5s；跳过项仍是 A11——整跑时 RC5 的包还没打，打完包单跑 `A10 A11` 转 PASS）；反向验证两处：① 标题栏写回 `RC3` → A5 退出码 1 并点名「ui/index.html 标题栏」；② `Cargo.lock` 里 `portio-ssh` 写回 `RC3` → 点名「Cargo.lock portio-ssh」;另证旧行为：把 lock 里 `portio-core` 写回上一版，`cargo metadata --locked` 与 `cargo build --locked` 都退出码 **101**（`cannot update the lock file … because --locked was passed`），写回新号两者都 0 | 未跑 | 未跑 | 版本号写几处就核几处：`check_versions.py` 从三处扩到七处（清单三处 + 标题栏 `span.ver` + lock 三个 crate），`set_version.py` 直接写 lock（不再等下一次构建）；新增 `test_check_versions.py` 9 条、`test_set_version.py` 4 条锁文件用例 |
+| 2026-11-20 | `v1.0.8-RC6` | `scripts/rc.py` → **32 通过 / 0 失败 / 0 未验**，224.6s，**退出码 0**（先打包再整跑：A11 认的是 `Portio_1.0.8-RC6_x64-setup.exe` 4586339 字节）；反向验证：`rc.py --fast A1` → 打 `[未验] A1`、汇总写「0 通过 / 0 失败 / 1 未验」、退出码 **3**（改前这种情况退出 0、只写「1 跳过」） | 未跑 | 未跑 | 整跑的绿不能再含一项没核过的东西：SKIP 改称「未验」单列，退出码分成 0 / 1 / 2 / 3，未验项逐条写明为什么没跑；新增 `test_rc_summary.py` 11 条 |
 
 每一轮 RC 回归跑完，在表格里加一行；过不了的那几项写进下一轮的「下一步」。
