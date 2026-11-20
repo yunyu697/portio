@@ -3367,3 +3367,52 @@ WebView2 起不起来、窗口标题对不对、启动后几秒内崩不崩。RC
   RC9 包里那份也得核 → RC10 脚本自己的 154 条也得进整跑。下一轮按「满 10 进 patch 回 RC1」进 **v1.0.9-RC1**。
 - 遗留：A34 核的是**包里的 exe**，A35 核的是**脚本层的测试**；**装到机器上跑起来的那份**仍未验。
   两条路（便携目录就地拉起 / 临时目录装再卸）在 `docs/backlog.md`，等用户拍板。
+
+## 2026-11-20 · v1.0.9-RC1 · 窗口起来了，界面也真画出来了（A36）
+
+**Q：这一轮在收什么？** 上一轮收的是「核它的那些脚本对不对」（A35）。再往里一层，是 A33 自己：
+它拉起 `portio-app.exe`、确认进程没退、窗口标题带 `Portio` 就判过。可那个标题是
+`crates/app/tauri.conf.json` 里写死的，**窗口一开就挂着**——界面里一根筋没加载，这条一样成立。
+WebView2 起不来、资源路径错、`app.js` 语法炸，全都拦不住。
+
+**做了什么**
+
+1. `scripts/rc.py` 新增 A36：只给这一个子进程开 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=<空端口>`
+   （进程级环境变量，机器上任何设置都不动），轮询 `http://127.0.0.1:<port>/json/list` 等 webview 从
+   `about:blank` 导航到 `tauri.localhost`，然后手写一条 WebSocket（只发一句 `Runtime.evaluate`，
+   不引依赖）进真 webview 读 DOM：标题、`span.ver`、`bodyLen`、`readyState`、标签数、
+   `typeof window.findScan`、`.xterm` 个数。读完 `taskkill /T` 收干净。
+2. `webview_verdict()` 抽成纯函数，按「进没进去 → 有没有加载完 → 加载出来的对不对」逐档判：
+   没进到界面 / 加载不完 / 标题带 `ERR:` / `span.ver` 空 / `app.js` 没跑完 / 没有终端对象 / DOM < 20000 字节
+   一律 FAIL 并点名；**手上这份 exe 不是本版构建 → 报「未验」**（没核到不是坏了，退出码 3）。
+3. 计划表加 A36、分派链 `elif code == "A36"`、模块头改「A1–A36」并补一段「窗口在，不等于界面画出来了」。
+4. 新增 `scripts/test_rc_webview.py` **18 条**：`VerdictTest` 11 条（绿的四件事、九种红、版本漂移算未验）、
+   `WiredTest` 7 条（真接进计划表与分派链、等的是真导航不是 `about:blank`、端口不写死、
+   版本跟 `current_version()` 比、表达式读的键与判定用的一致、拉起后必须收干净、判前必须等 `complete`）。
+
+**验证证据**
+
+- A36 单跑（带 `CARGO_TARGET_DIR=D:\portio-target`）：**PASS 2.8s**
+  `界面已加载：标题 'Portio'、版本 1.0.9-RC1、DOM 94432 字节、1 个标签、xterm 1 个（release 构建）`。
+- 不带 `CARGO_TARGET_DIR`：拿到仓库 `target\debug` 里那份旧 exe（界面里还是 **1.0.7-RC3**）→
+  **未验、退出码 3**，点名两个版本号。这条顺带说明：以前 A33 在同样情形下是**绿的**。
+- 反向验证（`_rev36.py` 改完即还原）：
+  ① 期望版本写成 `1.0.8-RC9` → FAIL 并点名「界面里跑的是 …，仓库是 …」；
+  ② `WEBVIEW_MIN_DOM` 抬到 10 亿 → 也红（先撞在版本/未验这一档）。
+  两次都退出码 1，还原后回 PASS。
+- 反向验证撞出的真问题（都补了）：判早了——第一眼读到的是 `readyState=interactive`（已导航、未解析完），
+  拿它下判会假红；现在等 `complete`（最多 10s）再读。
+
+**下一步**
+
+- 全量整跑（36 项）→ 推 tag `v1.0.9-RC1` → 三平台包 → 本地 release 包交付 → 回填下载表与发版补记。
+- 再往里一层还剩两件：「装到机器上跑起来的那份」未核（两条路在 `docs/backlog.md`，等拍板）；
+  真窗口里那些自检（`#find-test` 等）仍只在 Chrome 无头里跑过。
+
+**未验证**
+
+- A36 只核「界面加载出来了」，不核「长什么样」（视觉靠 `docs/shots` 十张图与无头截图）。
+- 只在 Windows 上核；mac / linux 没有 WebView2 调试口，那两处仍报未验。
+- 界面自检仍在 Chrome 无头里跑，不是在真窗口里跑。
+- 真实 SSH 登录、PTY 交互、真 SFTP 传输仍未验证（缺测试服务器）。
+

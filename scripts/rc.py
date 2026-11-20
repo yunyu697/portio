@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / 未验。
 
-对应 docs/rc-checklist.md §1 的 A1–A35。以前这些步骤散在日志里，每轮都要手打一遍命令，
+对应 docs/rc-checklist.md §1 的 A1–A36。以前这些步骤散在日志里，每轮都要手打一遍命令，
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
 
 用法：
@@ -21,23 +21,31 @@
 **CI 里跑的那一步，本地整跑也得跑**：A35 跑 `scripts/test_*.py` 这一批（CI 的 ci.yml 就是拿
 `python -m unittest discover -s scripts` 跑的）。以前整跑 A1–A34 一条都没跑过它们：
 改完 `rc.py` 忘了跑对应的 `test_rc_*.py`，本地照样全绿、推上去 CI 才红。
+**窗口在，不等于界面画出来了**：A36 走 WebView2 自己的调试口进真 webview 读 DOM——
+标题栏里的版本串是不是这一版、`app.js` 顶部那个函数在不在、终端对象建没建、DOM 有没有肉。
+A33 只核「进程没退 + 标题带 Portio」，而那个标题是配置文件里写死的，
+界面一根筋没加载也照样成立。
 环境变量可覆盖探测结果：PORTIO_CHROME、PORTIO_NODE、PORTIO_CARGO、PORTIO_7Z。
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
 import glob
 import hashlib
 import json
 import os
 import re
 import shutil
+import socket
 import struct
 import subprocess
 import sys
 import tempfile
 import time
+import urllib.request
+import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -742,6 +750,237 @@ def a35_script_tests() -> tuple[str, str]:
     return script_test_verdict(proc.returncode, (proc.stdout or "") + (proc.stderr or ""))
 
 
+# ---------- A36：窗口标题是 Portio，不代表界面画出来了 ---------------------
+
+# A33 核的是「进程没退 + 有个标题带 Portio 的窗口」。可那个标题是 tauri.conf.json
+# 里写死的，窗口一开就挂着——界面里到底加载出东西没有，标题一个字都不说。
+# 真加载失败的样子是：WebView2 起不来、资源路径错、app.js 语法炸，窗口照样在、标题照样对。
+# 这里走 WebView2 自己的调试口（CDP）：等它从 about:blank 导航到 tauri.localhost，
+# 再进真 webview 读 DOM——标题栏里的版本串、app.js 顶上那个函数、终端对象在不在。
+WEBVIEW_WAIT = 20.0        # 等它从 about:blank 导航到界面，最多多少秒
+WEBVIEW_READY_WAIT = 10.0  # 导航到了之后，等它把 DOM 解析完（readyState=complete）最多多少秒
+WEBVIEW_MIN_DOM = 20000    # 真界面渲染出来 DOM 有九万多字节；只剩一副骨架到不了两万
+WEBVIEW_EXPR = (
+    "JSON.stringify({"
+    "title:document.title,"
+    "ver:(document.querySelector('.ver')||{}).textContent,"
+    "bodyLen:(document.body?document.body.innerHTML.length:0),"
+    "ready:document.readyState,"
+    "tabs:document.querySelectorAll('.tab').length,"
+    "hasScan:typeof window.findScan,"
+    "xterm:document.querySelectorAll('.xterm').length"
+    "})"
+)
+
+
+def free_port() -> int:
+    """从系统要一个空端口给调试口用——写死端口会被别的进程占掉，整项就误红了。"""
+    s = socket.socket()
+    try:
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
+    finally:
+        s.close()
+
+
+def cdp_targets(port: int, timeout: float = 1.0) -> list[dict]:
+    """调试口的页面列表（还没开就是这个样子：拿不到）。"""
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/json/list", timeout=timeout) as r:
+            return json.loads(r.read().decode("utf-8"))
+    except Exception:  # noqa: BLE001 - 口没开 / 还没起来，都走这条路
+        return []
+
+
+def ws_open(ws_url: str, timeout: float = 8.0):
+    """最小 WebSocket 握手：只为了往里发一句 Runtime.evaluate，不为它引依赖。
+
+    http 那层的 `/json/list` 只给标题与 URL，读不到 DOM；要读 DOM 只能连
+    `webSocketDebuggerUrl`。这里只用一条文本帧，手写握手比装个库更省。
+    """
+    host_port, path = ws_url.split("//", 1)[1].split("/", 1)
+    host, port = host_port.split(":")
+    sock = socket.create_connection((host, int(port)), timeout=timeout)
+    key = base64.b64encode(uuid.uuid4().bytes).decode()
+    sock.sendall((f"GET /{path} HTTP/1.1\r\nHost: {host_port}\r\nUpgrade: websocket\r\n"
+                  f"Connection: Upgrade\r\nSec-WebSocket-Key: {key}\r\n"
+                  f"Sec-WebSocket-Version: 13\r\n\r\n").encode())
+    head = b""
+    while b"\r\n\r\n" not in head:
+        chunk = sock.recv(4096)
+        if not chunk:
+            raise RuntimeError("调试口握手中途断开")
+        head += chunk
+    first = head.split(b"\r\n")[0].decode("utf-8", "replace")
+    if "101" not in first:
+        raise RuntimeError(f"调试口不认升级：{first}")
+    return sock
+
+
+def ws_send_text(sock, payload: bytes) -> None:
+    """发一条带掩码的文本帧（客户端帧必须掩码，否则调试口直接断）。"""
+    head = bytearray([0x81])
+    n = len(payload)
+    if n < 126:
+        head.append(0x80 | n)
+    elif n < 65536:
+        head.append(0x80 | 126)
+        head += struct.pack(">H", n)
+    else:
+        head.append(0x80 | 127)
+        head += struct.pack(">Q", n)
+    mask = os.urandom(4)
+    head += mask
+    sock.sendall(bytes(head) + bytes(b ^ mask[i % 4] for i, b in enumerate(payload)))
+
+
+def ws_recv_frame(sock) -> tuple[bool, bytes]:
+    """读一帧，回 (是不是末帧, 内容)。分片就把内容拼起来由调用方判断。"""
+    b = sock.recv(2)
+    if len(b) < 2:
+        raise RuntimeError("调试口把连接关掉了")
+    fin = bool(b[0] & 0x80)
+    n = b[1] & 0x7F
+    if n == 126:
+        n = struct.unpack(">H", sock.recv(2))[0]
+    elif n == 127:
+        n = struct.unpack(">Q", sock.recv(8))[0]
+    buf = b""
+    while len(buf) < n:
+        chunk = sock.recv(n - len(buf))
+        if not chunk:
+            raise RuntimeError("调试口把连接关掉了")
+        buf += chunk
+    return fin, buf
+
+
+def cdp_eval(ws_url: str, expr: str, timeout: float = 8.0) -> dict:
+    """在真 webview 里跑一句话，回它那一帧（成没成由调用方判）。"""
+    sock = ws_open(ws_url, timeout)
+    try:
+        ws_send_text(sock, json.dumps({
+            "id": 1, "method": "Runtime.evaluate",
+            "params": {"expression": expr, "returnByValue": True},
+        }).encode())
+        whole = b""
+        while True:
+            fin, buf = ws_recv_frame(sock)
+            whole += buf
+            if not fin:
+                continue
+            msg = json.loads(whole.decode("utf-8"))
+            if msg.get("id") == 1:
+                return msg
+            whole = b""
+    finally:
+        sock.close()
+
+
+def webview_verdict(sig: dict | None, version: str, waited: float,
+                    why: str = "") -> tuple[str, str]:
+    """把真 webview 里读回来的几个信号逐条判（纯函数，好测）。
+
+    顺序是有意的：先问「进到界面没有」，再问「界面是不是加载完了」，
+    然后才是「加载出来的东西对不对」。每一档都点名差在哪，
+    免得「窗口在」被读成「界面好」。
+    """
+    if sig is None:
+        return FAIL, (f"{waited:.0f}s 内没进到界面（{why or '调试口没给出页面'}）"
+                      "——窗口在也不等于界面画出来了")
+    exc = sig.get("exception")
+    if exc:
+        return FAIL, f"界面里那句探针自己炸了：{tail(str(exc), 2)}"
+    ready = str(sig.get("ready") or "")
+    if ready != "complete":
+        return FAIL, f"界面没加载完（readyState={ready or '空'}）——还在解析或者卡在资源上"
+    title = str(sig.get("title") or "")
+    if "ERR:" in title:
+        return FAIL, f"窗口标题成了 {title!r}——前端一进去就炸了"
+    ver = str(sig.get("ver") or "").strip()
+    if not ver:
+        return FAIL, "界面里压根没找到标题栏那个版本串（span.ver 空着）——DOM 不是这一份"
+    if version and ver != version:
+        # 不是这一版构建出来的 exe：界面在真 webview 里对不对，这轮压根没核到。
+        # 按 RC6 的口径，这种要报「未验」，不能算红也不能算绿——
+        # 红的意思是这个功能坏了，而这里只是「我手上这份不是本版」。
+        return SKIP, (f"这份 exe 里的界面是 {ver}，仓库是 {version}——不是本版构建，"
+                      "界面在真 webview 里对不对这轮没核到（先 npm run build 再来）")
+    if sig.get("hasScan") != "function":
+        return FAIL, (f"app.js 没跑完（window.findScan 是 {sig.get('hasScan')!r}）"
+                      "——语法错或中途抛了东西")
+    if int(sig.get("xterm") or 0) < 1:
+        return FAIL, "界面里一个终端对象都没有（xterm 没初始化）"
+    if int(sig.get("bodyLen") or 0) < WEBVIEW_MIN_DOM:
+        return FAIL, (f"界面 DOM 只有 {sig.get('bodyLen')} 字节（少于 {WEBVIEW_MIN_DOM}）"
+                      "——像只剩一副骨架")
+    return PASS, (f"界面已加载：标题 {title!r}、版本 {ver}、DOM {sig.get('bodyLen')} 字节、"
+                  f"{sig.get('tabs')} 个标签、xterm {sig.get('xterm')} 个")
+
+
+def probe_webview(exe: Path, version: str, wait: float = WEBVIEW_WAIT, port: int | None = None,
+                  popen=subprocess.Popen, kill=kill_tree) -> tuple[str, str]:
+    """把 exe 拉起来、等 webview 导航到界面、进它肚子里读 DOM、再收干净。"""
+    port = port or free_port()
+    env = dict(os.environ)
+    # 只给这一个子进程开调试口（进程级环境变量，不改机器上的任何设置）
+    env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = f"--remote-debugging-port={port}"
+    started = time.time()
+    proc = popen([str(exe)], cwd=str(exe.parent), env=env,
+                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        page = None
+        seen: list[str] = []
+        while time.time() - started < wait:
+            if proc.poll() is not None:
+                return FAIL, f"{time.time() - started:.0f}s 内进程自己退了（码 {proc.returncode}）"
+            targets = cdp_targets(port)
+            if targets:
+                seen = [t.get("url") or "" for t in targets]
+            page = next((t for t in targets
+                         if "tauri.localhost" in (t.get("url") or "")), None)
+            if page:
+                break
+            time.sleep(0.5)
+        waited = time.time() - started
+        if not page:
+            why = f"调试口里的页面一直是 {seen[-1] or '空的'}" if seen else "调试口一直没开"
+            return webview_verdict(None, version, waited, why)
+        try:
+            sig: dict = {}
+            deadline = time.time() + WEBVIEW_READY_WAIT
+            while True:
+                msg = cdp_eval(page["webSocketDebuggerUrl"], WEBVIEW_EXPR)
+                det = msg.get("exceptionDetails")
+                raw = ((msg.get("result") or {}).get("result") or {}).get("value")
+                sig = json.loads(raw) if raw else {}
+                if det:
+                    exc = ((det.get("exception") or {}).get("description")) or det.get("text")
+                    sig["exception"] = exc
+                # 导航到了不等于解析完了：这里会先看到 interactive，判早了就会假红
+                if sig.get("exception") or sig.get("ready") == "complete":
+                    break
+                if time.time() > deadline:
+                    break
+                time.sleep(0.3)
+            return webview_verdict(sig, version, time.time() - started)
+        except Exception as e:  # noqa: BLE001 - 连不上就把原因报出来，不许当通过
+            return FAIL, f"进了界面但读不到 DOM：{e}"
+    finally:
+        if proc.poll() is None:
+            kill(proc.pid)
+
+
+def a36_webview() -> tuple[str, str]:
+    """A36：窗口起来之后，界面里到底有没有东西。"""
+    if sys.platform != "win32":
+        return SKIP, "只在 Windows 上核（mac / linux 没有 WebView2 这套调试口）"
+    exe, kind = find_app_exe(app_exe_dirs())
+    if exe is None:
+        return SKIP, "还没构建 portio-app.exe（先 npm run build 或 tauri build）"
+    status, detail = probe_webview(exe, current_version())
+    return status, f"{detail}（{kind_label(kind)}）"
+
+
 def split_ids(items: list[str]) -> list[str]:
     """把 `A10 A11` / `A10,A11` 拆成编号列表：大写、去空、去重、按出现顺序。
 
@@ -849,6 +1088,7 @@ def main(argv: list[str]) -> int:
         ("A33", "portio-app.exe 真的起得来（拉起这份 exe 等窗口、核标题带 Portio、再确认没当场退出，用完收干净）", True),
         ("A34", "包里那份就是核的那份（拆开安装包、拿里面的 portio-app.exe 跟构建产物逐字节对，只放过打包器写的标记）", True),
         ("A35", "回归脚本自己那批单测（scripts/test_*.py 全跑，口径跟 CI 的 discover 一致；一条都没跑到也算红）", True),
+        ("A36", "窗口起来了，界面也真画出来了（走 WebView2 调试口进真 webview：加载完没、版本串是不是这一版、app.js 跑完没、终端对象在不在、DOM 有没有肉）", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -975,6 +1215,9 @@ def main(argv: list[str]) -> int:
         elif code == "A35":
             # 回归脚本自己的单测：1s 量级，但以前整跑从没跑过
             status, detail = a35_script_tests()
+        elif code == "A36":
+            # 进真 webview 读 DOM：拉起、等导航、读一句话、收掉
+            status, detail = a36_webview()
         results.append((code, label, status, detail))
         print(f"[{LABEL[status]}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
 
