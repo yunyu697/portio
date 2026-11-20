@@ -2829,6 +2829,7 @@ sis`
 
 - 十张图都在无头 Chrome 里出，没在真窗口里对着看一遍：字体抗锯齿、终端里真实输出下的观感，
   跟截图可能仍有细微差别。
-- 纯物料轮，产品代码一个字没动，**未进位、未推 tag、未发版**——所以 `Release` 上的 `v1.0.8-RC2`
+- 纯物料轮，产品代码一个字没动，**未进位、未推 tag、未发版**
+- push 之后 main CI run `44651589032` **六项全 success**（version rule / fmt·clippy·test / windows / macos / ubuntu），
+  提交 `fd5a18a` 已在远端；不推 tag、不发 Release——图换了不等于产品变了——所以 `Release` 上的 `v1.0.8-RC2`
   资产还是上一轮那四只（exe 3379620 / dmg 9518592 / deb 4963646 / AppImage 83147256）。
-
