@@ -3230,3 +3230,59 @@ WebView2 起不起来、窗口标题对不对、启动后几秒内崩不崩。RC
   press-kit 下载表与 release-notes 版本段回填成本次 Release 真值。
 - 遗留：A11 仍只核「文件名对 + 体积像话」，没核「装上去能跑」；安装会写注册表与开始菜单，
   按守则属「不动用户机器」，下一轮把两条路（便携目录 / 临时目录装再卸）写进 backlog 等拍板。
+
+## 2026-11-20 · v1.0.8-RC9 · 包里装的是不是我核的那份
+
+上一轮把「核的那份」和「交的那份」对齐到 release 了，但这两件事之间还剩一步没人看：
+**安装包里面到底放了哪份 exe**。A11 只核文件名对不对、体积像不像话；A33 拉起的是构建产物
+`release/portio-app.exe`。一个名字刚好的旧包、或者打包时拿错了二进制，这两项都照旧报绿。
+
+先把事实查清，再决定判据怎么写：拿 7-Zip 拆开 RC8 的包，里面那份 `portio-app.exe` 跟
+`release/portio-app.exe` **都是 13709312 字节，SHA-256 却不一样**。逐字节 diff 后只差 3 个字节，
+位置在 `__TAURI_BUNDLE_TYPE_VAR_UNK` 与 `__TAURI_BUNDLE_TYPE_VAR_NSS` 这一串上——是打包器把
+「还不知道会打成什么包」的 `UNK` 改写成包型 `NSS`。所以判据不能写成「差几字节就算了」，
+而是**精确抹掉这几位标记之后逐字节比**：别处差一个字节就是红。
+
+**做了什么**
+
+- `rc.py` 新增 A34：`bundle_marker()` 读出 exe 里的打包标记，`blank_marker()` 只抹那几位（长度不变），
+  `payload_verdict()` 出判定（纯函数），`extract_payload()` 用 7-Zip 把包里那份 `portio-app.exe`
+  拆到临时目录，`a34_payload()` 串起来。**只拆不装**：不写注册表、不进开始菜单，拆完整个临时目录删掉。
+- 判定五档：拆不出 → 红；大小不同 → 红；包里那份还写着 `UNK`（打包器没改写它）→ 红；
+  别处差一个字节 → 红并点出字节数与首处偏移；抹平标记后一致 → 绿并写明 `UNK → NSS`。
+- 认包口径收成一处：新增 `versioned_bundle()`，A11 的 `check_bundle` 与 A34 共用，两项认的必然是同一个文件。
+- `find_7z()` 认 `PORTIO_7Z` / 两处 Program Files / PATH；没装 7-Zip 报「未验」，不假装核过。
+- 计划表加 A34、分派链 A33 从裸 `else` 改成 `elif` 再留新 `else`；模块头改 A1–A34 并加一段
+  「包里那份也得是我核的那份」；环境变量补 `PORTIO_7Z`。
+- 新增 `scripts/test_rc_installer.py` 13 条；CHANGELOG 加 `1.0.8-RC9` 段；清单加 A34 行与「A34 的由来」。
+
+**验证证据**
+
+- 单跑 `python scripts/rc.py A34`（RC8 的包）→ PASS 0.2s：
+  `包里那份 13709312 字节，跟构建产物逐字节一致（只差打包器写的标记：UNK → NSS）← Portio_1.0.8-RC8_x64-setup.exe（release 构建）`。
+- 反向（真链路）：`PORTIO_7Z` 指到 `C:\WINDOWS\system32\where.exe`（拆不了包）→
+  `0 通过 / 1 失败`、退出码 **1**；去掉环境变量立刻回 PASS。
+- 单测 `python -m unittest scripts.test_rc_installer` → **13 条全过**，含「别处差 1 字节必须红」
+  「包里那份还带 UNK 必须红」「没有构建产物可比只能报未验」「A34 真接进计划表与分派链」
+  「A11 与 A34 共用一个认包函数」。
+- release 打包（`--bundles nsis`，不带 `--debug`）→ `Portio_1.0.8-RC9_x64-setup.exe` **3380547 字节**、
+  `release\portio-app.exe` 13708800 字节。
+- 十张发布图重出到 `1.0.8-RC9`（`清单 OK …（10 张，版本 1.0.8-RC9）`）。
+- 整跑 `python scripts/rc.py` → **34 通过 / 0 失败 / 0 未验，282.1s，退出码 0**
+  （A1 `96 passed, 0 failed`、A32 54.1s 增量 clippy、A33 14.5s、A34 0.5s）。
+
+**下一步**
+
+- 推 tag `v1.0.8-RC9`、回填下载表与发版补记，本地包换成这份 release 包交付。
+- 同一类问题还剩最后一层：A34 核的是**包里的 exe**，不是**装到机器上跑起来的那份**。
+  两条路（便携目录就地拉起 / 临时目录装再卸）已写进 `docs/backlog.md`「工程 / 发布」段，
+  等用户拍板——都算动用户机器，不自作主张。
+
+**未验证**
+
+- 安装后启动仍未验（A34 只拆不装；安装会写注册表与开始菜单）。
+- 没装 7-Zip 的机器上 A34 会报「未验」——本机能核是因为 7-Zip 26.06 在。
+- mac / linux 上 A34 报「未验」（NSIS 包只在 Windows 上打）；那两边的包仍只到「CI 构建通过」。
+- 真机手感（hover / 拖拽 / 真右键）仍未点过；桌面锁着（`LogonUI.exe` 在跑）。
+- 无 SSH 服务器：真实登录、PTY 交互、真实 SFTP 传输仍全部未验证。
+

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / 未验。
 
-对应 docs/rc-checklist.md §1 的 A1–A33。以前这些步骤散在日志里，每轮都要手打一遍命令，
+对应 docs/rc-checklist.md §1 的 A1–A34。以前这些步骤散在日志里，每轮都要手打一遍命令，
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
 
 用法：
@@ -16,7 +16,9 @@
 未验和通过分开算的理由：绿的意思是「核过了」，不是「没查到问题」。
 **核的和交的得是同一份**：A10 / A11 / A33 都按「哪一档构建」走（release 优先、结论里点名），
 只核 debug 就等于只核了自己手上那份，用户装的是 release。
-环境变量可覆盖探测结果：PORTIO_CHROME、PORTIO_NODE、PORTIO_CARGO。
+**包里那份也得是我核的那份**：A34 把安装包拆开（不安装、不写注册表），拿包里的 `portio-app.exe`
+跟构建产物逐字节对——只放过打包器自己改写的那几位 `__TAURI_BUNDLE_TYPE_VAR_` 标记。
+环境变量可覆盖探测结果：PORTIO_CHROME、PORTIO_NODE、PORTIO_CARGO、PORTIO_7Z。
 """
 
 from __future__ import annotations
@@ -111,6 +113,20 @@ def find_chrome() -> str | None:
             return cand
     found = shutil.which("chrome")
     return found or None
+
+
+def find_7z() -> str | None:
+    """拆安装包要用 7-Zip（NSIS 的压缩体它能读）。没有就报「未验」，不假装核过。"""
+    env = os.environ.get("PORTIO_7Z")
+    if env and Path(env).exists():
+        return env
+    for cand in (
+        r"C:\Program Files\7-Zip\7z.exe",
+        r"C:\Program Files (x86)\7-Zip\7z.exe",
+    ):
+        if Path(cand).exists():
+            return cand
+    return shutil.which("7z") or None
 
 
 # ---------- 通用执行 -------------------------------------------------------
@@ -297,6 +313,16 @@ def current_version() -> str:
     return m.group(1).strip() if m else ""
 
 
+def versioned_bundle(ver: str, dirs: list[Path]) -> Path | None:
+    """按版本号找当前这一版的安装包；找不到返回 None（A11 与 A34 共用这一个口径）。"""
+    ver = (ver or "").strip()
+    if not ver:
+        return None
+    want = f"Portio_{ver}_x64-setup.exe"
+    hits = [d / want for d in dirs if (d / want).is_file()]
+    return max(hits, key=lambda q: q.stat().st_mtime) if hits else None
+
+
 def check_bundle(ver: str, dirs: list[Path]) -> tuple[str, str]:
     """按当前版本号找安装包：只认 Portio_<当前版本>_x64-setup.exe。
 
@@ -307,15 +333,14 @@ def check_bundle(ver: str, dirs: list[Path]) -> tuple[str, str]:
     ver = (ver or "").strip()
     if not ver:
         return FAIL, "读不出界面里的版本号，没法判断该认哪一个包"
-    want = f"Portio_{ver}_x64-setup.exe"
-    hits = [d / want for d in dirs if (d / want).is_file()]
-    if not hits:
+    newest = versioned_bundle(ver, dirs)
+    if newest is None:
+        want = f"Portio_{ver}_x64-setup.exe"
         stale = sorted({q.name for d in dirs if d.is_dir() for q in d.glob("Portio_*.exe")})
         tail = ""
         if stale:
             tail = "；这些是旧包、不算：" + "、".join(stale[:3]) + ("…" if len(stale) > 3 else "")
         return SKIP, f"还没构建 {ver} 的安装包（要 {want}）{tail}"
-    newest = max(hits, key=lambda q: q.stat().st_mtime)
     size = newest.stat().st_size
     mib = size / 1024 / 1024
     if mib < 2 or mib > 30:
@@ -569,6 +594,104 @@ def a33_launch() -> tuple[str, str]:
     return status, f"{detail}（{kind_label(kind)}）"
 
 
+# ---------- A34：包里那份 exe 跟我核的那份是同一份 -------------------------
+
+MARKER = b"__TAURI_BUNDLE_TYPE_VAR_"
+
+
+def bundle_marker(data: bytes) -> str:
+    """读 tauri 打包器写在 exe 里的那个标记（`__TAURI_BUNDLE_TYPE_VAR_XXX`）。
+
+    构建产物里它是 `UNK`（还不知道会被打成什么包），打包器在做安装包时把它改成
+    包型（NSIS 是 `NSS`）。这几位是**唯一**允许两份 exe 不一样的地方，所以得单独认出来、
+    抹平了再比，否则「逐字节一致」这句话永远判不过，只能放宽成「差几字节就算了」。
+    """
+    i = data.find(MARKER)
+    if i < 0:
+        return ""
+    start = i + len(MARKER)
+    end = data.find(b"\x00", start)
+    if end < 0:
+        end = start + 8
+    return data[start:end].decode("latin1", "replace")
+
+
+def blank_marker(data: bytes) -> bytes:
+    """把标记那几位抹成空格（长度不变），好让「打包前」与「打包后」逐字节可比。"""
+    out = bytearray(data)
+    i = out.find(MARKER)
+    if i < 0:
+        return bytes(out)
+    start = i + len(MARKER)
+    end = out.find(b"\x00", start)
+    if end < 0:
+        end = min(start + 8, len(out))
+    out[start:end] = b" " * (end - start)
+    return bytes(out)
+
+
+def payload_verdict(built: bytes | None, payload: bytes | None) -> tuple[str, str]:
+    """包里的 exe 跟构建产物比（纯函数，好测）。
+
+    只放行打包器改写的那几位标记；别处差一个字节就不算同一份——A11 只核「文件名 + 体积」，
+    查不出「装的是上一轮的 exe」这种事，这一项就是补那个洞。
+    """
+    if payload is None:
+        return FAIL, "安装包里拆不出 portio-app.exe——这个包装完了也没程序可跑"
+    if built is None:
+        return SKIP, f"包里那份 {len(payload)} 字节，但没有构建产物可比（先构建再核）"
+    if len(payload) != len(built):
+        return FAIL, f"包里那份 {len(payload)} 字节、构建产物 {len(built)} 字节——大小都不一样，不是同一份"
+    mark_built, mark_payload = bundle_marker(built), bundle_marker(payload)
+    if mark_payload == "UNK":
+        return FAIL, "包里那份还写着标记 UNK：打包器没改写它，装上去的是打包前那份"
+    if blank_marker(payload) == blank_marker(built):
+        if mark_built or mark_payload:
+            return PASS, (f"包里那份 {len(payload)} 字节，跟构建产物逐字节一致"
+                          f"（只差打包器写的标记：{mark_built or '无'} → {mark_payload or '无'}）")
+        return PASS, f"包里那份 {len(payload)} 字节，跟构建产物逐字节一致"
+    a, b = blank_marker(built), blank_marker(payload)
+    idx = [i for i, (x, y) in enumerate(zip(a, b)) if x != y]
+    first = idx[0] if idx else 0
+    return FAIL, f"包里那份跟构建产物差 {len(idx)} 字节（第一处在 0x{first:x}）——不是同一份"
+
+
+def extract_payload(pkg: Path, seven: str, workdir: Path) -> tuple[Path | None, str]:
+    """把包里那份 portio-app.exe 拆到临时目录。
+
+    拆包不是安装：不写注册表、不进开始菜单、不碰用户目录，拆完整个临时目录删掉。
+    """
+    proc = run([seven, "x", str(pkg), f"-o{workdir}", "-y", "portio-app.exe"], 180)
+    got = workdir / "portio-app.exe"
+    if got.is_file():
+        return got, ""
+    return None, tail((proc.stdout or "") + (proc.stderr or "")) or f"7-Zip 退出码 {proc.returncode}"
+
+
+def a34_payload() -> tuple[str, str]:
+    """把 A11 认的那份安装包拆开，核里面装的到底是不是我核过的那份 exe。"""
+    if sys.platform != "win32":
+        return SKIP, "NSIS 包只在 Windows 上打，mac / linux 这边没有包可拆"
+    seven = find_7z()
+    if seven is None:
+        return SKIP, "没装 7-Zip（可用 PORTIO_7Z 指路径），拆不开安装包就没法核包里那份"
+    exe, kind = find_app_exe(app_exe_dirs())
+    pkg = versioned_bundle(current_version(), bundle_dirs(kind) + [ROOT])
+    if pkg is None:
+        return SKIP, f"还没构建 {current_version()} 的安装包，没得拆"
+    workdir = Path(tempfile.mkdtemp(prefix="portio-payload-"))
+    try:
+        got, why = extract_payload(pkg, seven, workdir)
+        built = exe.read_bytes() if exe is not None else None
+        payload = got.read_bytes() if got is not None else None
+        if payload is None:
+            return FAIL, f"拆 {pkg.name} 时没拿到 portio-app.exe：{why}"
+        status, detail = payload_verdict(built, payload)
+        return status, f"{detail} ← {pkg.name}（{kind_label(kind)}）"
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
 def split_ids(items: list[str]) -> list[str]:
     """把 `A10 A11` / `A10,A11` 拆成编号列表：大写、去空、去重、按出现顺序。
 
@@ -674,6 +797,7 @@ def main(argv: list[str]) -> int:
         ("A31", "发布截图是本版本那一套（docs/shots/manifest.json 的版本串与当前一致、十张图逐张对得上字节数）", True),
         ("A32", "cargo fmt --check + cargo clippy -D warnings（本地的绿要等于 CI 的绿）", True),
         ("A33", "portio-app.exe 真的起得来（拉起这份 exe 等窗口、核标题带 Portio、再确认没当场退出，用完收干净）", True),
+        ("A34", "包里那份就是核的那份（拆开安装包、拿里面的 portio-app.exe 跟构建产物逐字节对，只放过打包器写的标记）", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -791,9 +915,12 @@ def main(argv: list[str]) -> int:
         elif code == "A32":
             # 跑 cargo fmt / clippy，跟 CI 那关同一个口径
             status, detail = a32_lints()
-        else:
+        elif code == "A33":
             # A33：把 exe 真拉起来看一眼，用完收掉
             status, detail = a33_launch()
+        elif code == "A34":
+            # 拆包对字节：不开浏览器、不安装、不写注册表
+            status, detail = a34_payload()
         results.append((code, label, status, detail))
         print(f"[{LABEL[status]}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
 
