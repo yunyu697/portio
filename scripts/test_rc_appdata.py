@@ -256,8 +256,10 @@ class WiredTest(unittest.TestCase):
         self.assertIn("不是本版构建", body)
 
     def test_profile_dir_removed(self):
-        body = self.text.split("def probe_app_selftests", 1)[1]
-        self.assertIn("rmtree(prof", body)
+        body = self.text.split("def probe_app_selftests", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("make_profile(", body)
+        self.assertIn("release_profile(prof)", body)
+        self.assertNotIn("ignore_errors=True", body, "删不掉也别吭声的老写法不许回来")
 
     def test_appdata_env_override_attempt_is_documented_as_dead(self):
         # 这条是被人试死过的事实：换 APPDATA 不管用，别有人回头又去试一遍

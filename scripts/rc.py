@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / 未验。
 
-对应 docs/rc-checklist.md §1 的 A1–A43。以前这些步骤散在日志里，每轮都要手打一遍命令，
+对应 docs/rc-checklist.md §1 的 A1–A44。以前这些步骤散在日志里，每轮都要手打一遍命令，
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
 
 用法：
@@ -57,6 +57,12 @@ Known Folder API，不认进程环境变量（实测新目录里什么都没长�
 种一截「断电写到一半」的 JSON、拉起 release 那份 exe，核真后端有没有另存出 `.broken-<毫秒>`、
 副本跟种下去的一字不差、种下去那份有没有被反手写成空清单，再拿「还没有这份清单」跑一趟对照
 （好档一个副本都不许冒），跑完按原字节收回、独立复量。
+**那四份一次性 profile 以前是「删不掉也别吭声」**：A38–A43 每个探针都 mkdtemp 一份 WebView2
+profile，收尾一句 `shutil.rmtree(prof, ignore_errors=True)`——库文件还占着的那一份就留在盘上，
+日志里一个字不提。2026-11 那轮 C 盘被顶到 0 字节，翻出来是我自己攒下的 113 个 `portio-*`
+目录、1.3 GB。A44 钉住四件事：建之前先核目标盘余量（不够就拦、并说清差多少）、建了就登记、
+收的时候重试几次（真删不掉判 False 并点名、整跑按失败算）、跑前只清**自己前缀且够旧的**残留
+（刚建那份可能是另一个 rc.py 正在用的，别人的目录与同名文件一律不碰）。
 环境变量可覆盖探测结果：PORTIO_CHROME、PORTIO_NODE、PORTIO_CARGO、PORTIO_7Z。
 """
 
@@ -336,6 +342,149 @@ def a_page(chrome: str | None, profile: str, frag: str, expect: str,
     if not frag and not title:
         return FAIL, "抓不到 <title>，页面可能没起来"
     return PASS, f"title = {title}"
+
+
+# ---------- 一次性 profile：自己建、自己删、删不掉要说出来 -------------------
+#
+# A38–A43 每个探针都 mkdtemp 一份 WebView2 profile，收尾一句
+# `rmtree(..., ignore_errors=True)`。ignore_errors 的字面意思就是「删不掉也别吭声」：
+# 库文件还没松手、目录被占住，那一份就留在盘上，日志里一个字都不会提。
+# 2026-11 那轮 C 盘被顶到 0 字节，翻出来是 %LOCALAPPDATA%\Temp 里攒了我自己留下的
+# 113 个 `portio-*` 目录、1.3 GB——每跑一轮多一份，全靠这句静默。
+# 于是四件事：① 建之前先看目标盘还剩多少，不够就别开跑，并说清差多少；
+# ② 建出来登记在册；③ 收的时候重试几次，真删不掉就点名报出来、算「本轮有残留」；
+# ④ 跑前把上一轮留下的清掉——只认自己的前缀，只认够旧的。
+PROFILE_PREFIXES = ("portio-fresh-", "portio-appdata-", "portio-narrow-",
+                    "portio-rc-", "portio-payload-")
+# 一份新 profile 首启就要写几十上百兆；快没地方时开跑只是把盘顶穿，不如先停下来说清楚
+PROFILE_FLOOR_MB = 150
+PROFILE_RELEASE_TRIES = 10
+PROFILE_RELEASE_SLEEP = 0.5
+# 够旧才清：另一个 rc.py 可能正拿着它手上的 profile 在跑，按前缀无差别清把人家的删了更糟
+PROFILE_STALE_HOURS = 6
+CREATED_PROFILES: list[Path] = []
+LEAKED_PROFILES: list[Path] = []
+
+
+def temp_root() -> Path:
+    """本轮的临时目录根（跟着 TEMP 走；本机把它指到 D 盘）。"""
+    return Path(tempfile.gettempdir())
+
+
+def free_space_mb(path: Path) -> float:
+    """目标盘还剩多少 MB；量不到给 inf——不拦人，但也不因此把「没核」说成「核过」。"""
+    try:
+        return shutil.disk_usage(str(path)).free / (1024 * 1024)
+    except OSError:
+        return float("inf")
+
+
+class TempSpaceShort(Exception):
+    """目标盘不够跑一份一次性 profile。"""
+
+
+def require_temp_space(root: Path, need_mb: float = PROFILE_FLOOR_MB,
+                       free=free_space_mb) -> None:
+    """开跑前核一眼盘：不够就抛，话里带上还差多少。"""
+    got = free(root)
+    if got < need_mb:
+        raise TempSpaceShort(
+            f"{root} 只剩 {got:.0f} MB，跑一份一次性 profile 至少要 {need_mb:.0f} MB"
+            f"（差 {need_mb - got:.0f} MB）——先清点临时目录再开跑，"
+            "别让回归把盘写满：1.0.9 那轮 C 盘被顶到 0 字节走的就是这条路")
+
+
+def profile_bytes(path: Path) -> int:
+    """这份 profile 占多大（删之前量一次，好说清放回多少）。"""
+    total = 0
+    for p in Path(path).rglob("*"):
+        try:
+            if p.is_file():
+                total += p.stat().st_size
+        except OSError:
+            continue
+    return total
+
+
+def profile_dirs(root: Path | None = None, prefixes: tuple[str, ...] = PROFILE_PREFIXES,
+                 now: float | None = None,
+                 stale_hours: float | None = PROFILE_STALE_HOURS) -> list[Path]:
+    """临时目录里「我自己的」那几类 profile 目录。
+
+    只认前缀、且只认目录：别人的临时目录一个都不碰，同名文件也不动
+    （这个函数只负责认，删不删是 sweep 的事）。
+    stale_hours 给 None 就返回所有岁数的（收尾盘点用）。
+    """
+    root = Path(root) if root is not None else temp_root()
+    now = time.time() if now is None else now
+    out: list[Path] = []
+    try:
+        entries = list(Path(root).iterdir())
+    except OSError:
+        return out
+    for p in entries:
+        if not p.is_dir() or not p.name.startswith(prefixes):
+            continue
+        if stale_hours is None:
+            out.append(p)
+            continue
+        try:
+            age_h = (now - p.stat().st_mtime) / 3600
+        except OSError:
+            continue
+        if age_h >= stale_hours:
+            out.append(p)
+    return out
+
+
+def make_profile(prefix: str, root: Path | None = None,
+                 need_mb: float = PROFILE_FLOOR_MB, mkdtemp=tempfile.mkdtemp,
+                 free=free_space_mb) -> Path:
+    """建一份一次性 profile：盘不够就不建，建了就登记，收尾才有据可查。"""
+    root = Path(root) if root is not None else temp_root()
+    require_temp_space(root, need_mb, free)
+    path = Path(mkdtemp(prefix=prefix, dir=str(root)))
+    CREATED_PROFILES.append(path)
+    return path
+
+
+def release_profile(path: Path, rmtree=shutil.rmtree, sleep=time.sleep,
+                    tries: int = PROFILE_RELEASE_TRIES) -> bool:
+    """删一份一次性 profile：重试几次，真删不掉就点名登记。
+
+    返回 False 不是「小事」——它是本轮往盘上留了东西这件事唯一的痕迹，
+    所以每处调用都拿它算进 LEAKED_PROFILES，摘要里单独说一行。
+    """
+    p = Path(path)
+    for _ in range(max(1, tries)):
+        if not p.exists():
+            return True
+        try:
+            rmtree(p, ignore_errors=False)
+        except OSError:
+            pass
+        if not p.exists():
+            return True
+        sleep(PROFILE_RELEASE_SLEEP)
+    if p not in LEAKED_PROFILES:
+        LEAKED_PROFILES.append(p)
+    print(f"  ! 删不掉这份临时 profile，已登记：{p}（{profile_bytes(p) // 1024} KB 留在盘上）")
+    return False
+
+
+def sweep_stale_profiles(root: Path | None = None, now: float | None = None,
+                         prefixes: tuple[str, ...] = PROFILE_PREFIXES,
+                         stale_hours: float = PROFILE_STALE_HOURS,
+                         release=release_profile) -> tuple[int, int]:
+    """跑前把上一轮留下的 profile 清掉，返回（清掉几个 / 放回多少字节）。"""
+    root = Path(root) if root is not None else temp_root()
+    count = freed = 0
+    for p in profile_dirs(root, prefixes, now, stale_hours):
+        size = profile_bytes(p)
+        if release(p, sleep=lambda _s: None):
+            count += 1
+            freed += size
+    return count, freed
 
 
 def app_exe_dirs() -> list[Path]:
@@ -759,7 +908,11 @@ def a34_payload() -> tuple[str, str]:
     pkg = versioned_bundle(current_version(), bundle_dirs(kind) + [ROOT])
     if pkg is None:
         return SKIP, f"还没构建 {current_version()} 的安装包，没得拆"
-    workdir = Path(tempfile.mkdtemp(prefix="portio-payload-"))
+    try:
+        workdir = make_profile("portio-payload-")
+    except TempSpaceShort as e:
+        # 盘不够是「没核」，不是「核过」：不许拿它当通过
+        return SKIP, f"临时目录不够拆包：{e}"
     try:
         got, why = extract_payload(pkg, seven, workdir)
         built = exe.read_bytes() if exe is not None else None
@@ -769,7 +922,7 @@ def a34_payload() -> tuple[str, str]:
         status, detail = payload_verdict(built, payload)
         return status, f"{detail} ← {pkg.name}（{kind_label(kind)}）"
     finally:
-        shutil.rmtree(workdir, ignore_errors=True)
+        release_profile(workdir)
 
 
 # ---------- A35：CI 里跑的那一步，整跑也得跑 -------------------------------
@@ -1347,7 +1500,7 @@ def probe_fresh_selftests(exe: Path, version: str, wait: float = FRESH_PROFILE_W
                           mkdtemp=tempfile.mkdtemp, sleep=time.sleep) -> tuple[str, str]:
     """拉起 exe（配一份一次性 profile），把这批会改设置的自检跑一遍，收干净并核隔离。"""
     port = port or free_port()
-    prof = Path(mkdtemp(prefix="portio-fresh-"))
+    prof = make_profile("portio-fresh-", mkdtemp=mkdtemp)
     db = localStorage_dir()
     theme = app_data_file("theme.txt")
     db_before = profile_stamp(db)
@@ -1405,7 +1558,7 @@ def probe_fresh_selftests(exe: Path, version: str, wait: float = FRESH_PROFILE_W
         fresh_used = fresh_profile_db(prof) is not None
         db_after = profile_stamp(db)
         theme_ok = restore_bytes(theme, theme_before)
-        shutil.rmtree(prof, ignore_errors=True)
+        release_profile(prof)
     if err is not None:
         return FAIL, f"进了界面但自检没跑成：{err}"
     return fresh_verdict(rows, fresh_used, db_before == db_after, theme_ok)
@@ -1549,7 +1702,7 @@ def probe_app_selftests(exe: Path, version: str, wait: float = FRESH_PROFILE_WAI
                         collect=collect_app_state, restore=restore_app_state) -> tuple[str, str]:
     """拉起 exe（一次性 profile），把这两条会写盘的自检跑一遍，跑完把后端文件收回原样。"""
     port = port or free_port()
-    prof = Path(mkdtemp(prefix="portio-appdata-"))
+    prof = make_profile("portio-appdata-", mkdtemp=mkdtemp)
     before = collect()
     env = dict(os.environ)
     # 调试口与一次性 profile 只给这一个子进程；后端目录换不了（见段首），靠存/收兜
@@ -1611,7 +1764,7 @@ def probe_app_selftests(exe: Path, version: str, wait: float = FRESH_PROFILE_WAI
         for name in residue_bad(before, settled):
             if name not in restore_bad:
                 restore_bad.append(name)
-        shutil.rmtree(prof, ignore_errors=True)
+        release_profile(prof)
     if err is not None:
         return FAIL, f"进了界面但自检没跑成：{err}"
     return app_files_verdict(rows, wrote, restore_bad)
@@ -1804,7 +1957,7 @@ def probe_narrow(exe: Path, version: str, wait: float = FRESH_PROFILE_WAIT,
                  mkdtemp=tempfile.mkdtemp, sleep=time.sleep) -> tuple[str, str]:
     """拉起 exe（一次性 profile），在一根长连会话里换两档视口把窄窗自检跑完，收干净并核隔离。"""
     port = port or free_port()
-    prof = Path(mkdtemp(prefix="portio-narrow-"))
+    prof = make_profile("portio-narrow-", mkdtemp=mkdtemp)
     db = localStorage_dir()
     theme = app_data_file("theme.txt")
     db_before = profile_stamp(db)
@@ -1864,7 +2017,7 @@ def probe_narrow(exe: Path, version: str, wait: float = FRESH_PROFILE_WAIT,
         fresh_used = fresh_profile_db(prof) is not None
         db_after = profile_stamp(db)
         theme_ok = restore_bytes(theme, theme_before)
-        shutil.rmtree(prof, ignore_errors=True)
+        release_profile(prof)
     if err is not None:
         return FAIL, f"进了界面但自检没跑成：{err}"
     return narrow_verdict(rows, fresh_used, db_before == db_after, theme_ok)
@@ -2402,6 +2555,103 @@ def a43_broken_store_real() -> tuple[str, str]:
     return status, f"{detail}（{kind_label(kind)}）"
 
 
+def refuse_rmtree(path, ignore_errors=False, onerror=None):
+    """探针用：装作删不掉（库文件还被占着的样子）。"""
+    raise OSError("文件还被别的进程占着（这是探针故意的）")
+
+
+def probe_profile_lifecycle(root: Path, now: float | None = None,
+                            mkdtemp=tempfile.mkdtemp, sleep=lambda _s: None) -> tuple[str, str]:
+    """A44 的探针：在一份自己的临时目录里把建 / 收 / 拦 / 报 / 陈旧清理各走一遍。
+
+    不碰真 profile、不拉窗口，一秒量级；但走的都是整跑里那四个探针用的同一批函数。
+    """
+    root = Path(root)
+    bad: list[str] = []
+    far = lambda _p: 9000.0  # noqa: E731 - 盘很空
+
+    # 1) 够就建：建出来得在我的临时目录里，且登记在册
+    made = make_profile("portio-rc-", root=root, need_mb=50, mkdtemp=mkdtemp, free=far)
+    if made not in CREATED_PROFILES:
+        bad.append("建出来的 profile 没登记——收尾盘点时会漏掉它")
+    if not made.exists() or made.parent != root:
+        bad.append("建出来的 profile 不在我的临时目录里")
+
+    # 2) 收：删干净
+    if not release_profile(made, sleep=sleep) or made.exists():
+        bad.append("建出来这份没收干净")
+
+    # 3) 盘不够：不建、不许写东西、话里得说清差多少
+    before = len(list(root.iterdir()))
+    try:
+        make_profile("portio-rc-", root=root, need_mb=200, mkdtemp=mkdtemp, free=lambda _p: 20.0)
+        bad.append("盘只剩 20 MB 也照样建了 profile（开跑就是把盘顶穿）")
+    except TempSpaceShort as e:
+        if "差 180 MB" not in str(e):
+            bad.append(f"盘不够时没把差多少说清楚：{e}")
+    if len(list(root.iterdir())) != before:
+        bad.append("盘不够那一次还是往临时目录里写了东西")
+
+    # 4) 删不掉：得判 False、得登记、得点名（以前 ignore_errors 让它一声不响）
+    stuck = make_profile("portio-rc-", root=root, need_mb=50, mkdtemp=mkdtemp, free=far)
+    LEAKED_PROFILES.clear()
+    ok = release_profile(stuck, rmtree=refuse_rmtree, sleep=sleep, tries=2)
+    if ok or not stuck.exists():
+        bad.append("删不掉的那份被当成了「删掉了」")
+    if stuck not in LEAKED_PROFILES:
+        bad.append("删不掉却没登记——下一轮盘点又看不见它")
+    shutil.rmtree(stuck, ignore_errors=True)  # 探针自己收尾
+    LEAKED_PROFILES.clear()
+
+    # 5) 陈旧清理：只清自己的前缀、只清够旧的、不改动同名文件与别人的目录
+    stamp = time.time() if now is None else now
+    young = root / "portio-rc-young"
+    young.mkdir()
+    (young / "x").write_bytes(b"x" * 10)
+    old = root / "portio-fresh-old"
+    old.mkdir()
+    (old / "x").write_bytes(b"x" * 4096)
+    foreign = root / "other-app-old"
+    foreign.mkdir()
+    (foreign / "x").write_bytes(b"x" * 4096)
+    lone = root / "portio-fresh-file"
+    lone.write_bytes(b"not a dir")
+    for p in (old, foreign):
+        os.utime(p, (stamp - 30 * 3600, stamp - 30 * 3600))
+    swept, freed = sweep_stale_profiles(root=root, now=stamp, release=lambda q, **_k: release_profile(q, sleep=sleep))
+    if swept != 1:
+        bad.append(f"陈旧清理扫到 {swept} 份，应只清掉上一轮留下的那 1 份")
+    if old.exists():
+        bad.append("超过 6 小时的旧 profile 没被清掉（盘就是这么攒满的）")
+    if not young.exists():
+        bad.append("刚刚建出来那份被当成陈旧清了——另一个 rc.py 可能正拿着它在跑")
+    if not foreign.exists():
+        bad.append("把别人前缀的临时目录也清了")
+    if not lone.exists():
+        bad.append("把同前缀的文件也删了（只该认目录）")
+    if swept and freed <= 0:
+        bad.append("清掉的东西没算回放回了多少字节")
+
+    if bad:
+        return FAIL, "；".join(bad)
+    return PASS, (f"盘不够会拦（「差 180 MB」说得出来，也没往里写东西）；建 2 份、收 1 份、"
+                  f"删不掉那份判 False 并点名登记；陈旧清理清掉 1 份 / 放回 {freed // 1024} KB，"
+                  "放过刚建的那份、别人的目录、同前缀的文件各 1 个")
+
+
+def a44_profile_lifecycle() -> tuple[str, str]:
+    """A44：一次性 profile 自己建、自己删、删不掉要报出来，盘不够先拦。"""
+    keep_created, keep_leaked = list(CREATED_PROFILES), list(LEAKED_PROFILES)
+    root = Path(tempfile.mkdtemp(prefix="portio-a44-"))
+    try:
+        return probe_profile_lifecycle(root)
+    finally:
+        # 探针自己建的别混进整跑的账，否则收尾那行会把它们算成本轮残留
+        CREATED_PROFILES[:] = keep_created
+        LEAKED_PROFILES[:] = keep_leaked
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def split_ids(items: list[str]) -> list[str]:
     """把 `A10 A11` / `A10,A11` 拆成编号列表：大写、去空、去重、按出现顺序。
 
@@ -2517,6 +2767,7 @@ def main(argv: list[str]) -> int:
         ("A41", "最后两条自检也在真窗口 + 真后端里跑（#net-fail-test / #connect-entry-test；先证明这轮真在我的真偏好与真后端上（Tauri 桥、真偏好、底色对得上、sessions_read 真回话），跑前存下 theme.txt / sessions.json / known_hosts、跑完按原字节收回并独立复量）", True),
         ("A42", "#broken-store-test = BROKEN-STORE-SELFTEST-OK（会话清单读坏时先另存再从头开始：半截写入 / 版本比程序新 / 合法 JSON 但不是清单都算读不懂，好文件与空清单不许被另存；读失败与急救失败各有各的话；坏档之后还存得进新会话）", True),
         ("A43", "坏档急救在真 exe 上真跑一遍（把真 app-data 的 sessions.json 种成半截写入、拉起 release exe，核真后端有没有另存出 .broken-<毫秒>、副本逐字节对得上、原文件没被改写、提示条写清另存成了什么；再拿「还没有这份清单」跑一趟对照，好档一个副本都不许冒；跑完按原字节收回、独立复量）", True),
+        ("A44", "一次性 profile 自己建自己删（盘不够先拦、并说清差多少；删不掉要判 False 并点名登记，不许再一声不响；跑前只清自己前缀且够旧的残留：刚建的那份、别人前缀的目录、同前缀的文件都不许动）", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -2532,7 +2783,15 @@ def main(argv: list[str]) -> int:
 
     node = find_node()
     chrome = find_chrome()
-    profile = tempfile.mkdtemp(prefix="portio-rc-")
+    # 跑前先把上一轮自己留下的 profile 清掉（只认自己的前缀、只认够旧的），
+    # 再核一眼盘：不够就别开跑。以前这里直接 mkdtemp，盘满了才在别的步骤炸。
+    swept, freed = sweep_stale_profiles()
+    try:
+        profile = make_profile("portio-rc-")
+    except TempSpaceShort as e:
+        print("-" * 72)
+        print(f"不能开跑：{e}")
+        return EXIT_FAIL
 
     # 版本号：把标题栏 span 读出来，报告头里直接用
     ver = ""
@@ -2541,6 +2800,8 @@ def main(argv: list[str]) -> int:
         ver = m.group(1).strip()
 
     print(f"Portio 自动化回归  v{ver}  ({ROOT})")
+    if swept:
+        print(f"临时目录：清掉上一轮留下的 {swept} 份 profile，放回 {freed / (1024 * 1024):.1f} MB")
     if wanted:
         print(f"只跑 {len(plan)} 项：{'、'.join(code for code, _, _ in plan)}")
     print("-" * 72)
@@ -2667,15 +2928,33 @@ def main(argv: list[str]) -> int:
         elif code == "A43":
             # 坏档急救在真 exe + 真后端上真跑一遍：种半截清单、看副本与原文件、好档对照、收场收回
             status, detail = a43_broken_store_real()
+        elif code == "A44":
+            # 一次性 profile 自己建自己删：盘不够先拦、删不掉要点名、陈旧清理只认自己的且够旧
+            status, detail = a44_profile_lifecycle()
         results.append((code, label, status, detail))
         print(f"[{LABEL[status]}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
 
-    shutil.rmtree(profile, ignore_errors=True)
+    # 上一项多半刚跑完无头 Chrome，它的收尾进程还会短暂占着这个目录（实测 3 秒内松手），
+    # 所以先歇一下再收：这不是「删不掉」，只是还没松手
+    time.sleep(1.2)
+    release_profile(profile)
+    # 收完再独立数一遍：**本轮自己建的**那几份都该找不着了；留着的就点名，不许静默放过
+    # （只认本轮建的，不把另一轮正在跑的那份算成自己的残留）
+    left = [p for p in CREATED_PROFILES if p.exists()]
 
     code, lines = summarize(results, time.time() - started)
     print("-" * 72)
     for line in lines:
         print(line)
+    print(f"临时目录：本轮建了 {len(CREATED_PROFILES)} 份 profile，"
+          f"{'一份都没留下' if not left else f'还留着 {len(left)} 份'}")
+    if left:
+        for p in left[:6]:
+            print(f"  ! 还留着：{p}（{profile_bytes(p) // 1024} KB）")
+        if code == EXIT_OK:
+            # 盘上留下东西就不算全绿：这一条没有对应编号，但不能让「绿」盖过去
+            code = EXIT_FAIL
+            print("这一轮自己的临时目录没清干净，按失败算（先看上面那份路径为什么删不掉）")
     return code
 
 

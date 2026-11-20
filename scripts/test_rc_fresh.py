@@ -234,7 +234,10 @@ class WiredTest(unittest.TestCase):
 
     def test_kills_and_removes_the_profile_in_finally(self):
         self.assertRegex(self.body, r"finally:\s*\n\s*if proc.poll\(\) is None:\s*\n\s*kill\(proc.pid\)")
-        self.assertIn("shutil.rmtree(prof, ignore_errors=True)", self.body)
+        self.assertIn("release_profile(prof)", self.body)
+        # 老的 `shutil.rmtree(prof, ignore_errors=True)` 删不掉也不吭声，1.0.10-RC1 换掉了
+        self.assertNotIn("ignore_errors=True", self.body)
+        self.assertIn("make_profile(", self.body)
 
     def test_port_not_hardcoded(self):
         self.assertIn("port = port or free_port()", self.body)

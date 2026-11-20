@@ -342,10 +342,11 @@ class WiredTest(unittest.TestCase):
         self.assertLess(body.index("finally:"), body.index("sess.close()"))
 
     def test_fresh_profile_used_and_removed(self):
-        body = self.text.split("def probe_narrow", 1)[1]
+        body = self.text.split("def probe_narrow", 1)[1].split("\ndef ", 1)[0]
         self.assertIn("WEBVIEW2_USER_DATA_FOLDER", body)
         self.assertIn("portio-narrow-", body)
-        self.assertIn("rmtree(prof", body)
+        self.assertIn("release_profile(prof)", body)
+        self.assertNotIn("ignore_errors=True", body, "删不掉也别吭声的老写法不许回来")
 
     def test_real_profile_checked(self):
         body = self.text.split("def probe_narrow", 1)[1]
