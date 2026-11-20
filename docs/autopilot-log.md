@@ -2882,3 +2882,16 @@ sis`
 - A32 在本机的耗时是增量口径（3–45s 视编译状态），CI 上走 rust-cache，两边不同，别拿本机耗时对照 CI。
 - 真机窗口仍没点过（`LogonUI.exe` 在跑）：M1–M12 的手感、以及「重开 Portio 后按偏好收放」都还等着。
 - 无 SSH 服务器：真实登录、PTY 交互、tmux 全屏、真实 SFTP 仍只有协议层与本地回环。
+
+## 2026-11-20 · v1.0.8-RC3 · 发版补记
+
+- 提交 `2b0fe11` 已 push main，tag `v1.0.8-RC3` 已推；main CI run `44660581704` **六项全 success**
+  （version rule / fmt·clippy·test / windows / macos / ubuntu），Release run `44660593238`
+  **gate + 三平台 build 四项全 success**。
+- Release `Portio 1.0.8-RC3`：`prerelease:true`、`draft:false`，四资产
+  exe **3380114 B** / dmg **9520126 B** / deb **4966838 B** / AppImage **83147256 B**
+  （对照 RC2：3379620 / 9518592 / 4963646 / 83147256；只有脚本与文案改动，exe 多 494 B）。
+- 本地 NSIS 包 **4588057 B**（源 `D:\portio-target\debug\bundle\nsis\Portio_1.0.8-RC3_x64-setup.exe`）
+  → 复制到 `…\new-chat\Portio_1.0.8-RC3_x64-setup.exe` 并交付。
+- press-kit 下载表与 release-notes 的版本段已回填成本次 Release 的真值；首发十张图也随版本重出到
+  `1.0.8-RC3`（A31 认的就是这套）。
