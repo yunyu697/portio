@@ -1,0 +1,101 @@
+{
+  "version": "1.0.8-RC2",
+  "generated": "2026-11-20T09:03:48+08:00",
+  "window": [
+    1180,
+    690
+  ],
+  "scale": 2,
+  "shots": [
+    {
+      "file": "portio-dark-main.png",
+      "scene": "main",
+      "theme": "dark",
+      "label": "三栏：会话栏 + 终端 + 双栏文件 + 传输队列",
+      "width": 2360,
+      "height": 1380,
+      "bytes": 126790
+    },
+    {
+      "file": "portio-dark-split.png",
+      "scene": "split",
+      "theme": "dark",
+      "label": "终端 2×2 分屏",
+      "width": 2360,
+      "height": 1380,
+      "bytes": 140736
+    },
+    {
+      "file": "portio-dark-import.png",
+      "scene": "import",
+      "theme": "dark",
+      "label": "导入来源下拉展开",
+      "width": 2360,
+      "height": 1380,
+      "bytes": 124210
+    },
+    {
+      "file": "portio-dark-settings.png",
+      "scene": "settings",
+      "theme": "dark",
+      "label": "设置面板顶部：自定义十六项",
+      "width": 2360,
+      "height": 1380,
+      "bytes": 197622
+    },
+    {
+      "file": "portio-dark-hosts.png",
+      "scene": "hosts",
+      "theme": "dark",
+      "label": "设置面板滚到底：已知主机与运行日志",
+      "width": 2360,
+      "height": 1380,
+      "bytes": 226669
+    },
+    {
+      "file": "portio-light-main.png",
+      "scene": "main",
+      "theme": "light",
+      "label": "三栏：会话栏 + 终端 + 双栏文件 + 传输队列",
+      "width": 2360,
+      "height": 1380,
+      "bytes": 129398
+    },
+    {
+      "file": "portio-light-split.png",
+      "scene": "split",
+      "theme": "light",
+      "label": "终端 2×2 分屏",
+      "width": 2360,
+      "height": 1380,
+      "bytes": 142883
+    },
+    {
+      "file": "portio-light-import.png",
+      "scene": "import",
+      "theme": "light",
+      "label": "导入来源下拉展开",
+      "width": 2360,
+      "height": 1380,
+      "bytes": 126058
+    },
+    {
+      "file": "portio-light-settings.png",
+      "scene": "settings",
+      "theme": "light",
+      "label": "设置面板顶部：自定义十六项",
+      "width": 2360,
+      "height": 1380,
+      "bytes": 207317
+    },
+    {
+      "file": "portio-light-hosts.png",
+      "scene": "hosts",
+      "theme": "light",
+      "label": "设置面板滚到底：已知主机与运行日志",
+      "width": 2360,
+      "height": 1380,
+      "bytes": 237546
+    }
+  ]
+}

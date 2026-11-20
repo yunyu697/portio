@@ -12,14 +12,14 @@
 | ✗ | 已知缺口：代码里就没有，或明知不合格 |
 | 🚫 | 卡外部条件：缺服务器 / 缺证书 / 缺平台机器，写清差什么 |
 
-**最近一次整跑**：2026-11-20 · `v1.0.8-RC1` · `python scripts/rc.py`（全量，含 A1）→ **30 通过 / 0 失败 / 0 跳过，56.5s**（`cargo test` 命中缓存，比前一次的 171.5s 快）；同日改版本串后用 `python scripts/rc.py A5 A6` 单独复验 2 项 / 1.4s；更早 `v1.0.7-RC10` 跑过全量（29 通过 / 0 跳过）；
+**最近一次整跑**：2026-11-20 · `v1.0.8-RC2` · `python scripts/rc.py`（全量，含 A1）→ **31 通过 / 0 失败 / 0 跳过，214.1s**（A1 在 `CARGO_TARGET_DIR=D:\portio-target` 上 151.5s / 97 passed，其余三十项 60 秒上下）；同日 `python scripts/rc.py A5 A6` 2 项 / 1.4s、`python scripts/rc.py A31` 单项 0.0s；更早 `v1.0.8-RC1` 与 `v1.0.8-RC2`（代码轮）各跑过一次全量 30 通过 / 0 跳过；
 人工项与真服务器项仍未跑（见 §7）。
 
 ---
 
 ## 1. 本机自动化（一条命令一项，五分钟跑完）
 
-**这一段现在有固定入口**：`python scripts/rc.py` 按顺序跑完 A1–A30，逐项打 `[PASS]` / `[FAIL]` / `[SKIP]`，
+**这一段现在有固定入口**：`python scripts/rc.py` 按顺序跑完 A1–A31，逐项打 `[PASS]` / `[FAIL]` / `[SKIP]`，
 最后一行是汇总，可以直接贴进 §7。全跑一分钟上下（`cargo test` 占大头），只改前端时用 `--fast` 跳过 A1；
 只想核其中几项就直接写编号——`python scripts/rc.py A11`、`python scripts/rc.py A10 A11`、
 `python scripts/rc.py A10,A11` 都认，只跑选中的那几项；编号写错会回一句「不认识的编号」并以退出码 2 结束，
@@ -32,7 +32,7 @@
 | A2 | 前端语法 | `node --check ui/app.js` | exit 0 | ✅ |
 | A3 | 界面无硬编码色值 | `python scripts/check_design_tokens.py` | 打印 OK | ✅ |
 | A4 | 界面尺度走令牌 | `python scripts/check_ui_scale.py` | 打印 OK | ✅ |
-| A5 | 四处版本号一致且合规 | `python scripts/check_versions.py` | `OK v<版本>` | ✅ `OK v1.0.7-RC9` |
+| A5 | 四处版本号一致且合规 | `python scripts/check_versions.py` | `OK v<版本>` | ✅ `OK v1.0.8-RC2` |
 | A6 | 启动无 JS 报错 | 无头打开 `ui/index.html`（不带 hash），读 `<title>` | 标题是 `Portio`，**出现 `ERR:` 即失败** | ✅ `Portio` |
 | A7 | 分屏状态机 | 无头打开 `ui/index.html#split-test` | 标题 `SELFTEST-OK` | ✅ |
 | A8 | 复制粘贴按键映射 | 无头打开 `ui/index.html#clip-test` | 标题 `CLIP-SELFTEST-OK 10` | ✅ 10/10 |
@@ -58,6 +58,7 @@
 | A28 | 离线说明页与代码对表 | `python scripts\check_site.py`（也就是 `rc.py` 的 A28，纯 Python 不开浏览器） | 打印 `OK`：`docs/site/index.html` 那一节的每一项设置都在设置面板里真的存在、每一颗按钮的档位都被页面写到、滑块范围（终端字号 9–24）对得上；页面写了一项产品里没有的项同样 FAIL；版本串只能是当前那个，且至少出现在署名 / 安装 / 版本段三处 | ✅ 首跑 `OK 16 项设置 / 40 个档位` |
 | A29 | 传输队列的空态、计数与几条文案 | `python scripts\rc.py`（内部打开 `#transfer-test`） | 标题 `TRANSFER-SELFTEST-OK`：空队列时那句「空。上传、下载、同步的进度都会在这里」在；第一行一出现它就消失（`empty:false`）；三条之后行数 3、标题条计数 `3`、正文里 3 条 `.tr`；45600000/106000000 的进度条是 `43%`、行尾写「43% · 101 MB」；完成那条满格且写「完成 · 6.0 KB」；还没开始那条写「排队」；每个传输行都有尺寸且右缘不越出抽屉 | ✅ 反向验证两条都翻红：① 把空态删除改回 `.hint` 旧写法 → FAIL「队列里有行了，空态提示还挂着」「三条都在跑了，空态提示还挂着」（`empty:true`）；② 让 `transferRow` 不调 `syncTransferCount` → FAIL「标题条计数应是 3：2」（`num:2`）。还原后 `TRANSFER-SELFTEST-OK {"rows":3,"num":"3","bar":"43%","empty":false}` |
 | A30 | 后端出错时界面有没有话说 | `python scripts\rc.py`（内部打开 `#net-fail-test`） | 标题 `NET-FAIL-SELFTEST-OK`：四类回包（`No such file or directory` / `Permission denied` / `Connection refused` / `no space left on device`）都翻成「发生了什么 + 下一步怎么做」，认不出的保留原文并带命令名；列目录失败时块里留一句「列目录失败，原因见右下角提示」、路径条不被写成打错的路径、不抛；上传 / 下载失败各落成「失败」红条（进度条 `0%` 且用 `--danger`）、标题条计数为 2、toast 分别是「远端磁盘已满：…」与「连接超时：…」 | ✅ 反向验证两条都翻红：① 下载改回直连 `bridge.invoke` → FAIL「核后端出错这一路的过程抛了异常：Cannot read properties of null (reading 'invoke')」（行停在「排队」）；② 错误翻译改回大小写敏感 → FAIL「「No such file or directory」应翻成「路径不存在：…」」「「Permission denied」应翻成「权限不足：…」」。还原后 `NET-FAIL-SELFTEST-OK {"remote":"列目录失败，原因见右下角","failed":2}` |
+| A31 | 发布截图是本版本那一套 | `python scripts/rc.py`（纯 Python 读清单对图，不开浏览器） | `docs/shots/manifest.json` 的 `version` 与界面里的版本串一致，清单里十张图逐张都在 `docs/shots/` 里、字节数跟清单记的一样；版本对不上 → **SKIP 并点名是哪一版**（不报 PASS，别拿旧界面当本版物料）；版本对上但少图 / 字节数变了 → **FAIL 并点名那张** | ✅ 10 张全是 1.0.8-RC2 的（1.58 MiB）；反向验证两条：① 给 `portio-dark-main.png` 尾部多写 1 字节 → `FAIL … portio-dark-main.png（清单 126790 字节 / 现在 126791 字节）`；② 清单版本改回 `1.0.7-RC9` → `SKIP … 这套图是 1.0.7-RC9 那一版的，当前是 1.0.8-RC2`。还原后 PASS |
 
 
 ### 怎么跑 A6–A9（无头）
@@ -212,5 +213,9 @@ foreach ($frag in "", "#split-test", "#clip-test", "#fold-test") {
 | 2026-11-20 | `v1.0.7-RC7` | `scripts/rc.py` → **26 通过 / 0 失败 / 0 跳过**，202.2s（新增 A26 `#panes-test` 3.8s；A1 在 `CARGO_TARGET_DIR=D:\portio-target` 上 144.6s，97 passed）；反向验证三条：① 开局不摊开 → FAIL「2×2 开局应 4 格：1」「2×2 开局应是 2×2 网格：1×1」「四格应有焦点描边类」；② `readPanes` 不过白名单 → FAIL「认不出的档位应读成单屏：tri」；③ `applyBootPanes` 当场摊开 → FAIL「改开局格数不许动眼前这一下：1 → 4」。还原后 `PANES-SELFTEST-OK {"cells":[1,4,1,1]}`。check_design_tokens / check_ui_scale / node --check 均 OK。三平台包 `Portio 1.0.7-RC7`（exe 3371429 B / dmg 9507487 B / deb 4958050 B / AppImage 83147256 B，`prerelease: true`；Release run 44587528236 首跑四项全 success；本地 NSIS 包 4581282 B） | 未跑 | 未跑 | 真窗口里没点过（桌面锁着）：四格开局的实际手感（每格列数、焦点、`Ctrl+F`）只有无头页面兜着；无 SSH 服务器，四格里连主机的通道行为（每格一条 PTY）未端到端验证 |
 | 2026-11-20 | `v1.0.7-RC8` | `scripts/rc.py` → **27 通过 / 0 失败 / 0 跳过**，192.2s（新增 A27 `#layout-test` 1.7s；A1 在 `CARGO_TARGET_DIR=D:\portio-target` 上 130.4s，97 passed）；反向验证三条：① 开机落尺寸顺手落盘 → FAIL「用默认不许改写宽度记忆：200」「记住上次应回到 360px：200px」；② `readLayoutMode` 去掉白名单 → FAIL「认不出的布局档应读成记住上次：auto」；③ 分栏不退 50% → FAIL「用默认分栏应回 50.00%：66.00%」。还原后 `LAYOUT-SELFTEST-OK {"layout":["360px","66.00%","200px"]}`。check_design_tokens / check_ui_scale / node --check 均 OK。三平台包 `Portio 1.0.7-RC8`（exe 3375150 B / dmg 9510808 B / deb 4959920 B / AppImage 83143160 B，`prerelease: true`；Release run 44596899518 四项全 success；main CI 44596888277 success；本地 NSIS 包 4580142 B） |
 | 2026-11-20 | `v1.0.7-RC8`（物料轮，未进位） | `rc.py --fast` → **27 通过 / 0 失败 / 1 跳过**（50.4s，A28 0.1s：`OK 16 项设置 / 40 个档位`）；`python -m unittest scripts/test_check_site.py` 10 通过；反向验证三条：密度写回两档 → FAIL「漏了档位「宽松」」、版本串留 RC7 → FAIL「版本串过期」、项名写错 → FAIL「没写这一项：「终端配色」」＋「写了一项界面里没有的」；还原后 OK | 未跑 | 未跑 | 说明页 §08 从「设置与外观」重写成「自定义」：16 项按「立刻生效 / 下次打开才生效」两批排、40 个档位逐个写到，顺带修掉页面落后两版的「密度两档」「终端字号 11–18」。不单独推 RC tag：纯物料轮，推了会让页面写着 RC9 而下载页仍是 RC8 |
+
+| 2026-11-20 | `v1.0.8-RC1` | `scripts/rc.py` → **30 通过 / 0 失败 / 0 跳过**，56.5s（A11 改判：只认 `Portio_<当前版本>_x64-setup.exe`，找不到就 SKIP 并点名旧包；A10 改沿 `CARGO_TARGET_DIR` 取这一轮构建出来的 exe）；反向验证两条翻红点名；另 13 条单测（`scripts/test_rc_artifacts.py`） | 未跑 | 未跑 | 同一目录里躺着 RC3 旧包也不再判过了——A11 从「有没有留下过安装包」变成了「当前版本的包在不在、体积像不像话」 |
+| 2026-11-20 | `v1.0.8-RC2` | `scripts/rc.py` → **30 通过 / 0 失败 / 0 跳过**，56.5s；`python -m unittest scripts.test_rc_selection` 13 通过（与另三份合跑 67 条全过）；反向验证两条：认不出的编号静悄悄丢掉 → `FAILED (failures=2)` 且 `rc.py A99` 变成「只跑 0 项 / 汇总 0 通过 / exit=0」；顺序退回按书写顺序 → `FAILED (failures=1)` | 未跑 | 未跑 | 回归脚本能只跑一项了（`A11` / `A10 A11` / `A10,A11` 都认），改一处核一处从一分钟降到几秒 |
+| 2026-11-20 | `v1.0.8-RC2`（物料轮，未进位） | `scripts/rc.py` → **31 通过 / 0 失败 / 0 跳过**，214.1s（A1 151.5s / 97 passed；新增 A31 0.0s）；`python -m unittest scripts.test_shots` 8 通过；反向验证两条（多写 1 字节 → FAIL 点名、清单写旧版本 → SKIP 点名），还原后 PASS | 未跑 | 未跑 | 十张首发截图重出到 `1.0.8-RC2`（原来还是 `1.0.7-RC9` 的界面，press-kit 还指着它们）并配上 `docs/shots/manifest.json`；不单独推 RC tag：纯物料轮，产品代码一个字没动 |
 
 每一轮 RC 回归跑完，在表格里加一行；过不了的那几项写进下一轮的「下一步」。

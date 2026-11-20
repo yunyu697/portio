@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / SKIP。
 
-对应 docs/rc-checklist.md §1 的 A1–A30。以前这些步骤散在日志里，每轮都要手打一遍命令，
+对应 docs/rc-checklist.md §1 的 A1–A31。以前这些步骤散在日志里，每轮都要手打一遍命令，
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
 
 用法：
@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import glob
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -290,6 +291,74 @@ def a11_bundle() -> tuple[str, str]:
     return check_bundle(current_version(), dirs)
 
 
+SHOTS_DIR = ROOT / "docs" / "shots"
+SHOTS_MANIFEST = SHOTS_DIR / "manifest.json"
+SHOTS_MIN = 10  # scripts/shots.py 是五场景 × 深浅两套
+
+
+def load_manifest(path: Path) -> dict | None:
+    """读截图清单。文件不在、读不动、不是 JSON 对象，一律当「没有清单」。"""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def check_shots(manifest: dict | None, ver: str, out_dir: Path) -> tuple[str, str]:
+    """发布截图得是本版本的那一套。
+
+    图不会说话：`docs/shots/` 里躺着十张仍是 1.0.7-RC9 界面的图，过了一个月也没人发现，
+    press-kit 还指着它们当真值。现在 shots.py 出图时顺手记下版本号与每张的字节数，
+    这里就照清单核：版本对不上 → SKIP 并点名是哪一版（不报 PASS），
+    版本对上但图少了一张、或字节数变了（有人换过图/改过尺寸）→ FAIL 并点名。
+    """
+    if not manifest:
+        return SKIP, "还没有截图清单（跑 python scripts/shots.py 会顺手写一份）"
+    if not ver:
+        return FAIL, "读不出界面里的版本号，没法判断这套图是不是本版本的"
+    shoot_ver = str(manifest.get("version") or "").strip()
+    if shoot_ver != ver:
+        return SKIP, (
+            f"这套图是 {shoot_ver or '（清单里没写版本）'} 那一版的，当前是 {ver}；"
+            "要重出就跑 python scripts/shots.py（不算通过，别拿旧界面当本版物料）"
+        )
+    shots = manifest.get("shots")
+    if not isinstance(shots, list) or not shots:
+        return FAIL, "清单里一张图都没记，这份清单替不了任何东西"
+    if len(shots) < SHOTS_MIN:
+        return FAIL, f"清单只记了 {len(shots)} 张，十张物料里少了 {SHOTS_MIN - len(shots)} 张"
+    missing: list[str] = []
+    drifted: list[str] = []
+    total = 0
+    for item in shots:
+        name = str((item or {}).get("file") or "").strip() if isinstance(item, dict) else ""
+        if not name:
+            missing.append("（清单里有一条没写文件名）")
+            continue
+        path = out_dir / name
+        if not path.is_file():
+            missing.append(name)
+            continue
+        size = path.stat().st_size
+        want = (item or {}).get("bytes")
+        if isinstance(want, int) and want != size:
+            drifted.append(f"{name}（清单 {want} 字节 / 现在 {size} 字节）")
+            continue
+        total += size
+    if missing:
+        more = f" 等 {len(missing)} 张" if len(missing) > 3 else ""
+        return FAIL, "清单里的图在 docs/shots/ 里找不到：" + "、".join(missing[:3]) + more
+    if drifted:
+        return FAIL, "图跟清单记的对不上（换过图或改过尺寸？）：" + "、".join(drifted[:2])
+    mib = total / 1024 / 1024
+    return PASS, f"{len(shots)} 张全是 {ver} 的（{mib:.2f} MiB，清单与图逐张对上）"
+
+
+def a31_shots() -> tuple[str, str]:
+    return check_shots(load_manifest(SHOTS_MANIFEST), current_version(), SHOTS_DIR)
+
+
 # ---------- 只跑其中几项 ---------------------------------------------------
 
 def split_ids(items: list[str]) -> list[str]:
@@ -362,6 +431,7 @@ def main(argv: list[str]) -> int:
         ("A28", "check_site.py（说明页每一项设置与每个档位都跟设置面板对上）", True),
         ("A29", "#transfer-test = TRANSFER-SELFTEST-OK（空态随第一行消失、计数跟实际行数、43% 与完成/排队文案、行不出抽屉）", True),
         ("A30", "#net-fail-test = NET-FAIL-SELFTEST-OK（后端出错也要有话说：列目录失败留话、传输失败落红条而不是永远排队、错因翻成人话）", True),
+        ("A31", "发布截图是本版本那一套（docs/shots/manifest.json 的版本串与当前一致、十张图逐张对得上字节数）", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -470,9 +540,12 @@ def main(argv: list[str]) -> int:
         elif code == "A29":
             # 塞三条演示传输（一条在跑、一条完成、一条排队），量空态是否消失与计数、文案、几何
             status, detail = a_page(chrome, profile, "#transfer-test", "TRANSFER-SELFTEST-OK", "1180,690", 8000)
-        else:
-            # A30：塞一个会抛错的后端替身，量列目录失败有没有话说、传输失败落不落红条、错因翻没翻成人话
+        elif code == "A30":
+            # 塞一个会抛错的后端替身，量列目录失败有没有话说、传输失败落不落红条、错因翻没翻成人话
             status, detail = a_page(chrome, profile, "#net-fail-test", "NET-FAIL-SELFTEST-OK", "1180,690", 8000)
+        else:
+            # A31：纯 Python 读清单对图，不开浏览器
+            status, detail = a31_shots()
         results.append((code, label, status, detail))
         print(f"[{status}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
 
