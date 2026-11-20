@@ -3416,3 +3416,19 @@ WebView2 起不来、资源路径错、`app.js` 语法炸，全都拦不住。
 - 界面自检仍在 Chrome 无头里跑，不是在真窗口里跑。
 - 真实 SSH 登录、PTY 交互、真 SFTP 传输仍未验证（缺测试服务器）。
 
+## 2026-11-20 · 1.0.9-RC1 · 发版补记
+
+- 提交 `a117fa2` 已 push main，tag `v1.0.9-RC1` 已推；main CI run `44718015813` **五项全 success**，
+  Release run `44718024476` **gate + 三平台 build 四项全 success**。
+  （顺带把上一轮漏查的 `6f33284` 那次 CI 也看了：`44712555499` success。）
+- Release `Portio 1.0.9-RC1`：`prerelease:true`、`draft:false`，四资产
+  exe **3382475 B** / dmg **9523397 B** / deb **4965896 B** / AppImage **83155448 B**
+  （对照 1.0.8-RC10：3380421 / 9524860 / 4965064 / 83151352；
+  这轮只动回归脚本与文案，包体差几百字节，就是版本串长度与重新压缩的量）。
+- 本机 release 包 **3382341 B**（源 `D:\portio-target\release\bundle\nsis\`），
+  与 CI 那份 3382475 B 差 -134 B——同一份代码、不同编译环境与压缩时机。
+  已复制到 `…\new-chat\Portio_1.0.9-RC1_x64-setup.exe` 并交付。
+- 十张首发图随进位重出到 `1.0.9-RC1`；press-kit 下载表与 release-notes 版本段回填成本次 Release 真值。
+- 0.4 gate 的自动化一侧到现在是 36 项：A1–A10 基本盘、A11/A34 认包对包、A32 本地等于 CI 的 lint、
+  A33 拉起、A35 脚本自测、A36 真 webview 里的界面。**仍是「未装到机器上跑」**——两条路在 backlog，等拍板。
+- 下一轮按「满 10 进 patch 回 RC1」继续在 1.0.9 段里找下一层「绿其实没核」，或按用户指示进 1.0.10-RC1。
