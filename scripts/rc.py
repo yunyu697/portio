@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / 未验。
 
-对应 docs/rc-checklist.md §1 的 A1–A32。以前这些步骤散在日志里，每轮都要手打一遍命令，
+对应 docs/rc-checklist.md §1 的 A1–A33。以前这些步骤散在日志里，每轮都要手打一遍命令，
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
 
 用法：
@@ -439,6 +439,103 @@ def a32_lints() -> tuple[str, str]:
 
 # ---------- 只跑其中几项 ---------------------------------------------------
 
+# ---------- A33：这份 exe 真能起来 ---------------------------------------
+
+LAUNCH_WAIT = 10.0   # 等窗口出现最多多少秒（debug 版首帧通常 2–4s）
+LAUNCH_HOLD = 4.0    # 窗口出来之后再盯多久，看首帧之后会不会当场崩
+
+
+def top_windows(pid: int) -> list[str]:
+    """某个进程名下带标题的顶层窗口（Windows 专用，走 user32）。
+
+    A10 只读 PE 头里那个 Subsystem 字段：它只说明「这份 exe 被标记成 GUI 程序」，
+    说明不了这份二进制跑起来会不会当场退出、WebView2 起不起来、标题对不对。
+    RC6 立的规矩是「没核过的不许算通过」，那就在这里真拉一次起来。
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    out: list[str] = []
+    proc_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    def visit(hwnd, _lparam):
+        owner = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        if owner.value == pid:
+            n = user32.GetWindowTextLengthW(hwnd)
+            if n > 0:
+                buf = ctypes.create_unicode_buffer(n + 1)
+                user32.GetWindowTextW(hwnd, buf, n + 1)
+                if buf.value.strip():
+                    out.append(buf.value.strip())
+        return True
+
+    user32.EnumWindows(proc_type(visit), 0)
+    return out
+
+
+def kill_tree(pid: int) -> None:
+    """连 WebView2 子进程一起收掉——不许在人家桌面上留下一个关不掉的窗口。"""
+    try:
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       timeout=20, check=False)
+    except Exception:  # noqa: BLE001 - 收尾失败不该盖掉真正的结论
+        pass
+
+
+def launch_verdict(titles: list[str], alive: bool, waited: float) -> tuple[str, str]:
+    """exe 拉起来之后看三件事：进程还在吗、有没有窗口、标题对不对（纯函数，好测）。"""
+    if not alive:
+        return FAIL, f"起来 {waited:.0f}s 内自己退出了（进程已经不在了）——这份二进制跑不起来"
+    errs = [t for t in titles if "ERR:" in t]
+    if errs:
+        return FAIL, f"窗口标题里出现 ERR: → {errs[0]}（前端起来就炸了）"
+    hits = [t for t in titles if "Portio" in t]
+    if hits:
+        return PASS, f"窗口标题 {hits[0]!r}，撑过 {waited:.0f}s 没退"
+    if not titles:
+        return FAIL, f"{waited:.0f}s 内一个窗口标题都没拿到——进程在，窗没画出来（卡在首帧？）"
+    return FAIL, f"窗口标题是 {titles!r}，没有一条带 Portio"
+
+
+def probe_launch(exe: Path, wait_window: float = LAUNCH_WAIT, hold: float = LAUNCH_HOLD,
+                 window_fn=top_windows, popen=subprocess.Popen,
+                 kill=kill_tree) -> tuple[str, str]:
+    """把 exe 真拉起来、等窗口、再盯一会儿、然后收干净。"""
+    started = time.time()
+    proc = popen([str(exe)], cwd=str(exe.parent),
+                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    titles: list[str] = []
+    try:
+        while time.time() - started < wait_window:
+            if proc.poll() is not None:
+                break
+            titles = window_fn(proc.pid)
+            if titles:
+                break
+            time.sleep(0.4)
+        while proc.poll() is None and time.time() - started < wait_window + hold:
+            time.sleep(0.4)
+        alive = proc.poll() is None
+        if alive:
+            titles = window_fn(proc.pid) or titles
+        return launch_verdict(titles, alive, time.time() - started)
+    finally:
+        if proc.poll() is None:
+            kill(proc.pid)
+
+
+def a33_launch() -> tuple[str, str]:
+    if sys.platform != "win32":
+        return SKIP, "只在 Windows 上核（mac / linux 的包由 CI 的 build 那关负责起来）"
+    exe = find_app_exe(app_exe_dirs())
+    if exe is None:
+        return SKIP, "还没构建 portio-app.exe（先 npm run build 或 tauri build）"
+    return probe_launch(exe)
+
+
 def split_ids(items: list[str]) -> list[str]:
     """把 `A10 A11` / `A10,A11` 拆成编号列表：大写、去空、去重、按出现顺序。
 
@@ -543,6 +640,7 @@ def main(argv: list[str]) -> int:
         ("A30", "#net-fail-test = NET-FAIL-SELFTEST-OK（后端出错也要有话说：列目录失败留话、传输失败落红条而不是永远排队、错因翻成人话）", True),
         ("A31", "发布截图是本版本那一套（docs/shots/manifest.json 的版本串与当前一致、十张图逐张对得上字节数）", True),
         ("A32", "cargo fmt --check + cargo clippy -D warnings（本地的绿要等于 CI 的绿）", True),
+        ("A33", "portio-app.exe 真的起得来（拉起这份 exe 等窗口、核标题带 Portio、再确认没当场退出，用完收干净）", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -657,9 +755,12 @@ def main(argv: list[str]) -> int:
         elif code == "A31":
             # 纯 Python 读清单对图，不开浏览器
             status, detail = a31_shots()
-        else:
-            # A32：跑 cargo fmt / clippy，跟 CI 那关同一个口径
+        elif code == "A32":
+            # 跑 cargo fmt / clippy，跟 CI 那关同一个口径
             status, detail = a32_lints()
+        else:
+            # A33：把 exe 真拉起来看一眼，用完收掉
+            status, detail = a33_launch()
         results.append((code, label, status, detail))
         print(f"[{LABEL[status]}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
 

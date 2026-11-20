@@ -19,7 +19,7 @@
 
 ## 1. 本机自动化（一条命令一项，五分钟跑完）
 
-**这一段现在有固定入口**：`python scripts/rc.py` 按顺序跑完 A1–A32，逐项打 `[PASS]` / `[FAIL]` / `[未验]`，
+**这一段现在有固定入口**：`python scripts/rc.py` 按顺序跑完 A1–A33，逐项打 `[PASS]` / `[FAIL]` / `[未验]`，
 最后一行是汇总，可以直接贴进 §7。全跑一分钟上下（`cargo test` 占大头），只改前端时用 `--fast` 跳过 A1；
 只想核其中几项就直接写编号——`python scripts/rc.py A11`、`python scripts/rc.py A10 A11`、
 `python scripts/rc.py A10,A11` 都认，只跑选中的那几项；编号写错会回一句「不认识的编号」并以退出码 2 结束，
@@ -66,6 +66,8 @@
 | A31 | 发布截图是本版本那一套 | `python scripts/rc.py`（纯 Python 读清单对图，不开浏览器） | `docs/shots/manifest.json` 的 `version` 与界面里的版本串一致，清单里十张图逐张都在 `docs/shots/` 里、字节数跟清单记的一样；版本对不上 → **SKIP 并点名是哪一版**（不报 PASS，别拿旧界面当本版物料）；版本对上但少图 / 字节数变了 → **FAIL 并点名那张** | ✅ 10 张全是 1.0.8-RC2 的（1.58 MiB）；反向验证两条：① 给 `portio-dark-main.png` 尾部多写 1 字节 → `FAIL … portio-dark-main.png（清单 126790 字节 / 现在 126791 字节）`；② 清单版本改回 `1.0.7-RC9` → `SKIP … 这套图是 1.0.7-RC9 那一版的，当前是 1.0.8-RC2`。还原后 PASS |
 
 | A32 | 格式与 lint 闸（跟 CI 那关同一个口径） | `python scripts/rc.py`（内部跑 `cargo fmt --all --check` 与 `cargo clippy --workspace --all-targets -- -D warnings`） | 两条都干净才 PASS；格式没过要报出 `文件:行`（同一文件的两个 hunk 折成一条）、clippy 没过要报出 `文件:行:列`，两道同时没过时一次说清 | ✅ 12.2s（增量，clippy 零警告）；反向验证两条都翻红：① 往 `crates/core/src/lib.rs` 塞一行 `pub fn _rc_probe( )->i32{1}` → `FAIL … fmt 有文件没格式化：crates\core\src\lib.rs:36`；② 塞 `let unused = 1` 那句 → `FAIL … clippy 有警告：crates\core\src\lib.rs:39`。还原后 PASS |
+
+| A33 | 这份 exe 真的起得来 | `python scripts/rc.py`（拉起 `portio-app.exe`、枚举该进程的顶层窗口标题、盯住存活，用完 `taskkill /T` 收干净；非 Windows 报「未验」） | 进程撑过 10s+4s 还在、且有一条窗口标题带 `Portio` 才 PASS；起后当场退出 / 进程在但一个窗口都没有 / 标题不对 / 标题里出现 `ERR:` 都 FAIL（多窗口时有一个带 `ERR:` 就红，不许挑好看的那个报） | ✅ 15.1s：`窗口标题 'Portio'，撑过 14s 没退`，收尾后 `Get-Process portio-app` 无残留。反向：`launch_verdict` 里「进程在、没有窗口」一档在单测里钉住不许过 |
 
 
 ### 怎么跑 A6–A9（无头）
