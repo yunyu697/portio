@@ -28,4 +28,4 @@ _*.png
 _*.py
 _*.html
 _*.js
-_commitmsg.txt
+_commitmsg*.txt
