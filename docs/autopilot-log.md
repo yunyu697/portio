@@ -3776,3 +3776,20 @@ A37 只搬了「不动设置」的七条。剩下九条（主题 / 界面字号 
   （比如以后加上「连接成功才写会话」）也不会写——收 / 核那套护栏仍然每轮在跑。
 - 仍是「没装到机器上跑过」；真实 SSH / PTY / SFTP 缺测试服务器，未验证。
 
+## 2026-11-21 · v1.0.9-RC6 · 发版补记
+
+- 提交 `3c16638` 已 push main，tag `v1.0.9-RC6` 已推；main CI run `44793105357` **五项全 success**
+  （version rule / fmt·clippy·test / windows / ubuntu / macos），Release run `44793117150`
+  **gate + 三平台 build 四项全 success**（这台机器等它等了约 19 分钟，最后一轮才翻过来）。
+- Release `Portio 1.0.9-RC6`：`prerelease:true`、`draft:false`，四资产
+  exe **3381229 B** / dmg **9523143 B** / deb **4964870 B** / AppImage **83151352 B**
+  （对照 1.0.9-RC5：3381710 / 9523593 / 4965872 / 83147256）。
+- 本机 release 包 **3382412 B**（源 `D:\portio-target\release\bundle\nsis\`），与 CI 那份差 1183 B。
+  已复制到 `…\new-chat\Portio_1.0.9-RC6_x64-setup.exe` 并交付；`new-chat` 里留下 RC5 / RC6 两个包，
+  RC4 那个顺手删了（省 3.2 MB，C 盘这会儿只有 1.2 GB）。
+- 这一轮 A1 又跑到 164.4s（97 passed，跟 RC5 那次 8.6s 差两个数量级），整跑 344.3s。
+  同一份代码、同样的 `-j 1`，慢在机器上，不是代码退化；但下次它要是挂，先看资源那几样。
+- 21 条界面自检至此全部在真窗口里跑过（A37 七条 / A38 九条 / A39 两条 / A40 窄窗 / A41 两条）。
+  剩下的缺口没变：装到机器上跑、真服务器、mac / linux。
+- 下一轮：本机能自动核的项已经清零，先补物料与文档（`docs/release-notes.md` 的版本串还停在
+  `1.0.9-RC3`，`press-kit` 这轮已回填），并把「A41 的『不写盘』是实测、不是承诺」写进 backlog。
