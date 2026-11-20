@@ -3568,3 +3568,22 @@ A37 只搬了「不动设置」的七条。剩下九条（主题 / 界面字号 
 - 只在 Windows 上核；mac / linux 没有 WebView2 调试口，那两处报未验。
 - 不核界面长什么样（视觉靠 `docs/shots` 十张图与无头截图）。
 - 真实 SSH 登录、PTY 交互、真 SFTP 传输仍未验证（缺测试服务器）。
+
+## 2026-11-20 · 1.0.9-RC3 · 发版补记
+
+- 提交 `cb4ae58` 已 push main，tag `v1.0.9-RC3` 已推；main CI run `44732347260`
+  **五项全 success**（version rule / fmt·clippy·test / macos / windows / ubuntu），
+  Release run `44732360747` **gate + 三平台 build 四项全 success**。
+  （上一轮的 `82edefc` 那次 CI `44729076262` 也是 success，补记一笔。）
+- Release `Portio 1.0.9-RC3`：`prerelease:true`、`draft:false`，四资产
+  exe **3380410 B** / dmg **9523905 B** / deb **4965720 B** / AppImage **83143160 B**
+  （对照 1.0.9-RC2：3383038 / 9523872 / 4965162 / 83147256）。
+- 本机 release 包 **3382424 B**（源 `D:\portio-target\release\bundle\nsis\`），
+  与 CI 那份 3380410 B 差 2014 B。已复制到 `…\new-chat\Portio_1.0.9-RC3_x64-setup.exe` 并交付。
+- 十张首发图随进位重出到 `1.0.9-RC3`（1.58 MiB，比上一版小 60 KB 左右：界面没改，重出时压缩略有差别）；
+  press-kit 下载表回填成本次 Release 真值。
+- 0.4 gate 的自动化一侧现在 38 项：A1–A10 基本盘、A11/A34 认包对包、A32 本地等于 CI 的 lint、
+  A33 拉起、A35 脚本自测（239 条）、A36 真 webview 里的界面、A37 真偏好里的七条、
+  **A38 一次性 profile 里的九条**。**仍是「未装到机器上跑」**——两条路在 backlog，等拍板。
+- 下一轮继续在 1.0.9 段找下一层「绿其实没核」；最接近的是把 `#sessions-test` / `#hosts-test`
+  搬进真窗口，前提是先有后端写盘文件的备份与回滚。
