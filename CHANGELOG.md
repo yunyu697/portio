@@ -11,6 +11,30 @@
 > 只写用户能感知的变化；内部重构放 `### Changed`，未验证的能力写进 `### Known limitations`。
 > 口吻：站在用这个软件的人这一侧说话（"我把 X 改成 Y"），不写成第三方播报。
 
+## [1.0.8-RC10] - 2026-11-20
+
+### Fixed
+
+- **CI 里跑的那 154 条单测，我本地整跑一条都没跑过。** `scripts/test_*.py` 这一批核的是回归脚本自己
+  （「A34 有没有真接进计划表」「编号写错会不会装作跑过」「截图清单的版本串对不对」……），
+  它只在 CI 的 `ci.yml` 里被跑：`python -m unittest discover -s scripts -p "test_*.py"`。
+  而我在本地跑 `python scripts\rc.py`，A1 是 `cargo test`、A32 是 fmt/clippy，**这一批从来没进过整跑**。
+  于是「改完 `rc.py` 忘了跑对应的 `test_rc_*.py`」这种情况，本地三十几项全绿、推上去 CI 才红——
+  正好和 RC3 定下的「本地的绿要等于 CI 的绿」相反。现在 A35 把这一批纳入整跑，口径与 CI 那条命令一模一样。
+
+### Changed
+
+- 判定上不留「没查到问题就算过」的口子：`Ran 0 tests`、或者压根没解析到「Ran N tests」，
+  都直接判红——那正是「discover 一条都没找到，却装作跑过」的样子。按平台跳过的条数会单独写明，
+  免得「163 条通过」被读成「所有条都跑过」。
+- 单测新增 `scripts/test_rc_scripts.py` 9 条（六种判定，外加「A35 真接进计划表与分派链」
+  「本地这条 discover 命令与 CI 那条一致」）。
+
+### Known limitations
+
+- A35 跑的是**脚本层的测试**，不覆盖 Rust 与界面本身（那两块分别由 A1 与各项 `#xxx-test` 管）。
+- 装到机器上之后跑起来的那份仍未验证（见 RC9 的 Known limitations）。
+
 ## [1.0.8-RC9] - 2026-11-20
 
 ### Fixed

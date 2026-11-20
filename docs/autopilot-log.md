@@ -3298,3 +3298,56 @@ WebView2 起不起来、窗口标题对不对、启动后几秒内崩不崩。RC
 - 十张首发图随进位重出到 `1.0.8-RC9`；press-kit 下载表与 release-notes 版本段回填成本次 Release 真值。
 - 遗留：A34 核的是**包里的 exe**，不是**装到机器上之后跑起来的那份**。两条路（便携目录就地拉起 /
   临时目录装再卸）已登记进 `docs/backlog.md`，等用户拍板。
+
+## 2026-11-20 · v1.0.8-RC10 · CI 里跑的那 154 条，我本地一条都没跑过
+
+**做了什么**
+
+1.0.8 段一路在核「哪些绿其实没核」。这轮发现的是**最靠里的一层**：`scripts/test_*.py` 这一批
+（154 条：`test_rc_installer` / `test_rc_artifacts` / `test_rc_summary` / `test_shots` / `test_check_versions` …）
+只在 CI 的 `ci.yml` 里被跑（`python -m unittest discover -s scripts -p "test_*.py"`），
+而我本地跑 `python scripts\rc.py` 时，A1 是 `cargo test`、A32 是 fmt/clippy——**这一批从来没进过整跑**。
+
+也就是说：这三十几项核的是「软件对不对」，而**核「核它的那些脚本对不对」的那 154 条，本地一次没跑**。
+改完 `rc.py` 忘了跑对应的 `test_rc_*.py` 时，本地全绿、推上去 CI 才红，正好跟 RC3 定下的
+「本地的绿要等于 CI 的绿」相反。
+
+做法：新增 A35。
+- `script_test_verdict(code, out)` 纯函数出判定，五种红：非零退出、没有 `OK` 收尾、
+  解析不到 `Ran N tests`、`Ran 0 tests`、以及 scripts 下一个 `test_*.py` 都没有。
+  「一条都没跑到」和「跑了全过」必须分开——前者正是「假装跑过」的样子。
+- `a35_script_tests()` 用**和 CI 一模一样的命令**跑（`-m unittest discover -s scripts -p "test_*.py"`），
+  口径一致这件事本身也有单测盯着（读 `ci.yml` 比对那一条 run）。
+- 按平台跳过的条数单独写明，免得「163 条通过」被读成「所有条都跑过」。
+- 计划表加 A35、分派链补 `elif code == "A35"`、模块头改 A1–A35 并加一段说明。
+- 新增 `scripts/test_rc_scripts.py` 9 条（六种判定 + 真接进计划表 + 本地命令与 CI 一致）。
+
+**验证证据**
+
+- 单测 `python -m unittest scripts.test_rc_scripts` → **9 条全过**。
+- 单跑 `python scripts\rc.py A35` → PASS 1.0s：`163 条通过（按平台跳 1 条，清单里算未验的那几条）`
+  （154 条旧的 + 本轮新增 9 条）。
+- 反向（真链路）：往 `scripts/` 塞一个必定失败的 `test_zzz_negative.py` → A35 **FAIL**、
+  `0 通过 / 1 失败`、退出码 **1**（报 `AssertionError: 1 != 2` 与 `FAILED (failures=1, skipped=1)`）；删掉即回 PASS。
+- 十张发布图重出到 `1.0.8-RC10`（`清单 OK …（10 张，版本 1.0.8-RC10）`，共 10 张通过 / 0 失败，27.2s）。
+- release 打包（`--bundles nsis`，不带 `--debug`）→ `Portio_1.0.8-RC10_x64-setup.exe` **3382936 字节**、
+  `release\portio-app.exe` 13709312 字节（比 RC9 多 512 字节，版本串长了 1 个字符）。
+- 整跑 `python scripts\rc.py` → **35 通过 / 0 失败 / 0 未验，300.7s，退出码 0**
+  （A1 `96 passed, 0 failed`、A11 `3382936 字节 ← release\bundle\nsis`、A32 52.3s、A33 14.4s、
+  A34 0.5s `包里那份 13709312 字节，跟构建产物逐字节一致`、A35 1.3s `163 条通过`）。
+- `check_versions.py` → `OK v1.0.8-RC10（7 处一致）`；`check_site.py` → `OK … 版本 v1.0.8-RC10`。
+
+**下一步**
+
+- 推 tag `v1.0.8-RC10`、发三平台包、交付本地 release 包，回填下载表与发版补记。
+- 1.0.8 段到此收口（RC10 是 RC 位上限）；下一轮按「满 10 进 patch 回 RC1」进 **v1.0.9-RC1**。
+- 再下一层「绿其实没核」还剩：装到机器上之后跑起来的那份（两条路已进 `docs/backlog.md`，等用户拍板）。
+
+**未验证**
+
+- A35 跑的是脚本层测试，不覆盖 Rust 与界面本身（那两块由 A1 与各项 `#xxx-test` 管）。
+- 安装后启动仍未验（A34 只拆不装；安装会写注册表与开始菜单）。
+- 没装 7-Zip 的机器上 A34 报「未验」；mac / linux 上 A34 报「未验」。
+- 真机手感（hover / 拖拽 / 真右键）仍未点过；桌面锁着（`LogonUI.exe` 在跑）。
+- 无 SSH 服务器：真实登录、PTY 交互、真实 SFTP 传输仍全部未验证。
+

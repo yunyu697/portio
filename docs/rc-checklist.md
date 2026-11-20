@@ -12,15 +12,15 @@
 | ✗ | 已知缺口：代码里就没有，或明知不合格 |
 | 🚫 | 卡外部条件：缺服务器 / 缺证书 / 缺平台机器，写清差什么 |
 
-**最近一次整跑**：2026-11-20 · `v1.0.8-RC9` · `python scripts/rc.py`（全量，含 A1）→ **34 通过 / 0 失败 / 0 未验，282.1s，退出码 0**（这轮多了 A34：`包里那份 13708800 字节，跟构建产物逐字节一致（只差打包器写的标记：UNK → NSS）← Portio_1.0.8-RC9_x64-setup.exe（release 构建）`；A10/A11/A33 三处照旧点名 release，A32 54.1s（增量 clippy）、A33 14.5s；上一句汇总停在 RC8 的 33 项，因为它当时还没核「包里装的是不是我核的那份」）；
+**最近一次整跑**：2026-11-20 · `v1.0.8-RC10` · `python scripts/rc.py`（全量，含 A1）→ **35 通过 / 0 失败 / 0 未验，300.7s，退出码 0**（这轮多了 A35：`163 条通过（按平台跳 1 条...）`——`scripts/test_*.py` 那一批终于进了整跑；A11 `3382936 字节 ← release\bundle\nsis`、A34 `包里那份 13709312 字节，跟构建产物逐字节一致（只差标记：UNK → NSS）`、A33 14.4s、A32 52.3s；上一句汇总停在 RC9 的 34 项，因为它当时还没核「CI 里跑的那批单测本地跑没跑」）；
 人工项与真服务器项仍未跑（见 §7）。
 
 ---
 
 ## 1. 本机自动化（一条命令一项，五分钟跑完）
 
-**这一段现在有固定入口**：`python scripts/rc.py` 按顺序跑完 A1–A34，逐项打 `[PASS]` / `[FAIL]` / `[未验]`，
-最后一行是汇总，可以直接贴进 §7。全跑一分钟上下（`cargo test` 占大头），只改前端时用 `--fast` 跳过 A1；
+**这一段现在有固定入口**：`python scripts/rc.py` 按顺序跑完 A1–A35，逐项打 `[PASS]` / `[FAIL]` / `[未验]`，
+最后一行是汇总，可以直接贴进 §7。全跑五分钟上下（`cargo test` 与 `clippy` 各占一半），只改前端时用 `--fast` 跳过 A1；
 只想核其中几项就直接写编号——`python scripts/rc.py A11`、`python scripts/rc.py A10 A11`、
 `python scripts/rc.py A10,A11` 都认，只跑选中的那几项；编号写错会回一句「不认识的编号」并以退出码 2 结束，
 不会静悄悄跑 0 项。
@@ -72,6 +72,8 @@
 | A34 | 包里那份 exe 就是核的那份 | `python scripts\rc.py`（用 7-Zip 把 A11 认的那份安装包拆到临时目录——**只拆不装**，不写注册表、不进开始菜单、拆完删掉——再拿里面的 `portio-app.exe` 与构建产物逐字节对；非 Windows / 没装 7-Zip 报「未验」） | 包里拆得出 `portio-app.exe`、大小与构建产物一致、抹掉打包器那几位 `__TAURI_BUNDLE_TYPE_VAR_` 标记后逐字节一致才 PASS；拆不出 / 大小不同 / 别处差一个字节 / 包里那份还写着 `UNK`（打包器没改写它）都 FAIL | ✅ 0.2s：`包里那份 13709312 字节，跟构建产物逐字节一致（只差打包器写的标记：UNK → NSS）← Portio_1.0.8-RC9_x64-setup.exe（release 构建）`；单测 13 条（`scripts/test_rc_installer.py`），含「别处差 1 字节必须红」「包里那份还带 UNK 必须红」「没有构建产物可比只能报未验」 |
 
 | A34 的由来（2026-11-20 RC9） | A11 只核「文件名对不对 + 体积像不像话」，查不出「装的是上一轮那份 exe」；A33 核的是**构建产物**，不是**包里那份**。实测拆开 RC8 的包：里面那份与 `release/portio-app.exe` 大小都是 13709312 字节，但 SHA-256 不同——差 3 个字节，位置在 `__TAURI_BUNDLE_TYPE_VAR_UNK` 与 `__TAURI_BUNDLE_TYPE_VAR_NSS` 这一串上（打包器把 `UNK` 改写成包型 `NSS`）。所以判据不是「差几字节就算了」，而是「精确抹掉这几位标记后再逐字节比」 |
+| A35 | 回归脚本自己那批单测 | `python scripts\rc.py`（跑 `scripts/test_*.py` 全批，命令与 CI `ci.yml` 里那条 `python -m unittest discover -s scripts -p "test_*.py"` 一致） | 退出码 0、收尾是 `OK`、且真解析到 `Ran N tests` 且 N ≥ 1 才算 PASS；`Ran 0 tests`、解析不到条数、没有 `OK`、退出码非 0 全 FAIL——「一条都没跑到」正是「假装跑过」的样子；按平台跳过的条数要单独写明 | ✅ 1.3s：`163 条通过（按平台跳 1 条...）`；单测 9 条（`scripts/test_rc_scripts.py`），含「零条也算红」「解析不到也算红」「A35 真接进计划表」「本地这条命令与 CI 那条一致」；反向验证：塞一个必定失败的 `test_zzz_negative.py` → `0 通过 / 1 失败`、退出码 **1**，删掉即回 PASS |
+| A35 的由来（2026-11-20 RC10） | 整跑 A1 是 `cargo test`、A32 是 fmt/clippy，`scripts/test_*.py` 这一批（154 条）只在 CI 里跑，**本地整跑一条都没跑过**。于是「改完 `rc.py` 忘了跑对应单测」时本地三十几项全绿、推上去 CI 才红，与 RC3 的「本地的绿要等于 CI 的绿」正相反 |
 
 
 ### 怎么跑 A6–A9（无头）
@@ -237,5 +239,6 @@ foreach ($frag in "", "#split-test", "#clip-test", "#fold-test") {
 | 2026-11-20 | `v1.0.8-RC7` | `scripts/rc.py` → **33 通过 / 0 失败 / 0 未验**，225.8s，**退出码 0**（A33 14.4s：`窗口标题 'Portio'，撑过 14s 没退`；单跑 `A33` 15.1s，收尾后无残留进程）；`python -m unittest scripts.test_rc_launch` 12 条；反向证据：`launch_verdict` 五档在单测里各钉一条，「进程在、窗口没画出来」不许过 | 未跑 | 未跑 | 「子系统是 GUI」不等于「这份 exe 起得来」：真把它拉起来、等窗口、核标题、撑 4s、`taskkill /T` 收干净；mac / linux 报「未验」 |
 | 2026-11-20 | `v1.0.8-RC8` | `scripts/rc.py` → **33 通过 / 0 失败 / 0 未验**，350.5s，**退出码 0**（A1 164.5s / A32 98.4s 都是 release 冷编之后的重编；A10 `← D:\portio-target\release（release 构建）`、A11 `3382127 字节 ← release\bundle\nsis`、A33 `撑过 14s 没退（release 构建）`）；`python -m unittest scripts.test_rc_artifacts scripts.test_rc_launch` → 30 条（29 过 + 1 按平台跳过） | 未跑 | 未跑 | 「我核的那份 exe，不是用户装的那份」：核的、认的、交的统一到 release 档——`app_exe_dirs()` release 优先、`find_app_exe()` 把档一起返回、`bundle_dirs(kind)` 替掉写死的 debug 目录；单测从 25 条到 30 条（档跟着实际那份走 / 档必须写进结论 / 未知档才回退两档 / `CARGO_TARGET_DIR` 也算进候选） |
 | 2026-11-20 | `v1.0.8-RC9` | `scripts/rc.py` → **34 通过 / 0 失败 / 0 未验**，282.1s，**退出码 0**（先打包再整跑：A11 `3380547 字节 ← release\bundle\nsis`、A33 14.5s `撑过 14s 没退（release 构建）`、A34 0.5s `包里那份 13708800 字节，跟构建产物逐字节一致（只差打包器写的标记：UNK → NSS）`；A32 54.1s 增量 clippy）；`python -m unittest scripts.test_rc_installer` 13 条；反向验证：把 `PORTIO_7Z` 指到 `where.exe`（拆不了包）→ `0 通过 / 1 失败`、退出码 **1**，去掉后回到 PASS | 未跑 | 未跑 | 「包没问题」原来只核了包外面的名字与体积，没核包里装的是哪份 exe：A34 用 7-Zip 把 A11 认的那份包拆到临时目录（只拆不装、拆完删掉），拿里面的 `portio-app.exe` 与构建产物逐字节对，只精确放过打包器改写的那几位 `__TAURI_BUNDLE_TYPE_VAR_` 标记（实测 RC8 的包两边同 13709312 字节、SHA-256 不同，差的 3 字节正落在这串上） |
+| 2026-11-20 | `v1.0.8-RC10` | `scripts/rc.py` → **35 通过 / 0 失败 / 0 未验**，300.7s，**退出码 0**（先打包再整跑：A11 `3382936 字节 ← release\bundle\nsis`、A33 14.4s `撑过 14s 没退（release 构建）`、A34 0.5s `包里那份 13709312 字节，跟构建产物逐字节一致（只差标记：UNK → NSS）`、A35 1.3s `163 条通过（按平台跳 1 条）`；A32 52.3s）；`python -m unittest scripts.test_rc_scripts` 9 条；反向验证：往 `scripts/` 塞一个必定失败的 `test_zzz_negative.py` → A35 `0 通过 / 1 失败`、退出码 **1**，删掉即回 PASS | 未跑 | 未跑 | 1.0.8 段收口这一项补的是「CI 里跑的那 154 条本地从没跑过」：A1 是 `cargo test`、A32 是 fmt/clippy，`scripts/test_*.py` 只在 `ci.yml` 里跑，于是改完 `rc.py` 忘了跑对应单测时，本地三十几项全绿而推上去才红。A35 把这一批按 CI 同一条 discover 命令纳入整跑，且「Ran 0 tests / 解析不到条数」一律判红 |
 
 每一轮 RC 回归跑完，在表格里加一行；过不了的那几项写进下一轮的「下一步」。

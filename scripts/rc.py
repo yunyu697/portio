@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / 未验。
 
-对应 docs/rc-checklist.md §1 的 A1–A34。以前这些步骤散在日志里，每轮都要手打一遍命令，
+对应 docs/rc-checklist.md §1 的 A1–A35。以前这些步骤散在日志里，每轮都要手打一遍命令，
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
 
 用法：
@@ -18,6 +18,9 @@
 只核 debug 就等于只核了自己手上那份，用户装的是 release。
 **包里那份也得是我核的那份**：A34 把安装包拆开（不安装、不写注册表），拿包里的 `portio-app.exe`
 跟构建产物逐字节对——只放过打包器自己改写的那几位 `__TAURI_BUNDLE_TYPE_VAR_` 标记。
+**CI 里跑的那一步，本地整跑也得跑**：A35 跑 `scripts/test_*.py` 这一批（CI 的 ci.yml 就是拿
+`python -m unittest discover -s scripts` 跑的）。以前整跑 A1–A34 一条都没跑过它们：
+改完 `rc.py` 忘了跑对应的 `test_rc_*.py`，本地照样全绿、推上去 CI 才红。
 环境变量可覆盖探测结果：PORTIO_CHROME、PORTIO_NODE、PORTIO_CARGO、PORTIO_7Z。
 """
 
@@ -692,6 +695,53 @@ def a34_payload() -> tuple[str, str]:
         shutil.rmtree(workdir, ignore_errors=True)
 
 
+# ---------- A35：CI 里跑的那一步，整跑也得跑 -------------------------------
+
+RAN_RE = re.compile(r"^Ran (\d+) tests? in ", re.M)
+SKIP_RE = re.compile(r"^OK \(skipped=(\d+)\)", re.M)
+SCRIPT_TESTS_TIMEOUT = 600
+
+
+def script_test_verdict(code: int, out: str) -> tuple[str, str]:
+    """把「跑完 scripts 那批单测」的成败翻成一句结论（纯函数，好测）。
+
+    这一批是回归脚本自己的测试：`test_rc_*.py` 核的是「A34 有没有真的接进计划表」
+    「编号写错会不会装作跑过」这类事。CI 在 ci.yml 里拿
+    `python -m unittest discover -s scripts -p "test_*.py"` 跑它，
+    可本地整跑 A1–A34 一条都没跑过——改完 `rc.py` 忘了跑对应的单测，
+    整跑照样全绿，推上去 CI 才红，正好和「本地的绿要等于 CI 的绿」相反。
+
+    判定上不留「没查到问题就算过」的口子：`Ran 0 tests` 或压根没解析到条数，
+    都当红——那说明 discover 一条都没找到，等于没跑。
+    """
+    text = out or ""
+    if code != 0:
+        return FAIL, f"退出码 {code}；{tail(text, 6)}"
+    if not re.search(r"^OK", text, re.M):
+        return FAIL, f"没看到 OK 收尾（可能崩在半路）：{tail(text, 6)}"
+    m = RAN_RE.search(text)
+    if not m:
+        return FAIL, "没解析到「Ran N tests」——discover 可能一条都没找到，等于没跑"
+    ran = int(m.group(1))
+    if ran == 0:
+        return FAIL, "discover 一条都没跑到（scripts 下没有 test_*.py？），等于没跑"
+    s = SKIP_RE.search(text)
+    skipped = int(s.group(1)) if s else 0
+    detail = f"{ran} 条通过"
+    if skipped:
+        detail += f"（按平台跳 {skipped} 条，清单里算未验的那几条）"
+    return PASS, detail
+
+
+def a35_script_tests() -> tuple[str, str]:
+    """跑 scripts/test_*.py 这一批，跟 CI ci.yml 里的 discover 同一个口径。"""
+    if not sorted((ROOT / "scripts").glob("test_*.py")):
+        return FAIL, "scripts 下面一个 test_*.py 都没有——回归脚本自己没测试，等于没核"
+    proc = run([sys.executable, "-m", "unittest", "discover", "-s", "scripts", "-p", "test_*.py"],
+               SCRIPT_TESTS_TIMEOUT)
+    return script_test_verdict(proc.returncode, (proc.stdout or "") + (proc.stderr or ""))
+
+
 def split_ids(items: list[str]) -> list[str]:
     """把 `A10 A11` / `A10,A11` 拆成编号列表：大写、去空、去重、按出现顺序。
 
@@ -798,6 +848,7 @@ def main(argv: list[str]) -> int:
         ("A32", "cargo fmt --check + cargo clippy -D warnings（本地的绿要等于 CI 的绿）", True),
         ("A33", "portio-app.exe 真的起得来（拉起这份 exe 等窗口、核标题带 Portio、再确认没当场退出，用完收干净）", True),
         ("A34", "包里那份就是核的那份（拆开安装包、拿里面的 portio-app.exe 跟构建产物逐字节对，只放过打包器写的标记）", True),
+        ("A35", "回归脚本自己那批单测（scripts/test_*.py 全跑，口径跟 CI 的 discover 一致；一条都没跑到也算红）", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -921,6 +972,9 @@ def main(argv: list[str]) -> int:
         elif code == "A34":
             # 拆包对字节：不开浏览器、不安装、不写注册表
             status, detail = a34_payload()
+        elif code == "A35":
+            # 回归脚本自己的单测：1s 量级，但以前整跑从没跑过
+            status, detail = a35_script_tests()
         results.append((code, label, status, detail))
         print(f"[{LABEL[status]}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
 
