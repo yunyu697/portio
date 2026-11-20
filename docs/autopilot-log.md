@@ -3286,3 +3286,15 @@ WebView2 起不起来、窗口标题对不对、启动后几秒内崩不崩。RC
 - 真机手感（hover / 拖拽 / 真右键）仍未点过；桌面锁着（`LogonUI.exe` 在跑）。
 - 无 SSH 服务器：真实登录、PTY 交互、真实 SFTP 传输仍全部未验证。
 
+## 2026-11-20 · v1.0.8-RC9 · 发版补记
+
+- 提交 `df77424` 已 push main，tag `v1.0.8-RC9` 已推；main CI run `44698756451` **五项全 success**，
+  Release run `44698766021` **gate + 三平台 build 四项全 success**。
+- Release `Portio 1.0.8-RC9`：`prerelease:true`、`draft:false`，四资产
+  exe **3379906 B** / dmg **9524082 B** / deb **4968876 B** /
+  AppImage **83151352 B**（对照 RC8：3380182 / 9523342 / 4969132 / 83151352）。
+- 本机 release 包 **3380547 B**，与 CI 那份 3379906 B 差 644 B——同一份代码、不同的编译环境与压缩时机，
+  量级一致。已复制到 `…\new-chat\Portio_1.0.8-RC9_x64-setup.exe` 并交付。
+- 十张首发图随进位重出到 `1.0.8-RC9`；press-kit 下载表与 release-notes 版本段回填成本次 Release 真值。
+- 遗留：A34 核的是**包里的 exe**，不是**装到机器上之后跑起来的那份**。两条路（便携目录就地拉起 /
+  临时目录装再卸）已登记进 `docs/backlog.md`，等用户拍板。
