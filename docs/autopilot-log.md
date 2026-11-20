@@ -3160,3 +3160,59 @@ WebView2 起不起来、窗口标题对不对、启动后几秒内崩不崩。RC
   不是代码变化）。
 - 本地 NSIS 包 **4591521 B** → 复制到 `…\new-chat\Portio_1.0.8-RC7_x64-setup.exe` 并交付。
 - press-kit 下载表与 release-notes 的版本段回填成本次 Release 真值；十张首发图随进位重出到 `1.0.8-RC7`。
+
+## 2026-11-20 · v1.0.8-RC8 · 核的那份 exe 得是用户装的那份
+
+上一轮 A33 真把程序拉起来了，我以为「起得来」这件事核过了。这轮翻构建目录时发现：它拉的是
+`D:\portio-target\debug\portio-app.exe`，A11 认的包也是 `--debug` 打出来的那份（4591521 字节），
+而我从 Releases 下到、又复制给你的是 release 构建的包（3380393 字节）。也就是说那句话的准确版本是
+「debug 那份起得来」——**我核的那份，不是用户装的那份**。
+
+**做了什么**
+
+1. `app_exe_dirs()` 从「只给 debug」改成「release 在前、debug 在后，仓库 `target` 与
+   `CARGO_TARGET_DIR` 两处根都算」；新增 `target_roots()` 收口这两个根。
+2. `find_app_exe()` 返回值从 `Path | None` 改成 `(Path | None, kind)`：仍然取 mtime 最新那份
+   （不许拿上一轮留下的旧 exe 充数），但把「哪一档构建」一起带出来——`exe_kind()` 按目录名认，
+   `kind_label()` 写成人话。
+3. A10 与 A33 的结论末尾都点名档：`← D:\portio-target\release（release 构建）` /
+   `窗口标题 'Portio'，撑过 14s 没退（release 构建）`。核的是 debug 就写 debug，不再含糊成「起来了」。
+4. `BUNDLE_DIR` 常量换成 `bundle_dirs(kind)`：A11 认包时先看 A33 核的是哪一档，**只认同一档的
+   `bundle/nsis`**——核 release 就只认 release 打出来的包，debug 包顶不上去；档不明（还没构建过）
+   才两档都看。这一条是这轮的牙齿：不然「核 release、交 debug」还能各说各话。
+5. 打包口径换成 release：`tauri build --bundles nsis`（不再带 `--debug`）。
+
+**验证证据**
+
+- 单测：`python -m unittest scripts.test_rc_artifacts scripts.test_rc_launch` → **30 条**
+  （29 过 + 1 条按平台跳过；RC7 时这两份合跑是 25 条）。新增/改写 8 条：档跟着实际那份走（不是跟着
+  候选顺序走）、`exe_kind` 三种输入、`bundle_dirs(kind)` 只给一档 / 未知档回退两档 /
+  `CARGO_TARGET_DIR` 也算进候选、`find_app_exe` 空目录返回 `(None, "")`。
+- 先单跑三项：`python scripts\rc.py A10 A11 A33` →
+  `[PASS] A10 … ← D:\portio-target\release（release 构建）`、
+  `[PASS] A11 Portio_1.0.8-RC8_x64-setup.exe 3382127 字节（3.23 MiB）← D:\portio-target\release\bundle\nsis`、
+  `[PASS] A33 (14.6s) 窗口标题 'Portio'，撑过 14s 没退（release 构建）`；跑完 `Get-Process portio-app` 无残留。
+- 整跑（先打包再整跑）：`python scripts\rc.py` → **33 通过 / 0 失败 / 0 未验，350.5s，退出码 0**。
+  A1 `97 passed, 0 failed`（164.5s）、A31 `10 张全是 1.0.8-RC8 的`、A32 `fmt 干净、clippy 零警告`（98.4s）、
+  A33 `(14.4s) …（release 构建）`。A1 与 A32 慢是因为 release 冷编之后两个 profile 都要重来一趟。
+- 打包：`tauri build --bundles nsis` → `Portio_1.0.8-RC8_x64-setup.exe` **3382127 字节**
+  （对照 RC7 的 CI 资产 3380393、本地 debug 包 4591521：release 包体量终于跟 Releases 上那份同一量级，
+  差的 1734 字节来自版本串与压缩抖动）。
+- 十张首发图重出：`python scripts\shots.py` → 十张 2360×1380 全过、清单 `（10 张，版本 1.0.8-RC8）`；
+  `python scripts\check_site.py` → `OK … 版本 v1.0.8-RC8`；`check_versions.py` → 七处一致。
+
+**下一步**
+
+- 推 tag `v1.0.8-RC8`、回填下载表与发版补记，本地包换成 release 那份交付。
+- 接着问同一类问题：**A11 认的是「文件名对 + 体积像话」，它仍然没核「装上去能跑」**。
+  装一次要写注册表与开始菜单，按守则属于「不动用户机器」，所以下一轮先把两条路（便携目录 vs
+  临时目录装再卸）写进 `docs/backlog.md` 等拍板，不自作主张动系统。
+
+**未验证**
+
+- A33 这轮核的是 release 构建，但核的仍是**构建产物**（`target/release/portio-app.exe`），
+  不是安装器装出来的那份；安装后启动仍未验（同上，属于动用户机器）。
+- mac / linux 上报「未验」；那两边的包仍只到「CI 构建通过」。
+- 真机手感（hover / 拖拽 / 真右键）仍未点过；桌面锁着（`LogonUI.exe` 在跑）。
+- 无 SSH 服务器：真实登录、PTY 交互、真实 SFTP 传输仍全部未验证。
+

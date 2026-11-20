@@ -11,6 +11,24 @@
 > 只写用户能感知的变化；内部重构放 `### Changed`，未验证的能力写进 `### Known limitations`。
 > 口吻：站在用这个软件的人这一侧说话（"我把 X 改成 Y"），不写成第三方播报。
 
+## [1.0.8-RC8] - 2026-11-20
+
+### Fixed
+
+- **我核的那份 exe，一直不是用户装的那份。** A33 昨天真把程序拉起来了，可它拉的是 `target/debug`
+  里的 debug 版；A11 认的安装包也是 `--debug` 打出来的那个（4591521 字节），而我从 Releases 下到、
+  交给你的包是 release 构建的（3380393 字节）。也就是说「核过了」只核到了我手上那份。
+  现在构建、核验、交付统一走 release：`app_exe_dirs()` 先 release 后 debug，`find_app_exe()`
+  把「哪一档构建」一起返回，A33 的结论末尾必须写着 `（release 构建）`；A11 认包也只认跟 A33
+  同一档的目录——核 release 就只认 release 打出来的包，debug 包不再能顶上去。
+
+### Changed
+
+- `bundle_dirs(kind)` 取代原来的 `BUNDLE_DIR` 常量：要哪一档就只给哪一档，档不明才两档都看。
+- 单测从 25 条加到 30 条（`test_rc_artifacts` 13 → 18、`test_rc_launch` 12）：新增「档要跟着实际那份走」
+  「档必须写进结论」「未知档才回退两档」「CARGO_TARGET_DIR 也算进候选」等。
+- 本地交付物从此是 release 安装包，体积与 Release 页上的 Windows 包同一个量级。
+
 ## [1.0.8-RC7] - 2026-11-20
 
 ### Fixed

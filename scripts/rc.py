@@ -14,6 +14,8 @@
 退出码：0 = 每一项都真跑过且过；1 = 有 FAIL；2 = 编号写错；3 = 没有 FAIL 但有未验项
 （安装包还没打、截图清单还没出、缺 Chrome、`--fast` 跳了 A1 都算）。
 未验和通过分开算的理由：绿的意思是「核过了」，不是「没查到问题」。
+**核的和交的得是同一份**：A10 / A11 / A33 都按「哪一档构建」走（release 优先、结论里点名），
+只核 debug 就等于只核了自己手上那份，用户装的是 release。
 环境变量可覆盖探测结果：PORTIO_CHROME、PORTIO_NODE、PORTIO_CARGO。
 """
 
@@ -35,7 +37,27 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 UI = ROOT / "ui"
-BUNDLE_DIR = ROOT / "target" / "debug" / "bundle" / "nsis"
+EXE_KINDS = ("release", "debug")  # 「用户装的那份」排前：release 才是真交付物
+
+
+def target_roots() -> list[Path]:
+    """构建产物可能在仓库里，也可能在 CARGO_TARGET_DIR（本机放 D 盘，C 盘紧）。"""
+    roots = [ROOT / "target"]
+    target = os.environ.get("CARGO_TARGET_DIR")
+    if target:
+        roots.insert(0, Path(target))
+    return roots
+
+
+def bundle_dirs(kind: str = "") -> list[Path]:
+    """安装包目录：要哪一档构建就只认哪一档。
+
+    A11 原来只认 `target/debug/bundle/nsis`，于是它认的是 debug 包、我交付的也是 debug 包
+    （4591521 B），而用户从 Releases 下到的是 release 构建出来的那份（3380393 B）。
+    核的、交的、用户装的得是同一份，否则「核过了」这句话就只核到了自己手上那份。
+    """
+    kinds = [kind] if kind in EXE_KINDS else list(EXE_KINDS)
+    return [r / k / "bundle" / "nsis" for k in kinds for r in target_roots()]
 
 PASS, FAIL, SKIP = "PASS", "FAIL", "SKIP"
 # 屏幕上报的记号。内部状态仍叫 SKIP（老日志与清单按这个字找），
@@ -221,27 +243,39 @@ def a_page(chrome: str | None, profile: str, frag: str, expect: str,
 
 
 def app_exe_dirs() -> list[Path]:
-    dirs = [ROOT / "target" / "debug"]
-    target = os.environ.get("CARGO_TARGET_DIR")
-    if target:
-        dirs.append(Path(target) / "debug")
-    return dirs
+    """候选 exe 目录：release 在前、debug 在后，两处 target 根都算。"""
+    return [r / k for k in EXE_KINDS for r in target_roots()]
 
 
-def find_app_exe(dirs: list[Path]) -> Path | None:
-    """挑最新的那份 portio-app.exe。
+def exe_kind(path: Path) -> str:
+    """这份 exe 是哪一档构建——按它所在目录的档名认，认不出就给空串。"""
+    for part in reversed(Path(path).parts):
+        if part in EXE_KINDS:
+            return part
+    return ""
 
-    C 盘紧的时候构建会落到 `CARGO_TARGET_DIR`（本机是 D 盘），只盯仓库里的 target
-    就会拿着上一次留下的旧 exe 去判「启动带不带控制台」——和 A11 拿旧包充数同一种毛病。
+
+def kind_label(kind: str) -> str:
+    """写进结论里的档名：光写「Portio 起来了」不够，得写清起的是哪一份。"""
+    return f"{kind} 构建" if kind in EXE_KINDS else "不知道哪一档构建"
+
+
+def find_app_exe(dirs: list[Path]) -> tuple[Path | None, str]:
+    """挑要核的那份 portio-app.exe，连同它是哪一档构建一起返回。
+
+    取 mtime 最新的那份（跟 A11 认包同一个口径：不许拿上一轮留下的旧 exe 充数），
+    但把档一起带出来——结论里必须写着核的是 release 还是 debug，
+    否则「我核的是 debug、用户装的是 release」这件事又藏回去了。
     """
     hits = [d / "portio-app.exe" for d in dirs if (d / "portio-app.exe").is_file()]
     if not hits:
-        return None
-    return max(hits, key=lambda q: q.stat().st_mtime)
+        return None, ""
+    newest = max(hits, key=lambda q: q.stat().st_mtime)
+    return newest, exe_kind(newest)
 
 
 def a10_pe_subsystem() -> tuple[str, str]:
-    exe = find_app_exe(app_exe_dirs())
+    exe, kind = find_app_exe(app_exe_dirs())
     if exe is None:
         return SKIP, "还没构建 portio-app.exe（先 npm run build 或 tauri build）"
     with exe.open("rb") as f:
@@ -254,7 +288,7 @@ def a10_pe_subsystem() -> tuple[str, str]:
     subsystem = struct.unpack_from("<H", head, e_lfanew + 4 + 20 + 68)[0]
     if subsystem != 2:
         return FAIL, f"Subsystem={subsystem}，GUI 应为 2（否则启动会带控制台黑窗）"
-    return PASS, f"Subsystem=2（GUI，启动不带控制台）← {exe.parent}"
+    return PASS, f"Subsystem=2（GUI，启动不带控制台）← {exe.parent}（{kind_label(kind)}）"
 
 
 def current_version() -> str:
@@ -290,11 +324,9 @@ def check_bundle(ver: str, dirs: list[Path]) -> tuple[str, str]:
 
 
 def a11_bundle() -> tuple[str, str]:
-    dirs = [BUNDLE_DIR, ROOT]
-    target = os.environ.get("CARGO_TARGET_DIR")
-    if target:
-        dirs.append(Path(target) / "debug" / "bundle" / "nsis")
-    return check_bundle(current_version(), dirs)
+    """认安装包时跟 A33 认同一档：核的是 release，就只认 release 打出来的包。"""
+    exe, kind = find_app_exe(app_exe_dirs())
+    return check_bundle(current_version(), bundle_dirs(kind) + [ROOT])
 
 
 SHOTS_DIR = ROOT / "docs" / "shots"
@@ -530,10 +562,11 @@ def probe_launch(exe: Path, wait_window: float = LAUNCH_WAIT, hold: float = LAUN
 def a33_launch() -> tuple[str, str]:
     if sys.platform != "win32":
         return SKIP, "只在 Windows 上核（mac / linux 的包由 CI 的 build 那关负责起来）"
-    exe = find_app_exe(app_exe_dirs())
+    exe, kind = find_app_exe(app_exe_dirs())
     if exe is None:
         return SKIP, "还没构建 portio-app.exe（先 npm run build 或 tauri build）"
-    return probe_launch(exe)
+    status, detail = probe_launch(exe)
+    return status, f"{detail}（{kind_label(kind)}）"
 
 
 def split_ids(items: list[str]) -> list[str]:

@@ -12,7 +12,7 @@
 | ✗ | 已知缺口：代码里就没有，或明知不合格 |
 | 🚫 | 卡外部条件：缺服务器 / 缺证书 / 缺平台机器，写清差什么 |
 
-**最近一次整跑**：2026-11-20 · `v1.0.8-RC6` · `python scripts/rc.py`（全量，含 A1）→ **32 通过 / 0 失败 / 0 未验，224.6s，退出码 0**（这回先打包再整跑，A11 不再落在未验里：`Portio_1.0.8-RC6_x64-setup.exe` 4586339 字节。A1 105.9s 只重编了测试侧的指纹，A32 47.8s；上一轮同一句汇总还写着「1 跳过」并以退出码 0 收工，那正是这一版要堵的口子）；
+**最近一次整跑**：2026-11-20 · `v1.0.8-RC8` · `python scripts/rc.py`（全量，含 A1）→ **33 通过 / 0 失败 / 0 未验，350.5s，退出码 0**（这回连构建档也对上了：A10/A11/A33 三处都点名 release——`Portio_1.0.8-RC8_x64-setup.exe` 3382127 字节 ← `D:\portio-target\release\bundle\nsis`、`窗口标题 'Portio'，撑过 14s 没退（release 构建）`。A1 164.5s、A32 98.4s 都是 release 冷编之后的重编与冷 clippy；上一句汇总还停在 RC6 的 32 项，因为它当时没核「核的那份是不是用户装的那份」）；
 人工项与真服务器项仍未跑（见 §7）。
 
 ---
@@ -42,8 +42,8 @@
 | A7 | 分屏状态机 | 无头打开 `ui/index.html#split-test` | 标题 `SELFTEST-OK` | ✅ |
 | A8 | 复制粘贴按键映射 | 无头打开 `ui/index.html#clip-test` | 标题 `CLIP-SELFTEST-OK 10` | ✅ 10/10 |
 | A9 | 文件面板折叠 | 无头打开 `ui/index.html#fold-test` | 标题 `FOLD-SELFTEST-OK`，且折叠态 `files` 宽 = 0、把手 = 10、回展开 = 原宽 | ✅（open 360/340/9 → fold 480/0/10 → back 360/340） |
-| A10 | 启动不带控制台黑窗 | 读 `portio-app.exe` 的 PE `OptionalHeader+68`；找 exe 时仓库 `target/debug` 与 `CARGO_TARGET_DIR/debug` 都看、取 mtime 最新那份（改前只盯仓库 target，本机构建落在 D 盘时就判的是上一次的旧 exe） | `Subsystem = 2`（GUI），并打印判定用的是哪个目录 | ✅ Subsystem=2 ← D:\portio-target\debug |
-| A11 | 安装包是本版本的那个、体积像话 | `python scripts/rc.py`（内部按界面里的版本号找 `Portio_<当前版本>_x64-setup.exe`：bundle/nsis、仓库根、`CARGO_TARGET_DIR` 三处） | 找到同名文件且体积落在 2–30 MiB；**找不到就报「未验」并点名眼前的旧包**，不拿旧包充数（改前取 mtime 最新的那个，2026-11-20 全量回归拿着两个版本前的 RC3 包就判过了） | ✅ `Portio_1.0.8-RC6_x64-setup.exe` 4586339 字节（4.37 MiB）← `D:\portio-target\debug\bundle\nsis`；单测 9 条 |
+| A10 | 启动不带控制台黑窗 | 读 `portio-app.exe` 的 PE `OptionalHeader+68`；找 exe 时仓库 `target` 与 `CARGO_TARGET_DIR` 两处的 **release / debug** 都看、取 mtime 最新那份，并把「哪一档构建」写进结论（RC8 起 release 排在候选前面：用户装的是 release，先核那一份） | `Subsystem = 2`（GUI），并打印判定用的是哪个目录、哪一档构建 | ✅ Subsystem=2 ← D:\portio-target\release（release 构建） |
+| A11 | 安装包是本版本的那个、体积像话 | `python scripts/rc.py`（内部按界面里的版本号找 `Portio_<当前版本>_x64-setup.exe`：仓库根 + **跟 A33 同一档**的 `bundle/nsis`——核的是 release 就只认 release 打出来的包，debug 包顶不上去；档不明才两档都看） | 找到同名文件且体积落在 2–30 MiB；**找不到就报「未验」并点名眼前的旧包**，不拿旧包充数（改前取 mtime 最新的那个，2026-11-20 全量回归拿着两个版本前的 RC3 包就判过了） | ✅ `Portio_1.0.8-RC8_x64-setup.exe` 3382127 字节（3.23 MiB）← `D:\portio-target\release\bundle\nsis`；单测 18 条 |
 | A12 | 九处面板右键菜单 | 无头打开 `ui/index.html#ctx-test` | 标题 `CTX-SELFTEST-OK 9`：每处都拦住浏览器默认菜单，且开的是自己那份（条目文字逐条比对） | ✅ 9/9 |
 | A13 | 窄窗几何 | `python scripts/rc.py`（内部用 `--window-size` 跑 1024 / 900 两档） | 两档标题都是 `NARROW-SELFTEST-OK`：导入下拉整条留在 180 宽的侧栏里、条目文字被裁住、抽屉收起正好一行高（正文 0）、文件面板折叠后终端吃满整列、设置卡与「完成」按钮全在窗里、整页无横向滚动、右键菜单贴右缘会内收 | ✅ 1024 / 900 |
 | A14 | 深浅两套主题几何与对比度 | 无头打开 `ui/index.html#theme-test` | 标题 `THEME-SELFTEST-OK`：11 个分区在两套主题下左上角与宽高完全一致（`worstShift 0`）、主题按钮的太阳/月亮图标按主题互换、六组令牌对比度都在下限之上（分隔线 ≥1.25、强线 ≥1.5、正文 ≥10、次要 ≥4.5、弱化 ≥2.9） | ✅ worstShift 0 |
@@ -67,7 +67,7 @@
 
 | A32 | 格式与 lint 闸（跟 CI 那关同一个口径） | `python scripts/rc.py`（内部跑 `cargo fmt --all --check` 与 `cargo clippy --workspace --all-targets -- -D warnings`） | 两条都干净才 PASS；格式没过要报出 `文件:行`（同一文件的两个 hunk 折成一条）、clippy 没过要报出 `文件:行:列`，两道同时没过时一次说清 | ✅ 12.2s（增量，clippy 零警告）；反向验证两条都翻红：① 往 `crates/core/src/lib.rs` 塞一行 `pub fn _rc_probe( )->i32{1}` → `FAIL … fmt 有文件没格式化：crates\core\src\lib.rs:36`；② 塞 `let unused = 1` 那句 → `FAIL … clippy 有警告：crates\core\src\lib.rs:39`。还原后 PASS |
 
-| A33 | 这份 exe 真的起得来 | `python scripts/rc.py`（拉起 `portio-app.exe`、枚举该进程的顶层窗口标题、盯住存活，用完 `taskkill /T` 收干净；非 Windows 报「未验」） | 进程撑过 10s+4s 还在、且有一条窗口标题带 `Portio` 才 PASS；起后当场退出 / 进程在但一个窗口都没有 / 标题不对 / 标题里出现 `ERR:` 都 FAIL（多窗口时有一个带 `ERR:` 就红，不许挑好看的那个报） | ✅ 15.1s：`窗口标题 'Portio'，撑过 14s 没退`，收尾后 `Get-Process portio-app` 无残留。反向：`launch_verdict` 里「进程在、没有窗口」一档在单测里钉住不许过 |
+| A33 | 这份 exe 真的起得来 | `python scripts\rc.py`（拉起 `portio-app.exe`、枚举该进程的顶层窗口标题、盯住存活，用完 `taskkill /T` 收干净；非 Windows 报「未验」；结论末尾点名核的是 release 还是 debug 构建） | 进程撑过 10s+4s 还在、且有一条窗口标题带 `Portio` 才 PASS；起后当场退出 / 进程在但一个窗口都没有 / 标题不对 / 标题里出现 `ERR:` 都 FAIL（多窗口时有一个带 `ERR:` 就红，不许挑好看的那个报） | ✅ 14.6s：`窗口标题 'Portio'，撑过 14s 没退（release 构建）`，收尾后 `Get-Process portio-app` 无残留。反向：`launch_verdict` 里「进程在、没有窗口」一档在单测里钉住不许过 |
 
 
 ### 怎么跑 A6–A9（无头）
@@ -230,5 +230,7 @@ foreach ($frag in "", "#split-test", "#clip-test", "#fold-test") {
 
 | 2026-11-20 | `v1.0.8-RC5` | `scripts/rc.py` → **31 通过 / 0 失败 / 1 跳过**，337.3s（A1 冷：进位改了 `Cargo.lock` 里三个 crate 的版本，三个包都得重编，224.4s；A32 fmt/clippy 51.5s；跳过项仍是 A11——整跑时 RC5 的包还没打，打完包单跑 `A10 A11` 转 PASS）；反向验证两处：① 标题栏写回 `RC3` → A5 退出码 1 并点名「ui/index.html 标题栏」；② `Cargo.lock` 里 `portio-ssh` 写回 `RC3` → 点名「Cargo.lock portio-ssh」;另证旧行为：把 lock 里 `portio-core` 写回上一版，`cargo metadata --locked` 与 `cargo build --locked` 都退出码 **101**（`cannot update the lock file … because --locked was passed`），写回新号两者都 0 | 未跑 | 未跑 | 版本号写几处就核几处：`check_versions.py` 从三处扩到七处（清单三处 + 标题栏 `span.ver` + lock 三个 crate），`set_version.py` 直接写 lock（不再等下一次构建）；新增 `test_check_versions.py` 9 条、`test_set_version.py` 4 条锁文件用例 |
 | 2026-11-20 | `v1.0.8-RC6` | `scripts/rc.py` → **32 通过 / 0 失败 / 0 未验**，224.6s，**退出码 0**（先打包再整跑：A11 认的是 `Portio_1.0.8-RC6_x64-setup.exe` 4586339 字节）；反向验证：`rc.py --fast A1` → 打 `[未验] A1`、汇总写「0 通过 / 0 失败 / 1 未验」、退出码 **3**（改前这种情况退出 0、只写「1 跳过」） | 未跑 | 未跑 | 整跑的绿不能再含一项没核过的东西：SKIP 改称「未验」单列，退出码分成 0 / 1 / 2 / 3，未验项逐条写明为什么没跑；新增 `test_rc_summary.py` 11 条 |
+| 2026-11-20 | `v1.0.8-RC7` | `scripts/rc.py` → **33 通过 / 0 失败 / 0 未验**，225.8s，**退出码 0**（A33 14.4s：`窗口标题 'Portio'，撑过 14s 没退`；单跑 `A33` 15.1s，收尾后无残留进程）；`python -m unittest scripts.test_rc_launch` 12 条；反向证据：`launch_verdict` 五档在单测里各钉一条，「进程在、窗口没画出来」不许过 | 未跑 | 未跑 | 「子系统是 GUI」不等于「这份 exe 起得来」：真把它拉起来、等窗口、核标题、撑 4s、`taskkill /T` 收干净；mac / linux 报「未验」 |
+| 2026-11-20 | `v1.0.8-RC8` | `scripts/rc.py` → **33 通过 / 0 失败 / 0 未验**，350.5s，**退出码 0**（A1 164.5s / A32 98.4s 都是 release 冷编之后的重编；A10 `← D:\portio-target\release（release 构建）`、A11 `3382127 字节 ← release\bundle\nsis`、A33 `撑过 14s 没退（release 构建）`）；`python -m unittest scripts.test_rc_artifacts scripts.test_rc_launch` → 30 条（29 过 + 1 按平台跳过） | 未跑 | 未跑 | 「我核的那份 exe，不是用户装的那份」：核的、认的、交的统一到 release 档——`app_exe_dirs()` release 优先、`find_app_exe()` 把档一起返回、`bundle_dirs(kind)` 替掉写死的 debug 目录；单测从 25 条到 30 条（档跟着实际那份走 / 档必须写进结论 / 未知档才回退两档 / `CARGO_TARGET_DIR` 也算进候选） |
 
 每一轮 RC 回归跑完，在表格里加一行；过不了的那几项写进下一轮的「下一步」。

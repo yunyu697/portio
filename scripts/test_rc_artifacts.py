@@ -115,32 +115,45 @@ class CheckBundleTest(unittest.TestCase):
 
 
 class FindAppExeTest(unittest.TestCase):
-    """A10：可执行文件得跟着构建目录走，并且取最新的那一份。"""
+    """A10：可执行文件得跟着构建目录走、取最新的那一份，并且说清是哪一档构建。"""
 
     def test_none_when_both_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
-            self.assertIsNone(rc.find_app_exe([Path(tmp), Path(tmp) / "nope"]))
+            self.assertEqual(rc.find_app_exe([Path(tmp), Path(tmp) / "nope"]), (None, ""))
 
     def test_repo_target_counts(self):
         with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp)
+            repo = Path(tmp) / "debug"
+            repo.mkdir()
             touch(repo, "portio-app.exe", 4096)
-            self.assertEqual(rc.find_app_exe([repo]), repo / "portio-app.exe")
+            path, kind = rc.find_app_exe([repo])
+            self.assertEqual(path, repo / "portio-app.exe")
+            self.assertEqual(kind, "debug")
 
     def test_newest_build_wins(self):
         """仓库里那份是上一次的、D 盘那份才是这一轮的：必须取 D 盘。"""
         with tempfile.TemporaryDirectory() as tmp:
-            stale = Path(tmp) / "repo"
-            fresh = Path(tmp) / "drive-d"
+            stale = Path(tmp) / "release"
+            fresh = Path(tmp) / "debug"
             stale.mkdir()
             fresh.mkdir()
             old = touch(stale, "portio-app.exe", 4096)
             new = touch(fresh, "portio-app.exe", 4096)
             os.utime(old, (1000, 1000))
             os.utime(new, (2000, 2000))
-            self.assertEqual(rc.find_app_exe([stale, fresh]), fresh / "portio-app.exe")
+            path, kind = rc.find_app_exe([stale, fresh])
+            self.assertEqual(path, fresh / "portio-app.exe")
+            self.assertEqual(kind, "debug", "档要跟着实际那份走，不是跟着候选顺序走")
 
-    def test_dirs_follow_cargo_target_dir(self):
+    def test_kind_comes_back_with_the_path(self):
+        """核的是 release 还是 debug 必须写在结论里——RC7 那轮核的一直是 debug。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            rel = Path(tmp) / "release"
+            rel.mkdir()
+            touch(rel, "portio-app.exe", 4096)
+            self.assertEqual(rc.find_app_exe([rel])[1], "release")
+
+    def test_dirs_follow_cargo_target_dir_and_prefer_release(self):
         with tempfile.TemporaryDirectory() as tmp:
             saved = os.environ.get("CARGO_TARGET_DIR")
             os.environ["CARGO_TARGET_DIR"] = tmp
@@ -151,8 +164,44 @@ class FindAppExeTest(unittest.TestCase):
                     os.environ.pop("CARGO_TARGET_DIR", None)
                 else:
                     os.environ["CARGO_TARGET_DIR"] = saved
-            self.assertEqual(dirs[0], rc.ROOT / "target" / "debug")
-            self.assertEqual(dirs[1], Path(tmp) / "debug")
+            self.assertEqual(dirs[0], Path(tmp) / "release")
+            self.assertEqual(dirs[1], rc.ROOT / "target" / "release")
+            self.assertEqual(dirs[2], Path(tmp) / "debug")
+            self.assertEqual(dirs[3], rc.ROOT / "target" / "debug")
+
+
+class BundleDirsTest(unittest.TestCase):
+    """A11 认包得跟 A33 认 exe 同一档：核 release 就只认 release 打出来的包。"""
+
+    def test_kind_narrows_to_one_build(self):
+        for kind in ("release", "debug"):
+            dirs = rc.bundle_dirs(kind)
+            self.assertTrue(dirs, kind)
+            for d in dirs:
+                self.assertIn(kind, d.parts, f"{d} 不是 {kind} 档的目录")
+
+    def test_unknown_kind_falls_back_to_both(self):
+        dirs = rc.bundle_dirs("")
+        kinds = {p for d in dirs for p in d.parts if p in rc.EXE_KINDS}
+        self.assertEqual(kinds, {"release", "debug"})
+
+    def test_cargo_target_dir_is_searched(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            saved = os.environ.get("CARGO_TARGET_DIR")
+            os.environ["CARGO_TARGET_DIR"] = tmp
+            try:
+                dirs = rc.bundle_dirs("release")
+            finally:
+                if saved is None:
+                    os.environ.pop("CARGO_TARGET_DIR", None)
+                else:
+                    os.environ["CARGO_TARGET_DIR"] = saved
+            self.assertEqual(dirs[0], Path(tmp) / "release" / "bundle" / "nsis")
+
+    def test_exe_kind_reads_the_directory(self):
+        self.assertEqual(rc.exe_kind(Path("D:/t/release/portio-app.exe")), "release")
+        self.assertEqual(rc.exe_kind(Path("D:/t/debug/portio-app.exe")), "debug")
+        self.assertEqual(rc.exe_kind(Path("D:/nowhere/portio-app.exe")), "")
 
 
 if __name__ == "__main__":
