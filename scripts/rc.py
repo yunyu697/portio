@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / 未验。
 
-对应 docs/rc-checklist.md §1 的 A1–A36。以前这些步骤散在日志里，每轮都要手打一遍命令，
+对应 docs/rc-checklist.md §1 的 A1–A37。以前这些步骤散在日志里，每轮都要手打一遍命令，
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
 
 用法：
@@ -25,6 +25,9 @@
 标题栏里的版本串是不是这一版、`app.js` 顶部那个函数在不在、终端对象建没建、DOM 有没有肉。
 A33 只核「进程没退 + 标题带 Portio」，而那个标题是配置文件里写死的，
 界面一根筋没加载也照样成立。
+**自检只在无头里跑过，等于没在真窗口里跑过**：A37 把其中不动设置的那几条搬进真 webview 跑一遍
+（真 localStorage、真后端）。跑前先把 localStorage 存下来，跑完一字不差写回去——
+实测这些自检会把 `portio.drawer` 从 2 改成 3，那是我自己的偏好，不该被回归挪动。
 环境变量可覆盖探测结果：PORTIO_CHROME、PORTIO_NODE、PORTIO_CARGO、PORTIO_7Z。
 """
 
@@ -856,24 +859,8 @@ def ws_recv_frame(sock) -> tuple[bool, bytes]:
 
 def cdp_eval(ws_url: str, expr: str, timeout: float = 8.0) -> dict:
     """在真 webview 里跑一句话，回它那一帧（成没成由调用方判）。"""
-    sock = ws_open(ws_url, timeout)
-    try:
-        ws_send_text(sock, json.dumps({
-            "id": 1, "method": "Runtime.evaluate",
-            "params": {"expression": expr, "returnByValue": True},
-        }).encode())
-        whole = b""
-        while True:
-            fin, buf = ws_recv_frame(sock)
-            whole += buf
-            if not fin:
-                continue
-            msg = json.loads(whole.decode("utf-8"))
-            if msg.get("id") == 1:
-                return msg
-            whole = b""
-    finally:
-        sock.close()
+    return cdp_call(ws_url, "Runtime.evaluate",
+                    {"expression": expr, "returnByValue": True}, timeout)
 
 
 def webview_verdict(sig: dict | None, version: str, waited: float,
@@ -978,6 +965,192 @@ def a36_webview() -> tuple[str, str]:
     if exe is None:
         return SKIP, "还没构建 portio-app.exe（先 npm run build 或 tauri build）"
     status, detail = probe_webview(exe, current_version())
+    return status, f"{detail}（{kind_label(kind)}）"
+
+
+# ---------- A37：无头里跑过的自检，在真窗口里也跑一遍 ---------------------
+
+# 那 21 条自检一直跑在 file:// 上：没有真后端，localStorage 是临时 profile。
+# 真窗口是另一回事——真后端、真偏好。真要在这儿跑，得先认清两件事：
+# ① 有些自检会写我的设置（实测把 portio.drawer 从 2 改成了 3），
+#    还有些要动主题 / 字号 / 会话 / 已知主机，那就碰到真文件了；
+# ② `/json/list` 里的标题比页面慢一拍（实测 ctx-test 读到的是上一条 fold 的）。
+# 所以这里只跑「只动内存」的那几条，跑前把 localStorage 存下来、跑完一字不差写回去，
+# 标题从页面自己嘴里读、而且只在 location.hash 对上之后才认。
+SELFTEST_WAIT = 20.0
+SELFTESTS = (
+    ("split-test", "SELFTEST-OK"),
+    ("clip-test", "CLIP-SELFTEST-OK 10"),
+    ("fold-test", "FOLD-SELFTEST-OK"),
+    ("ctx-test", "CTX-SELFTEST-OK 9"),
+    ("find-test", "FIND-SELFTEST-OK"),
+    ("find-pane-test", "FIND-PANE-SELFTEST-OK"),
+    ("transfer-test", "TRANSFER-SELFTEST-OK"),
+)
+SELFTEST_SIG_EXPR = ("JSON.stringify({hash:location.hash,ready:document.readyState,"
+                     "title:document.title})")
+WEBVIEW_BACKUP_EXPR = (
+    # 键排过序再拼：键序在 localStorage 里本来就会变（clear 之后重写就不是原顺序），
+    # 不排序的话「内容一样」会被假的字符串比对判成「动过了」
+    "(()=>{const ks=[];for(let i=0;i<localStorage.length;i++)ks.push(localStorage.key(i));"
+    "ks.sort();const o={};for(const k of ks)o[k]=localStorage.getItem(k);"
+    "return JSON.stringify(o);})()"
+)
+
+
+def settings_same(a: str, b: str) -> bool:
+    """两份偏好快照是不是同一份——比内容，不比字面顺序。"""
+    try:
+        return json.loads(a or "{}") == json.loads(b or "{}")
+    except (json.JSONDecodeError, TypeError):
+        return (a or "") == (b or "")
+
+
+def localstorage_restore_expr(dump: str) -> str:
+    """把存下来的那份 localStorage 原样写回去的那句话（跑前存、跑完还）。"""
+    return ("(()=>{const o=" + (dump or "{}") + ";localStorage.clear();"
+            "for(const k in o)localStorage.setItem(k,o[k]);return localStorage.length;})()")
+
+
+def selftest_verdict(rows: list[tuple[str, str, str]],
+                     restored: bool | None = None) -> tuple[str, str]:
+    """把每条自检「真跑出来的标题」逐条判（纯函数，好测）。
+
+    认的是「这条钩子自己的标题」而不是「随便一个 SELFTEST-OK」——
+    拿前缀比对就等于顺手堵死了「读到上一条的标题」那个坑。
+    """
+    if not rows:
+        return FAIL, "一条自检都没跑（等于没核）"
+    bad = []
+    for hook, expect, title in rows:
+        title = title or ""
+        if "ERR:" in title:
+            bad.append(f"{hook} 自己报了红：{title}")
+        elif not title.startswith(expect):
+            bad.append(f"{hook} 没跑出结果（标题 {title or '空'}，期望以 {expect} 开头）")
+    if bad:
+        return FAIL, "；".join(bad)
+    if restored is False:
+        return FAIL, "跑完没把设置写回去——我的偏好被自检挪动了"
+    return PASS, (f"{len(rows)} 条在真窗口里跑过（{'、'.join(h for h, _, _ in rows)}）；"
+                  "跑前存下、跑完写回的偏好一字没动")
+
+
+def cdp_call(ws_url: str, method: str, params: dict, timeout: float = 8.0) -> dict:
+    """发一条 CDP 命令、等它那一帧回来（Runtime.evaluate / Page.navigate 都走这里）。"""
+    sock = ws_open(ws_url, timeout)
+    try:
+        ws_send_text(sock, json.dumps({"id": 1, "method": method,
+                                       "params": params}).encode())
+        whole = b""
+        while True:
+            fin, buf = ws_recv_frame(sock)
+            whole += buf
+            if not fin:
+                continue
+            msg = json.loads(whole.decode("utf-8"))
+            if msg.get("id") == 1:
+                return msg
+            whole = b""
+    finally:
+        sock.close()
+
+
+def cdp_value(ws_url: str, expr: str, timeout: float = 8.0):
+    """跑一句只读的话并把值取出来；这话自己在界面里炸了就抛出去，由调用方报。"""
+    msg = cdp_call(ws_url, "Runtime.evaluate",
+                   {"expression": expr, "returnByValue": True}, timeout)
+    det = msg.get("exceptionDetails")
+    if det:
+        exc = ((det.get("exception") or {}).get("description")) or det.get("text")
+        raise RuntimeError(exc or "界面里那句话炸了")
+    return ((msg.get("result") or {}).get("result") or {}).get("value")
+
+
+def run_selftest(ws_url: str, hook: str, expect: str, wait: float = SELFTEST_WAIT,
+                 call=cdp_call, value=cdp_value, sleep=time.sleep,
+                 clock=time.time) -> tuple[str, str, str]:
+    """真的导航到某个自检钩子，等它把结果写进标题，回（钩子, 期望前缀, 标题）。"""
+    # 带个不一样的查询串才叫真重载：只改 fragment 是同文档导航，启动那段自检不会跑
+    call(ws_url, "Page.navigate", {"url": f"http://tauri.localhost/?st={hook}#{hook}"})
+    deadline = clock() + wait
+    title = ""
+    while True:
+        sig = json.loads(value(ws_url, SELFTEST_SIG_EXPR) or "{}")
+        if sig.get("hash") == f"#{hook}" and sig.get("ready") == "complete":
+            title = str(sig.get("title") or "")
+            if "SELFTEST-OK" in title or "ERR:" in title:
+                break
+        if clock() > deadline:
+            break
+        sleep(0.25)
+    return hook, expect, title
+
+
+def probe_selftests(exe: Path, version: str, wait: float = WEBVIEW_WAIT, port: int | None = None,
+                    popen=subprocess.Popen, kill=kill_tree,
+                    hooks=SELFTESTS, runner=run_selftest,
+                    value=cdp_value) -> tuple[str, str]:
+    """拉起 exe，在真 webview 里把这几条自检跑一遍，再把偏好原样写回去、收干净。"""
+    port = port or free_port()
+    env = dict(os.environ)
+    # 同 A36：调试口只给这一个子进程开，机器上的设置一个字不动
+    env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = f"--remote-debugging-port={port}"
+    started = time.time()
+    proc = popen([str(exe)], cwd=str(exe.parent), env=env,
+                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        page = None
+        seen: list[str] = []
+        while time.time() - started < wait:
+            if proc.poll() is not None:
+                return FAIL, f"{time.time() - started:.0f}s 内进程自己退了（码 {proc.returncode}）"
+            targets = cdp_targets(port)
+            if targets:
+                seen = [t.get("url") or "" for t in targets]
+            page = next((t for t in targets
+                         if "tauri.localhost" in (t.get("url") or "")), None)
+            if page:
+                break
+            time.sleep(0.5)
+        if not page:
+            why = f"调试口里的页面一直是 {seen[-1] or '空的'}" if seen else "调试口一直没开"
+            return FAIL, f"{time.time() - started:.0f}s 内没进到界面（{why}）——自检没跑过，等于没核"
+        ws = page["webSocketDebuggerUrl"]
+        deadline = time.time() + WEBVIEW_READY_WAIT
+        while time.time() < deadline and value(ws, "document.readyState") != "complete":
+            time.sleep(0.3)
+        ver = str(value(ws, "(document.querySelector('.ver')||{}).textContent") or "").strip()
+        if version and ver and ver != version:
+            # 跟 A36 一个口径：手上这份不是本版构建，「没核到」不是「坏了」
+            return SKIP, (f"这份 exe 里的界面是 {ver}，仓库是 {version}——不是本版构建，"
+                          "自检在真窗口里跑没跑得动这轮没核到")
+        before = value(ws, WEBVIEW_BACKUP_EXPR) or "{}"
+        rows = []
+        for hook, expect in hooks:
+            rows.append(runner(ws, hook, expect))
+        after = value(ws, WEBVIEW_BACKUP_EXPR) or "{}"
+        restored = True
+        if not settings_same(after, before):
+            # 自检把偏好挪了：原样写回去，再确认一次真的回去了
+            value(ws, localstorage_restore_expr(before))
+            restored = settings_same(value(ws, WEBVIEW_BACKUP_EXPR) or "{}", before)
+        return selftest_verdict(rows, restored)
+    except Exception as e:  # noqa: BLE001 - 连不上就把原因报出来，不许当通过
+        return FAIL, f"进了界面但自检没跑成：{e}"
+    finally:
+        if proc.poll() is None:
+            kill(proc.pid)
+
+
+def a37_selftests() -> tuple[str, str]:
+    """A37：那几条自检，在真窗口里跑得动吗。"""
+    if sys.platform != "win32":
+        return SKIP, "只在 Windows 上核（mac / linux 没有 WebView2 这套调试口）"
+    exe, kind = find_app_exe(app_exe_dirs())
+    if exe is None:
+        return SKIP, "还没构建 portio-app.exe（先 npm run build 或 tauri build）"
+    status, detail = probe_selftests(exe, current_version())
     return status, f"{detail}（{kind_label(kind)}）"
 
 
@@ -1089,6 +1262,7 @@ def main(argv: list[str]) -> int:
         ("A34", "包里那份就是核的那份（拆开安装包、拿里面的 portio-app.exe 跟构建产物逐字节对，只放过打包器写的标记）", True),
         ("A35", "回归脚本自己那批单测（scripts/test_*.py 全跑，口径跟 CI 的 discover 一致；一条都没跑到也算红）", True),
         ("A36", "窗口起来了，界面也真画出来了（走 WebView2 调试口进真 webview：加载完没、版本串是不是这一版、app.js 跑完没、终端对象在不在、DOM 有没有肉）", True),
+        ("A37", "那几条自检在真窗口里也跑得动（真后端 + 真偏好里跑 split/clip/fold/ctx/find/find-pane/transfer 七条；跑前存下偏好、跑完一字不差写回去）", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -1218,6 +1392,9 @@ def main(argv: list[str]) -> int:
         elif code == "A36":
             # 进真 webview 读 DOM：拉起、等导航、读一句话、收掉
             status, detail = a36_webview()
+        elif code == "A37":
+            # 在真窗口里把这七条自检跑一遍，跑完把偏好写回去
+            status, detail = a37_selftests()
         results.append((code, label, status, detail))
         print(f"[{LABEL[status]}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
 

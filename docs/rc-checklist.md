@@ -12,14 +12,14 @@
 | ✗ | 已知缺口：代码里就没有，或明知不合格 |
 | 🚫 | 卡外部条件：缺服务器 / 缺证书 / 缺平台机器，写清差什么 |
 
-**最近一次整跑**：2026-11-20 · `v1.0.9-RC1` · `python scripts/rc.py`（全量，含 A1）→ **36 通过 / 0 失败 / 0 未验，276.5s，退出码 0**（这轮多了 A36：进真 webview 读到 `标题 'Portio'、版本 1.0.9-RC1、DOM 94619 字节、1 个标签、xterm 1 个（release 构建）`；A35 随之涨到 `181 条通过（按平台跳 1 条...）`——A36 自己带进来 18 条单测；A11 `3382341 字节 ← release\bundle\nsis`、A34 包里那份 13709312 字节逐字节一致、A33 14.8s、A32 41.7s、A31 十张全是 1.0.9-RC1 的）；
+**最近一次整跑**：2026-11-20 · `v1.0.9-RC2` · `python scripts/rc.py`（全量，含 A1）→ **37 通过 / 0 失败 / 0 未验，95.4s，退出码 0**（这轮多了 A37：在真窗口里把七条自检跑了一遍，`7 条在真窗口里跑过（split-test、clip-test、fold-test、ctx-test、find-test、find-pane-test、transfer-test）；跑前存下、跑完写回的偏好一字没动`；A1 `97 passed, 0 failed`、A35 `205 条通过`、A34 包里那份 13708800 字节逐字节一致、A31 十张图全是 1.0.9-RC2 的）。
 人工项与真服务器项仍未跑（见 §7）。
 
 ---
 
 ## 1. 本机自动化（一条命令一项，五分钟跑完）
 
-**这一段现在有固定入口**：`python scripts/rc.py` 按顺序跑完 A1–A36，逐项打 `[PASS]` / `[FAIL]` / `[未验]`，
+**这一段现在有固定入口**：`python scripts/rc.py` 按顺序跑完 A1–A37，逐项打 `[PASS]` / `[FAIL]` / `[未验]`，
 最后一行是汇总，可以直接贴进 §7。全跑五分钟上下（`cargo test` 与 `clippy` 各占一半），只改前端时用 `--fast` 跳过 A1；
 只想核其中几项就直接写编号——`python scripts/rc.py A11`、`python scripts/rc.py A10 A11`、
 `python scripts/rc.py A10,A11` 都认，只跑选中的那几项；编号写错会回一句「不认识的编号」并以退出码 2 结束，
@@ -77,6 +77,9 @@
 | A36 | 窗口起来了，界面也真画出来了 | `python scripts\rc.py`（只对这一个子进程开 WebView2 调试口，进真 webview 读一句 DOM，读完 `taskkill /T` 收干净；非 Windows 报「未验」） | 等页面从 `about:blank` 导航到 `tauri.localhost`、等 `readyState` 变 `complete`（最多 10s）之后，四条都得对上才 PASS：标题里没有 `ERR:`、标题栏那个版本串**就是本版**、`window.findScan` 是函数（`app.js` 跑完了）、至少一个终端对象且 DOM ≥ 20000 字节；导航不到 / 加载不完 / 标题炸 / `app.js` 没跑完 / 没有终端对象 / 只剩骨架 都 FAIL。**手上这份 exe 不是本版构建时报「未验」**——那只是没核到，不是坏了 | ✅ 2.8s：`界面已加载：标题 'Portio'、版本 1.0.9-RC1、DOM 94432 字节、1 个标签、xterm 1 个（release 构建）`；不带 `CARGO_TARGET_DIR` 时拿仓库里那份旧 debug → 报未验：`这份 exe 里的界面是 1.0.7-RC3，仓库是 1.0.8-RC10——不是本版构建…`、退出码 3；单测 18 条（`scripts/test_rc_webview.py`），含「没进到界面必须红」「`readyState` 不到 complete 必须红」「`app.js` 没跑完必须红」「没有终端对象必须红」「只剩骨架必须红」「等不到加载完会假红」 |
 | A36 的由来（2026-11-20 · 1.0.9-RC1） | A33 核的是「进程没退 + 窗口标题带 Portio」，可那个标题是 `tauri.conf.json` 里写死的，窗口一开就挂着——界面里一根筋没加载，这条照样成立。实测把探针接到真 webview 才发现：仓库 `target\debug` 里那份 exe 是 1.0.7-RC3 时期构建的，界面里还写着 RC3 的版本号，而 A33 一路绿灯。另外反向验证时第一眼读到的 `readyState` 是 `interactive`（已经导航过去、还没解析完），拿这个下判会把「正在加载」误判成「加载坏了」——所以先等 `complete` 再读，且「手上这份不是本版」按未验算、不按红算。 |
 
+
+| A37 | 那几条自检在真窗口里也跑得动 | `python scripts\rc.py`（同一个 WebView2 调试口：拉起 exe → 先读版本串确认是本版 → 存下 localStorage → 逐条 `Page.navigate` 到自检钩子 → 读**页面自己**的 `document.title` → 跑完把偏好写回去 → `taskkill /T` 收干净；非 Windows 报「未验」） | 七条（split / clip / fold / ctx / find / find-pane / transfer）每条都得对上**它自己的**前缀（`CLIP-SELFTEST-OK 10`、`CTX-SELFTEST-OK 9` 这种全文，不是笼统一个 `SELFTEST-OK`），而且只在 `location.hash` 对上、`readyState = complete` 之后才认；任一条 `ERR:` / 没跑出结果 / 标题空 → FAIL 并点名；跑前跑后的偏好必须同一份，写回后不一致 → FAIL（「我的偏好被自检挪了」）；这份 exe 不是本版构建 → 未验 | ✅ 3.7s：`7 条在真窗口里跑过（split-test、clip-test、fold-test、ctx-test、find-test、find-pane-test、transfer-test）；跑前存下、跑完写回的偏好一字没动（release 构建）`；单测 24 条（`scripts/test_rc_selftests.py`），含「读到上一条的标题必须红」「前缀对上但缺数字必须红」「一条都没跑必须红」「没写回必须红」；反向验证两次都翻红：① 把第一条挪成不存在的 `nope-test` → `FAIL … nope-test 没跑出结果（标题 Portio，期望以 SELFTEST-OK 开头）`、退出码 1；② 把「确认写回」那行改成恒 False → `FAIL … 跑完没把设置写回去——我的偏好被自检挪动了`、退出码 1 |
+| A37 的由来（2026-11-20 · 1.0.9-RC2） | 那 21 条自检一直跑在 `file://` 上：没有真后端、`localStorage` 是临时 profile，真窗口是另一回事。实测挖出三个坑：① 只改 fragment 是同文档导航，页面不重载，启动那段自检压根不跑（标题一直是 `Portio`，等 25s 也没结果）；② `/json/list` 里的标题比页面慢一拍——翻到 `ctx-test` 读到的却是上一条 `fold-test` 的结果；③ 跑完一看 `portio.drawer` 从 28 变成 172，那是我的偏好被自检挪了。所以改成「带查询串才叫真重载、标题从页面自己嘴里读且只在 hash 对上后认前缀、跑前存偏好跑完写回」。会改设置的那几条（主题 / 字号 / 密度 / 强调色 / 终端配色 / 启动布局 / 权限列 / 开局格数 / 面板宽度 / 会话 / 已知主机 / 窄窗）**不进这一轮**——它们动的是我的真偏好，甚至真文件 |
 
 ### 怎么跑 A6–A9（无头）
 
@@ -245,3 +248,4 @@ foreach ($frag in "", "#split-test", "#clip-test", "#fold-test") {
 
 每一轮 RC 回归跑完，在表格里加一行；过不了的那几项写进下一轮的「下一步」。
 | 2026-11-20 | `v1.0.9-RC1` | A1–A36：**36 通过 / 0 失败 / 0 未验**，276.5s，退出码 0（新增 A36：进真 webview 读到 `版本 1.0.9-RC1、DOM 94619 字节、xterm 1 个（release 构建）`；A35 随之 181 条；A11 `3382341 字节`、A34 包里那份逐字节一致、A33 14.8s、A32 41.7s） | 未跑 | 未跑 | 窗口起来了不等于界面画出来了：A33 的标题是配置文件写死的，这轮补上「真 webview 里界面到底加载出来没有」；不带 `CARGO_TARGET_DIR` 时会拿到旧 debug，实测界面里还是 **1.0.7-RC3**——以前这种情形 A33 是绿的 |
+| 2026-11-20 | `v1.0.9-RC2` | A1–A37：**37 通过 / 0 失败 / 0 未验**，95.4s，退出码 0（新增 A37：`7 条在真窗口里跑过（split-test、clip-test、fold-test、ctx-test、find-test、find-pane-test、transfer-test）；跑前存下、跑完写回的偏好一字没动（release 构建）`；A35 涨到 205 条；A31 十张图重出到 1.0.9-RC2） |

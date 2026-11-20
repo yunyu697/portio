@@ -3432,3 +3432,62 @@ WebView2 起不来、资源路径错、`app.js` 语法炸，全都拦不住。
 - 0.4 gate 的自动化一侧到现在是 36 项：A1–A10 基本盘、A11/A34 认包对包、A32 本地等于 CI 的 lint、
   A33 拉起、A35 脚本自测、A36 真 webview 里的界面。**仍是「未装到机器上跑」**——两条路在 backlog，等拍板。
 - 下一轮按「满 10 进 patch 回 RC1」继续在 1.0.9 段里找下一层「绿其实没核」，或按用户指示进 1.0.10-RC1。
+
+## 2026-11-20 · 1.0.9-RC2 · 自检只在无头里跑过，等于没在真窗口里跑过
+
+上一轮把「窗口起来了」推到了「界面真画出来了」（A36 走调试口读 DOM）。再往里一层的问题是：
+那 21 条界面自检**一直跑在 `file://` 上**——没有真后端、`localStorage` 还是临时 profile。
+真窗口是另一回事：真后端、我的真偏好、`tauri.localhost` 这个源。这些自检在真窗口里还能不能通过，以前没人核过。
+
+**做了什么**
+
+- 新增 **A37**：在真 webview 里把**只动内存**的七条自检真跑一遍——
+  `split-test` / `clip-test` / `fold-test` / `ctx-test` / `find-test` / `find-pane-test` / `transfer-test`。
+  拉起 exe、先读版本串确认是本版、存下 `localStorage`、逐条 `Page.navigate`、读**页面自己**的标题、
+  跑完把偏好原样写回、最后 `taskkill /T` 收干净。
+- 判据：每条都要对上**它自己的**完整前缀（`CLIP-SELFTEST-OK 10`、`CTX-SELFTEST-OK 9`），
+  任一条 `ERR:` / 没跑出结果 / 标题空 → 红并点名；偏好写回后对不上 → 红；不是本版构建 → 未验。
+- 会改设置的那几条（主题 / 字号 / 密度 / 强调色 / 终端配色 / 启动布局 / 权限列 / 开局格数 /
+  面板宽度 / 会话 / 已知主机 / 窄窗）**不进这一轮**——它们动的是真偏好，有的还落到真文件。
+
+**实测撞出的三个坑（都补了）**
+
+1. **只改 fragment 不算导航。** 头一次 `Page.navigate` 到 `http://tauri.localhost/#split-test`，
+   地址栏变了、页面没重载，启动那段自检压根不跑——标题一直是 `Portio`，白等 25s。
+   改成带查询串（`?st=<钩子>#<钩子>`）才是真重载，0.4s 出结果。
+2. **浏览器报的标题慢一拍。** 靠 `/json/list` 读标题时，翻到 `ctx-test` 读到的却是上一条
+   `fold-test` 的 `FOLD-SELFTEST-OK`；`find-pane-test` 读到的是 `find-test` 的。
+   改成标题从页面自己嘴里读（`document.title`），而且只在 `location.hash` 对上、`readyState=complete`
+   之后才认；再加上「认完整前缀」这一道，读到上一条就会立刻露馅。
+3. **自检会挪我的偏好。** 跑完一比：`portio.drawer` 由 28 变成 172（当前窗口量出来的宽度）。
+   于是加了两步：跑前存一份、跑完写回、再读一遍核对。写回时还撞到「键序变了导致字面比对不等」，
+   改成比内容（`settings_same`）+ 快照按键排序，才算「一字没动」。
+
+**验证证据**
+
+- 整跑 `python scripts\rc.py`：**37 通过 / 0 失败 / 0 未验，95.4s，退出码 0**（日志 `D:\portio-rc-full24.log`）。
+  A37 `3.6s`：`7 条在真窗口里跑过（…）；跑前存下、跑完写回的偏好一字没动（release 构建）`。
+  A36 仍 `界面已加载：标题 'Portio'、版本 1.0.9-RC2、DOM 94619 字节、1 个标签、xterm 1 个（release 构建）`。
+  A35 由 181 涨到 **205 条通过**（新增 `scripts/test_rc_selftests.py` 24 条）；
+  A1 `97 passed, 0 failed`；A32 fmt/clippy 干净；A33 撑过 14s；A34 包里那份 **13708800 字节**逐字节一致；
+  A11 `Portio_1.0.9-RC2_x64-setup.exe 3382043 字节`；A31 十张图重出到 `1.0.9-RC2`（1.64 MiB）。
+- 反向验证（`_rev37.py`，改完即还原）两次都翻红、退出码 1：
+  ① 把第一条挪成不存在的 `nope-test` → `FAIL … nope-test 没跑出结果（标题 Portio，期望以 SELFTEST-OK 开头）`；
+  ② 把「确认写回」那行改成恒 False → `FAIL … 跑完没把设置写回去——我的偏好被自检挪动了`。
+  日志 `D:\portio-rev37.log`。
+- 单独量过偏好漂移：`portio.drawer: '28' → '172'`，写回后「一字不差」、再等 1s 也没回潮（`D:\portio-ls1.log`）。
+- 单测：`python -m unittest scripts.test_rc_selftests` **24 条全过**（`VerdictTest` 8 / `RunTest` 4 /
+  `SettingsTest` 3 / `WiredTest` 9）。
+
+**下一步**
+
+- 推 main、打 tag `v1.0.9-RC2`、三平台包、本地 release 包交付、回填下载表。
+- 再往里一层还剩两件：①「装到机器上跑起来的那份」未核（两条路在 `docs/backlog.md`，等拍板）；
+  ② 剩下十几条自检仍只在无头里跑（会改设置的那批，得先有「跑完精确还原」的办法才敢搬进真窗口）。
+
+**未验证**
+
+- 只核这七条「跑得动、结果对」，剩下十几条仍只在 Chrome 无头里跑过。
+- 只在 Windows 上核；mac / linux 没有 WebView2 调试口，那两处报未验。
+- 不核界面长什么样（视觉靠 `docs/shots` 十张图与无头截图）。
+- 真实 SSH 登录、PTY 交互、真 SFTP 传输仍未验证（缺测试服务器）。
