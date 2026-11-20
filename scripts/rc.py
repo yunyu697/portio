@@ -5,11 +5,13 @@
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
 
 用法：
-    python scripts/rc.py              # 全跑（A1 最慢，其余十几秒）
+    python scripts/rc.py              # 全跑（A1 最慢，其余几十秒）
     python scripts/rc.py --fast       # 跳过 A1 的 cargo test（只改前端时够用）
     python scripts/rc.py --list       # 只列出会跑哪些项
+    python scripts/rc.py A11          # 只跑这一项（改一项时可边改边核）
+    python scripts/rc.py A10 A11      # 只跑这几项（也认 A10,A11 这种写法）
 
-退出码：全部 PASS 或 SKIP 为 0；有任何一项 FAIL 为 1。
+退出码：全部 PASS 或 SKIP 为 0；有任何一项 FAIL 为 1；编号写错为 2。
 环境变量可覆盖探测结果：PORTIO_CHROME、PORTIO_NODE、PORTIO_CARGO。
 """
 
@@ -288,12 +290,45 @@ def a11_bundle() -> tuple[str, str]:
     return check_bundle(current_version(), dirs)
 
 
+# ---------- 只跑其中几项 ---------------------------------------------------
+
+def split_ids(items: list[str]) -> list[str]:
+    """把 `A10 A11` / `A10,A11` 拆成编号列表：大写、去空、去重、按出现顺序。
+
+    以前想单跑一项只能整跑几十秒到两三分钟——`rc.py A11` 还会被 argparse
+    当成不认识的参数直接报错，于是改一项、核一项这条最常用的动作反而最贵。
+    """
+    out: list[str] = []
+    for raw in items or []:
+        for piece in str(raw).replace("，", ",").split(","):
+            code = piece.strip().upper()
+            if code and code not in out:
+                out.append(code)
+    return out
+
+
+def select_items(plan: list[tuple], wanted: list[str]) -> tuple[list[tuple], list[str]]:
+    """按编号从计划表里挑出要跑的项。
+
+    `wanted` 为空 = 全跑。返回（选中的项，按计划表原有顺序；不认识的编号，按用户写的顺序）。
+    不认识的编号不许静悄悄地忽略——写错一个字母就「跑过了」比直接报错危险得多。
+    """
+    if not wanted:
+        return list(plan), []
+    known = {code for code, _, _ in plan}
+    unknown = [code for code in wanted if code not in known]
+    chosen = [item for item in plan if item[0] in wanted]
+    return chosen, unknown
+
+
 # ---------- 主流程 --------------------------------------------------------
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="Portio 自动化回归（rc-checklist §1）")
     ap.add_argument("--fast", action="store_true", help="跳过 A1 的 cargo test")
     ap.add_argument("--list", action="store_true", help="只列出会跑的项")
+    ap.add_argument("items", nargs="*", metavar="A<n>",
+                    help="只跑这几项，如 A11 或 A10,A11；不写就全跑")
     args = ap.parse_args(argv)
 
     plan = [
@@ -333,6 +368,13 @@ def main(argv: list[str]) -> int:
             print(f"{code:4} {'run ' if on else 'skip'} {label}")
         return 0
 
+    wanted = split_ids(args.items)
+    chosen, unknown = select_items(plan, wanted)
+    if unknown:
+        print(f"不认识的编号：{'、'.join(unknown)}（`--list` 里能看到所有能跑的项）")
+        return 2
+    plan = chosen
+
     node = find_node()
     chrome = find_chrome()
     profile = tempfile.mkdtemp(prefix="portio-rc-")
@@ -344,6 +386,8 @@ def main(argv: list[str]) -> int:
         ver = m.group(1).strip()
 
     print(f"Portio 自动化回归  v{ver}  ({ROOT})")
+    if wanted:
+        print(f"只跑 {len(plan)} 项：{'、'.join(code for code, _, _ in plan)}")
     print("-" * 72)
 
     results: list[tuple[str, str, str, str]] = []

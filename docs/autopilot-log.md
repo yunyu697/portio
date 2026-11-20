@@ -2724,3 +2724,51 @@ S13–S14 交付就是文档站点。而它恰好落后两版：离线说明页 
 - 本地 NSIS 包 4585453 B → 已复制到 `…\new-chat\Portio_1.0.8-RC1_x64-setup.exe` 交付。
 - 物料页下载表已回填成 Release 上的真值；排期文档进度表与「当前所在位置（续 21）」同步。
 
+## 2026-11-20 · v1.0.8-RC2 · 回归能只跑一项了
+
+**做了什么**
+
+每轮核一条都要整跑 A1–A30，几十秒到三分钟；更别扭的是 `python scripts/rc.py A11` 会被 argparse
+当成不认识的参数直接退出——改一处、核一处这条最常用的动作，反而最贵。这一轮把入口补平：
+
+- `python scripts/rc.py A11`、`A10 A11`、`A10,A11` 三种写法都认（全角逗号也认，大小写不挑，重复自动去重）；
+  只跑选中的那几项，报告顺序仍按清单走（写 `A11 A10` 也先出 A10），方便跟清单逐条对照。
+- 写错编号不装作跑过：`A99` 会回一句「不认识的编号：A99（`--list` 里能看到所有能跑的项）」并以**退出码 2**结束。
+  这条是这轮最关键的一条判据——如果只是把认不出的编号静悄悄丢掉，那 `rc.py A99` 会变成「只跑 0 项、
+  汇总 0 通过、退出码 0」，看着像跑过了，实际一条没跑。
+- 拆分与挑项抽成两个纯函数 `split_ids` / `select_items`，新增 `scripts/test_rc_selection.py` 13 条单测
+  （三档写法、全角逗号、大小写与空串、去重、空 = 全跑、单条、顺序跟计划表、写错的编号要点名、
+  全写错时不许返回空计划、选中项连 label 与开关状态一起带走、真实 `--list` 里 A1/A10/A11/A30 还在）。
+- 清单与文档同步：`docs/rc-checklist.md` 首部补三种写法与「退出码 2」口径；`docs/backlog.md` 里那条
+  A11 旧包充数标成已解决（v1.0.8-RC1），顺手把早就接上的 CI 那条也划掉；CHANGELOG 新增
+  `## [1.0.8-RC2]`；README / 发布说明 / 物料页 / 说明页五处版本串 → `1.0.8-RC2`。
+
+**验证证据**
+
+- `python -m unittest scripts.test_rc_selection` → **13 通过**；连同 `test_rc_artifacts` + `test_check_site`
+  + `test_release_gate` + `test_version` 合跑 **67 条全过**。
+- 反向验证两条都翻红并点名：
+  ① `select_items` 改成「认不出的编号静悄悄丢掉」→ `FAILED (failures=2)`，其中
+  `test_unknown_ids_are_named` 期望 `['A31','0011']`、拿到 `[]`；同时实跑 `python scripts/rc.py A99`
+  变成 `只跑 0 项 … 汇总：0 通过 / 0 失败 / 0 跳过 … exit=0`——正是这条判据要拦的样子。
+  ② 顺序退回「按用户书写顺序」（`for code in wanted`）→ `FAILED (failures=1)`，期望 `['A10','A11']`；
+  实跑 `rc.py A11 A10` 的头一行变成「只跑 2 项：A11、A10」。两处都还原后回 OK。
+- 改前实跑 `python scripts/rc.py A99`：报错 `unrecognized arguments: A99`（这就是要修的那件事）。
+- 改后实跑：`python scripts/rc.py A11` → `只跑 1 项` / `[PASS] A11 … Portio_1.0.8-RC1_x64-setup.exe 4585453 字节 ← D:\portio-target\debugundle
+sis`
+  / `汇总：1 通过 / 0 失败 / 0 跳过，共 1 项，0.0s`；`python scripts/rc.py A5 A6`（改版本串之后）→ 2 项 1.4s 全 PASS。
+- `python scripts/rc.py`（全量，含 A1）→ **30 通过 / 0 失败 / 0 跳过，56.5s**（`cargo test` 命中缓存，
+  比上一轮 171.5s 快）。版本进位后复验 `check_versions.py` → `OK v1.0.8-RC2`，
+  `check_site.py` → `OK 16 项设置 / 40 个档位，版本 v1.0.8-RC2`，两个守卫（令牌 / 尺度）全过。
+
+**下一步**
+
+- 打 tag `v1.0.8-RC2`、push、等三平台包；Release 出来后回填物料页下载表字节数、构建本地 NSIS 包并交付。
+- 再往下仍是 S14 的收口：真机点检卡在锁屏，真服务器项缺凭据；能自动化的项继续往 `rc.py` 里搬。
+
+**未验证**
+
+- 这轮只动脚本与文案，产品代码没动：`cargo test` 是缓存命中，不能证明这一刻的二进制跟上一轮一样能装能跑；
+  真机装包仍没做（桌面锁屏）。
+- 单跑几项时的「通过」只覆盖那几项，不是整套回归的结论——清单首部已写明这条。
+
