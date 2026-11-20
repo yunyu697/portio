@@ -3216,3 +3216,17 @@ WebView2 起不起来、窗口标题对不对、启动后几秒内崩不崩。RC
 - 真机手感（hover / 拖拽 / 真右键）仍未点过；桌面锁着（`LogonUI.exe` 在跑）。
 - 无 SSH 服务器：真实登录、PTY 交互、真实 SFTP 传输仍全部未验证。
 
+## 2026-11-20 · v1.0.8-RC8 · 发版补记
+
+- 提交 `ba12ab2` 已 push main，tag `v1.0.8-RC8` 已推；main CI run `44693942172` **五项全 success**，
+  Release run `44693951129` **gate + 三平台 build 四项全 success**。
+- Release `Portio 1.0.8-RC8`：`prerelease:true`、`draft:false`，四资产
+  exe **3380182 B** / dmg **9523342 B** / deb **4969132 B** /
+  AppImage **83151352 B**（对照 RC7：3380393 / 9522493 / 4965414 / 83151352）。
+- 本轮首次把本地打包口径从 `--debug` 换成 release：本机包 **3382127 B**，与 CI 那份 3380182 B
+  差 1945 B——同一份代码、不同的编译环境与压缩时机，量级一致（改前 debug 包是 4591521 B，
+  跟 Release 上那份根本不是一个东西）。
+- 本地包已复制到 `…\new-chat\Portio_1.0.8-RC8_x64-setup.exe` 并交付；十张首发图随进位重出到 `1.0.8-RC8`；
+  press-kit 下载表与 release-notes 版本段回填成本次 Release 真值。
+- 遗留：A11 仍只核「文件名对 + 体积像话」，没核「装上去能跑」；安装会写注册表与开始菜单，
+  按守则属「不动用户机器」，下一轮把两条路（便携目录 / 临时目录装再卸）写进 backlog 等拍板。
