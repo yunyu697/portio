@@ -3638,3 +3638,20 @@ A37 只搬了「不动设置」的七条。剩下九条（主题 / 界面字号 
 - 只在 Windows 上核；mac / linux 没有 WebView2 调试口，那两处报未验。
 - 仍是「没装到机器上跑过」；真实 SSH 登录、PTY 交互、真 SFTP 传输仍未验证（缺测试服务器）。
 
+## 2026-11-21 · 1.0.9-RC4 · 发版补记
+
+- 提交 `d1542c8` 已 push main，tag `v1.0.9-RC4` 已推；main CI run `44772775805` **五项全 success**
+  （version rule / fmt·clippy·test / windows / ubuntu / macos），Release run `44772786757`
+  **gate + 三平台 build 四项全 success**。
+- Release `Portio 1.0.9-RC4`：`prerelease:true`、`draft:false`，四资产
+  exe **3379253 B** / dmg **9523243 B** / deb **4969102 B** / AppImage **83155448 B**
+  （对照 1.0.9-RC3：3380410 / 9523905 / 4965720 / 83143160）。
+- 本机 release 包 **3381773 B**（源 `D:\portio-target\release\bundle\nsis\`），与 CI 那份
+  3379253 B 差 2520 B。已复制到 `…\new-chat\Portio_1.0.9-RC4_x64-setup.exe` 并交付。
+- 这轮的工具链差点没起来：C 盘被写满（0 字节可用），连 `PowerShell` 写脚本都失败。
+  清掉仓库里那份 21.9 GB 的旧调试构建（`portio\target`，D 盘才是构建盘）之后恢复正常；
+  C 盘现在剩约 0.5 GB，构建与临时目录一律指到 D。
+- 0.4 gate 的自动化一侧现在是 39 项，界面自检 21 条**全部**进过真窗口了
+  （A37 七条 / A38 九条 / A39 两条）。剩下的缺口还是那两条：装到机器上跑、真服务器。
+- 下一轮：搬 `#narrow-test`（得先能给子进程一个窗口宽度）；或者借 A39 的存/收/核去确认
+  `#net-fail-test` / `#connect-entry-test` 在真窗口里不落盘。
