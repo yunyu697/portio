@@ -3010,3 +3010,17 @@ xterm 自己会绕过折行把整串选上。
 - `cargo build --locked` 只在本机验过（用的是本地缓存与 nju 源），没在无网环境试过。
 - 无 SSH 服务器：真实登录、PTY 交互、真实 SFTP 传输仍全部未验证。
 
+## 2026-11-20 · v1.0.8-RC5 · 发版补记
+
+- 提交 `d02469c` 已 push main，tag `v1.0.8-RC5` 已推；main CI run `44673688628` **五项全 success**
+  （version rule / fmt·clippy·test / windows / macos / ubuntu），Release run `44673697426`
+  **gate + 三平台 build 四项全 success**。上一轮那条文档提交 `003ee28` 的 CI `44667447198`
+  被新 push 的 concurrency 取消了（只改文档，不影响结论）。
+- Release `Portio 1.0.8-RC5`：`prerelease:true`、`draft:false`，四资产
+  exe **3380501 B** / dmg **9523379 B** / deb **4968540 B** / AppImage **83155448 B**
+  （对照 RC4：3382348 / 9523743 / 4965934 / 83155448；只动了脚本与文档，exe 少 1847 B、
+  deb 多 1606 B，都在构建抖动量级）。
+- 本地 NSIS 包 **4588863 B**（源 `D:\portio-target\debug\bundle\nsis\Portio_1.0.8-RC5_x64-setup.exe`）
+  → 复制到 `…\new-chat\Portio_1.0.8-RC5_x64-setup.exe` 并交付。
+- press-kit 下载表与 release-notes 的版本段都回填成本次 Release 真值；十张首发图随版本重出到
+  `1.0.8-RC5`（A31 认的就是这套）。
