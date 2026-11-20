@@ -61,6 +61,46 @@ pub fn sessions_path(app: tauri::AppHandle) -> Result<String, String> {
     Ok(store_path(&app)?.to_string_lossy().to_string())
 }
 
+/// 这一份字节到底还能不能当清单读：空文件（含只有空白）算「还没写过会话」，不算坏。
+fn store_text_is_readable(bytes: &[u8]) -> bool {
+    match std::str::from_utf8(bytes) {
+        Ok(text) if text.trim().is_empty() => true,
+        Ok(text) => SessionStore::from_json(text).is_ok(),
+        // 半截写入 / 编码坏掉的文件读不成文本，一样算读不懂
+        Err(_) => false,
+    }
+}
+
+/// 清单读坏了就先另存一份，返回另存到哪儿；文件本来好好的（或还没有文件）返回 `None`。
+///
+/// 为什么非另存不可：前端解析不了时只能从空清单起步，而用户随后随手存一条会话，
+/// `sessions_write` 就会把整份文件覆盖掉——原来那些记录再也读不回来，也说不清丢在哪。
+/// 所以先把原文件按字节拷成 `sessions.json.broken-<毫秒时间戳>`，再让前端从空清单开始。
+fn salvage_broken(path: &std::path::Path) -> Result<Option<PathBuf>, String> {
+    let bytes = match fs::read(path) {
+        Ok(b) => b,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(err) => return Err(format!("读会话清单失败：{err}")),
+    };
+    if store_text_is_readable(&bytes) {
+        return Ok(None);
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let dest = path.with_file_name(format!("{FILE_NAME}.broken-{stamp}"));
+    fs::copy(path, &dest).map_err(|e| format!("另存坏掉的会话清单失败：{e}"))?;
+    Ok(Some(dest))
+}
+
+/// 前端解析会话清单失败时调一次：把坏文件另存，返回另存的路径；本来就是好的返回 `null`。
+#[tauri::command]
+pub fn sessions_salvage(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let path = store_path(&app)?;
+    Ok(salvage_broken(&path)?.map(|p| p.to_string_lossy().to_string()))
+}
+
 /// 从 OpenSSH 客户端配置导入主机。
 ///
 /// 解析规则全在 `portio_core::parse_ssh_config`，这里只负责"找文件 → 读文本 → 合并 → 落盘"。
@@ -563,6 +603,133 @@ Host *
         assert_eq!(import_winscp_file(&mut store, &ini).unwrap(), (1, 1));
         assert_eq!(store.records[0].host, "10.4.4.4");
         assert_eq!(store.records[0].name.as_deref(), Some("web-02"));
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    fn temp_store_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "portio_salvage_{}_{}_{}",
+            tag,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn one_record(host: &str) -> portio_core::SessionRecord {
+        portio_core::SessionRecord {
+            host: host.into(),
+            port: 22,
+            user: "ops".into(),
+            auth: "password".into(),
+            keyfile: None,
+            name: None,
+            last_used: 0,
+        }
+    }
+
+    #[test]
+    fn salvage_copies_broken_store_before_it_gets_overwritten() {
+        let dir = temp_store_dir("keep");
+        let path = dir.join(FILE_NAME);
+        // 半截写入：一条记录只写进去一半，解析必失败
+        let trash = "{\"version\":1,\"records\":[{\"host\":\"web-01.p";
+        fs::write(&path, trash.as_bytes()).unwrap();
+
+        let kept = salvage_broken(&path)
+            .expect("坏文件不该报错")
+            .expect("坏文件要另存一份");
+        assert!(kept.is_file(), "另存的那份得真在磁盘上：{}", kept.display());
+        assert_eq!(
+            fs::read_to_string(&kept).unwrap(),
+            trash,
+            "另存的必须是原样字节"
+        );
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            trash,
+            "这会儿原文件先别动它"
+        );
+        assert!(
+            kept.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("sessions.json.broken-"),
+            "另存的名字要一眼看出是什么：{}",
+            kept.display()
+        );
+
+        // 前端从空清单起步后第一次存盘：原文件被整份盖掉，另存的那份得活下来
+        let mut store = SessionStore::new();
+        store.records.push(one_record("new.example"));
+        write_store_atomic(&path, &store).unwrap();
+        assert!(
+            !fs::read_to_string(&path).unwrap().contains("web-01.p"),
+            "原文件这时候已经被新清单覆盖了"
+        );
+        assert_eq!(
+            fs::read_to_string(&kept).unwrap(),
+            trash,
+            "覆盖之后另存的那份还是原来那些字节——这才是它存在的理由"
+        );
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn salvage_leaves_good_empty_and_missing_files_alone() {
+        let dir = temp_store_dir("ok");
+        let path = dir.join(FILE_NAME);
+        assert!(
+            salvage_broken(&path).unwrap().is_none(),
+            "还没有这个文件就不用另存"
+        );
+
+        let good =
+            "{\"version\":1,\"records\":[{\"host\":\"a.example\",\"port\":22,\"user\":\"ops\"}]}";
+        fs::write(&path, good.as_bytes()).unwrap();
+        assert!(salvage_broken(&path).unwrap().is_none(), "好文件不用另存");
+
+        fs::write(&path, b"  \n\t ").unwrap();
+        assert!(
+            salvage_broken(&path).unwrap().is_none(),
+            "空白文件等同还没写过会话"
+        );
+
+        fs::write(&path, b"").unwrap();
+        assert!(salvage_broken(&path).unwrap().is_none(), "空文件同理");
+
+        let leftovers: Vec<String> = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.contains("broken"))
+            .collect();
+        assert!(leftovers.is_empty(), "没坏就不该留下副本：{leftovers:?}");
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn salvage_catches_garbage_bytes_and_future_version() {
+        let dir = temp_store_dir("bytes");
+        let path = dir.join(FILE_NAME);
+
+        // 读不成 UTF-8 的字节（断电写了一半的典型样子）也算读不懂
+        fs::write(&path, b"\xff\xfe{\"version\":1").unwrap();
+        assert!(
+            salvage_broken(&path).unwrap().is_some(),
+            "读不成文本的也算坏"
+        );
+
+        // 版本号比程序新的：程序拒绝解析，同样得先另存再从头开始
+        fs::write(&path, b"{\"version\":9,\"records\":[]}").unwrap();
+        assert!(
+            salvage_broken(&path).unwrap().is_some(),
+            "版本比程序新的也读不懂"
+        );
         fs::remove_dir_all(&dir).ok();
     }
 }

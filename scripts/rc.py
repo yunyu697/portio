@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / 未验。
 
-对应 docs/rc-checklist.md §1 的 A1–A41。以前这些步骤散在日志里，每轮都要手打一遍命令，
+对应 docs/rc-checklist.md §1 的 A1–A42。以前这些步骤散在日志里，每轮都要手打一遍命令，
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
 
 用法：
@@ -47,6 +47,10 @@ Known Folder API，不认进程环境变量（实测新目录里什么都没长�
 另加一层 A39 没有的：页面里真有 Tauri 桥、localStorage 里真有我的偏好、界面底色跟真 app-data 的
 `theme.txt` 对得上、后端真回了一次 `sessions_read`。否则这两条在一份一次性 profile 里跑得再绿，
 也跟我的会话清单一句话都没说上。
+**读坏了不许当空清单用**：A42 钉住 `#broken-store-test`——`sessions.json` 半截写入 / 版本比程序新 /
+合法 JSON 但不是一份清单，这几种「读不懂」都得先让后端把原文件另存成 `sessions.json.broken-<毫秒>`，
+再让界面从空清单起步。不然用户随后随手存一条会话，`sessions_write` 就把整份盖掉，原来那些记录
+再也找不回来。反向验证两处：去掉另存那一步、把写盘口子改回只认真桥，都各自翻红。
 环境变量可覆盖探测结果：PORTIO_CHROME、PORTIO_NODE、PORTIO_CARGO、PORTIO_7Z。
 """
 
@@ -2190,6 +2194,7 @@ def main(argv: list[str]) -> int:
         ("A39", "会写盘的那两条自检也在真窗口 + 真后端里跑（#sessions-test / #hosts-test；跑前把 theme.txt / sessions.json / known_hosts 按字节存下，跑完收进程再按原字节收回、逐字节核对；还要证明会话清单确实落了盘）", True),
         ("A40", "#narrow-test 在真窗口里按 1024 / 900 两档视口跑（调试口改布局视口，两档得一根长连胜跑完；判据拿界面自报的 innerWidth 对我要求的那档，对不上就是拿宽窗冒充窄窗；一次性 profile 里跑，核我自己的偏好库没被动）", True),
         ("A41", "最后两条自检也在真窗口 + 真后端里跑（#net-fail-test / #connect-entry-test；先证明这轮真在我的真偏好与真后端上（Tauri 桥、真偏好、底色对得上、sessions_read 真回话），跑前存下 theme.txt / sessions.json / known_hosts、跑完按原字节收回并独立复量）", True),
+        ("A42", "#broken-store-test = BROKEN-STORE-SELFTEST-OK（会话清单读坏时先另存再从头开始：半截写入 / 版本比程序新 / 合法 JSON 但不是清单都算读不懂，好文件与空清单不许被另存；读失败与急救失败各有各的话；坏档之后还存得进新会话）", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -2334,6 +2339,9 @@ def main(argv: list[str]) -> int:
         elif code == "A41":
             # 最后两条：真窗口 + 真后端，先证「真跑在我的真偏好上」，再存/收/核后端三份文件
             status, detail = a41_real_selftests()
+        elif code == "A42":
+            # 坏掉的清单不许被下一次存盘盖掉：无头里用后端替身跑（真窗口那一版留到后面几轮）
+            status, detail = a_page(chrome, profile, "#broken-store-test", "BROKEN-STORE-SELFTEST-OK")
         results.append((code, label, status, detail))
         print(f"[{LABEL[status]}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
 

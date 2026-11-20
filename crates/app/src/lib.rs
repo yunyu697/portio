@@ -116,6 +116,7 @@ pub fn run() {
             session_store::sessions_read,
             session_store::sessions_write,
             session_store::sessions_path,
+            session_store::sessions_salvage,
             session_store::sessions_import_ssh_config,
             session_store::sessions_import_xshell,
             session_store::sessions_import_winscp,

@@ -85,6 +85,18 @@ async function call(cmd, args) {
     return null;
   }
 }
+// 静默版：失败不弹 toast，由调用方自己决定说什么。救急那条用的就是它——
+// 「另存没成」和「清单读坏了」是两件事，各说一句比叠两条更清楚。
+async function tryInvoke(cmd, args) {
+  const inv = fakeInvoke ?? (bridge ? bridge.invoke.bind(bridge) : null);
+  if (!inv) return null;
+  try {
+    return await inv(cmd, args);
+  } catch (err) {
+    diagLog("error", cmd, String(err));
+    return null;
+  }
+}
 
 // ---------- 右键菜单 ----------
 const ctxMenu = document.getElementById("ctx-menu");
@@ -1997,9 +2009,11 @@ function readSessions() {
   return sessionStore.records;
 }
 function persistSessions() {
-  if (!bridge) return;
-  bridge
-    .invoke("sessions_write", { json: JSON.stringify(sessionStore) })
+  // 写盘也从这个口子走：自检里塞 fakeInvoke 时，"存完到底写了什么"才核得到
+  const inv = fakeInvoke ?? (bridge ? bridge.invoke.bind(bridge) : null);
+  if (!inv) return;
+  Promise.resolve()
+    .then(() => inv("sessions_write", { json: JSON.stringify(sessionStore) }))
     .catch((err) => toast(`会话清单没存住：${explainError("sessions_write", String(err))}`));
 }
 // 时间字段跟磁盘那头叫同一个名字（`last_used`，见 crates/core/src/store.rs）。
@@ -2021,37 +2035,58 @@ function removeSession(key) {
   renderSessions();
 }
 // 启动时从磁盘拉一次；老版本留在 localStorage 里的记录顺手迁过来
-function loadSessions() {
-  if (!bridge) return renderSessions();
-  bridge
-    .invoke("sessions_read", {})
-    .then((raw) => {
-      const text = String(raw ?? "").trim();
-      let parsed = { version: 1, records: [] };
-      if (text) {
+// 两条失败要分开处理：读不出来（文件系统/权限）说什么都没用，只能照着 toast 去查；
+// 读出来了但解析不了（半截写入、断电）才是危险的那种——这时候如果直接从空清单起步，
+// 用户随手存一条会话就会把整份文件盖掉，原来那些记录再也找不回来。所以先让后端另存一份。
+async function loadSessions() {
+  if (!hasBackend()) return renderSessions();
+  const raw = await tryInvoke("sessions_read", {});
+  let records = [];
+  let broken = false;
+  let unreadable = false;
+  if (raw === null) {
+    // 与"还没有会话"（后端给空串）区分：这里是真的读不出来
+    unreadable = true;
+  } else {
+    const text = String(raw).trim();
+    if (text) {
+      try {
         const obj = JSON.parse(text);
-        parsed = Array.isArray(obj) ? { version: 1, records: obj } : obj;
+        if (Array.isArray(obj)) records = obj;
+        else if (obj && typeof obj === "object") records = Array.isArray(obj.records) ? obj.records : [];
+        else broken = true; // 合法 JSON 但不是一份清单（比如 `null`），跟读不懂一样处理
+      } catch (e) {
+        broken = true;
       }
-      if (Array.isArray(parsed.records)) sessionStore.records = parsed.records;
-      const legacy = localStorage.getItem(SESS_LEGACY);
-      if (sessionStore.records.length === 0 && legacy) {
-        try {
-          const arr = JSON.parse(legacy);
-          if (Array.isArray(arr) && arr.length) {
-            sessionStore.records = arr;
-            persistSessions();
-          }
-        } catch (e) {
-          /* 老数据坏了就丢了，不阻塞启动 */
-        }
-        localStorage.removeItem(SESS_LEGACY);
+    }
+  }
+  if (unreadable) {
+    toast("会话清单读不出来（文件系统权限或磁盘问题），这次从空清单开始——先别存新会话，文件可能还在");
+  }
+  if (broken) {
+    const kept = await tryInvoke("sessions_salvage", {});
+    const name = kept ? String(kept).split(/[\\/]/).pop() : "";
+    toast(
+      name
+        ? `会话清单读坏了，原文件已另存为 ${name}，这次从空清单开始`
+        : "会话清单读坏了，原文件也没能另存——先别存新会话，去应用数据目录把 sessions.json 拷出来"
+    );
+  }
+  sessionStore.records = records;
+  const legacy = localStorage.getItem(SESS_LEGACY);
+  if (sessionStore.records.length === 0 && legacy) {
+    try {
+      const arr = JSON.parse(legacy);
+      if (Array.isArray(arr) && arr.length) {
+        sessionStore.records = arr;
+        persistSessions();
       }
-      renderSessions();
-    })
-    .catch((err) => {
-      toast(`会话清单读不出来：${explainError("sessions_read", String(err))}`);
-      renderSessions();
-    });
+    } catch (e) {
+      /* 老数据坏了就丢了，不阻塞启动 */
+    }
+    localStorage.removeItem(SESS_LEGACY);
+  }
+  renderSessions();
 }
 // ---------- 会话分组 ----------
 // 分组只是本机视图上的组织方式，跟着这台机器走，不写进 sessions.json（免得动数据格式）。
@@ -4778,6 +4813,132 @@ if (location.hash === "#hosts-test") {
     document.title = bad.length
       ? `HOSTS-SELFTEST-FAIL ${JSON.stringify(bad)} ${JSON.stringify(seen)}`
       : `HOSTS-SELFTEST-OK ${JSON.stringify(seen)}`;
+  })();
+}
+
+// ---------- 无头自检：#broken-store-test（坏掉的会话清单不许被下一次存盘整份盖掉） ----------
+// 钉的是「读坏了就从空清单起步」这条默认路径上的数据安全：没有后端可问的时候用 fakeInvoke
+// 造几份回包——好好的、半截的、版本比程序新的、读失败的、连急救也失败的。
+if (location.hash === "#broken-store-test") {
+  (async () => {
+    const fails = [];
+    const seen = {};
+    const ok = (cond, msg) => {
+      if (!cond) fails.push(msg);
+    };
+    const lastToast = () => (toastBox.lastElementChild ? toastBox.lastElementChild.textContent : "");
+    const rows = () => document.querySelectorAll(".sidebar .sess-row").length;
+    const GOOD =
+      '{"version":1,"records":[{"host":"web-01.prod","port":22,"user":"deploy","auth":"password","last_used":1763000000000}]}';
+    const HALF = '{"version":1,"records":[{"host":"web-01.p';
+    const calls = [];
+    let readBack = GOOD;
+    let writeBack = null;
+    let salvageBack = "/app/data/sessions.json.broken-1763000123456";
+    const prevRecords = sessionStore.records;
+    const back = async (cmd, args) => {
+      calls.push(cmd);
+      if (cmd === "sessions_read") {
+        if (readBack instanceof Error) throw readBack;
+        return readBack;
+      }
+      if (cmd === "sessions_salvage") {
+        if (salvageBack instanceof Error) throw salvageBack;
+        return salvageBack;
+      }
+      if (cmd === "sessions_write") {
+        writeBack = args && args.json;
+        return "/app/data/sessions.json";
+      }
+      return null;
+    };
+    try {
+      fakeInvoke = back;
+      // ① 好文件：正常读出来，一次急救都不叫（别把好好的清单也另存一份）
+      readBack = GOOD;
+      calls.length = 0;
+      await loadSessions();
+      ok(sessionStore.records.length === 1, `好文件该读出 1 条：${sessionStore.records.length}`);
+      ok(rows() === 1, `列表该画 1 行：${rows()}`);
+      ok(!calls.includes("sessions_salvage"), `好文件不该叫急救：${JSON.stringify(calls)}`);
+      ok(lastToast() === "", `好文件不该弹 toast：${lastToast()}`);
+
+      // ② 半截写入：不抛、列表空、另存请求发出去、toast 里写清另存成什么名字
+      readBack = HALF;
+      calls.length = 0;
+      await loadSessions();
+      ok(sessionStore.records.length === 0, `坏文件只能从空清单起步：${sessionStore.records.length}`);
+      ok(rows() === 0, `坏文件起步时列表该是空的：${rows()}`);
+      ok(
+        calls.includes("sessions_salvage"),
+        `坏文件必须叫一次急救（不然下次存盘就整份盖掉）：${JSON.stringify(calls)}`
+      );
+      ok(
+        lastToast() === "会话清单读坏了，原文件已另存为 sessions.json.broken-1763000123456，这次从空清单开始",
+        `toast 要写明另存的文件名：${lastToast()}`
+      );
+      seen.broken = lastToast();
+
+      // ③ 合法 JSON 但不是一份清单（null / 数字）：一样按读不懂处理
+      for (const odd of ["null", "42", "\"text\""]) {
+        readBack = odd;
+        calls.length = 0;
+        await loadSessions();
+        ok(sessionStore.records.length === 0, `${odd} 不该读成清单：${sessionStore.records.length}`);
+        ok(calls.includes("sessions_salvage"), `${odd} 也得先另存：${JSON.stringify(calls)}`);
+      }
+      // 但 {"version":1} 这种没写 records 的是"还没有会话"，不是坏文件
+      readBack = '{"version":1}';
+      calls.length = 0;
+      await loadSessions();
+      ok(sessionStore.records.length === 0, `没写 records 就是空清单：${sessionStore.records.length}`);
+      ok(!calls.includes("sessions_salvage"), `空清单不用另存：${JSON.stringify(calls)}`);
+
+      // ④ 连读都读不了（文件系统/权限）：说清是读失败，别谎称清单坏了，也别乱叫急救
+      readBack = new Error("Permission denied (os error 13)");
+      calls.length = 0;
+      await loadSessions();
+      ok(sessionStore.records.length === 0, `读失败也只能空清单起步：${sessionStore.records.length}`);
+      ok(!calls.includes("sessions_salvage"), `读失败不是清单坏了：${JSON.stringify(calls)}`);
+      ok(
+        lastToast().startsWith("会话清单读不出来"),
+        `读失败要说清是读不成：${lastToast()}`
+      );
+
+      // ⑤ 急救本身也失败：得拦一句"先别存新的"，不能让人以为已经救回来了
+      readBack = HALF;
+      salvageBack = new Error("disk full");
+      calls.length = 0;
+      await loadSessions();
+      ok(
+        lastToast().includes("也没能另存") && lastToast().includes("先别存新会话"),
+        `急救失败要拦一句别存新的：${lastToast()}`
+      );
+      seen.noSalvage = lastToast();
+
+      // ⑥ 救回来之后还能正常干活：存一条会话，落盘的就是这一条空清单加新记录
+      readBack = HALF;
+      salvageBack = "/app/data/sessions.json.broken-1763000123456";
+      calls.length = 0;
+      await loadSessions();
+      saveSession({ host: "after.example", port: 22, user: "ops", auth: "password" });
+      await new Promise((r) => setTimeout(r, 0)); // 写盘那条是异步发出去的，等它落地
+      ok(sessionStore.records.length === 1, `坏档之后还存得进新会话：${sessionStore.records.length}`);
+      ok(typeof writeBack === "string" && writeBack.length > 0, "存新会话要真写到后端");
+      const written = JSON.parse(String(writeBack));
+      ok(written.records.length === 1, `落盘里只有新这条：${JSON.stringify(written.records)}`);
+      ok(written.records[0].host === "after.example", `落盘那条就是刚存的：${written.records[0].host}`);
+    } catch (err) {
+      fails.push(`走坏档启动的过程抛了异常：${err && err.message ? err.message : err}`);
+    } finally {
+      // 收场：替身摘掉、清单回到启动时那份（无头页里本来就是空的），列表重画回原样
+      fakeInvoke = null;
+      sessionStore.records = prevRecords;
+      renderSessions();
+    }
+    document.title = fails.length
+      ? `BROKEN-STORE-SELFTEST-FAIL ${JSON.stringify(fails)} ${JSON.stringify(seen)}`
+      : `BROKEN-STORE-SELFTEST-OK ${JSON.stringify(seen)}`;
   })();
 }
 
