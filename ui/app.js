@@ -973,29 +973,89 @@ const findCount = document.getElementById("find-n");
 const findHits = { q: "", all: [], at: -1, term: null };
 let findTimer = 0;
 
+// 终端把一条长命令折成两行时，逐行扫就永远搜不到跨折点的那半截——用户看到的是"明明有，搜不到"。
+// 所以先按 isWrapped 把连续几行拼成一条"逻辑行"再扫，命中再映射回 (行, 格)；跨折行的命中
+// 记一个按格累加的长度，select() 自己会绕过折行把它整段选上。
+// 一行的"实际有字"长度：末尾补位的空白不算内容。有的 xterm 版本给了 getTrimmedLength，
+// 手上这个没有，就自己从后往前数——末行若把补位空白也当内容，查询词会凭空跨过一片空气拼上。
+function findTrimmed(line) {
+  if (typeof line.getTrimmedLength === "function") return line.getTrimmedLength();
+  let n = line.length;
+  while (n > 0) {
+    const cell = line.getCell(n - 1);
+    const s = cell ? cell.getChars() : "";
+    const blank = !s || s === " " || (typeof cell?.getCode === "function" && cell.getCode() === 0);
+    if (!blank) return n;
+    n -= 1;
+  }
+  return n;
+}
+
+function findGroups(buf) {
+  const groups = [];
+  let group = null;
+  for (let row = 0; row < buf.length; row += 1) {
+    const line = buf.getLine(row);
+    if (!line) {
+      group = null;
+      continue;
+    }
+    if (line.isWrapped && group) group.rows.push({ row, line });
+    else {
+      group = { rows: [{ row, line }] };
+      groups.push(group);
+    }
+  }
+  return groups;
+}
+
 function findScan(q) {
   const all = [];
   if (!term || !q) return all;
   const buf = term.buffer.active;
   const needle = q.toLowerCase();
-  for (let row = 0; row < buf.length; row += 1) {
-    const line = buf.getLine(row);
-    if (!line) continue;
-    const text = line.translateToString(true);
-    if (!text) continue;
-    const hay = text.toLowerCase();
+  for (const group of findGroups(buf)) {
+    const last = group.rows.length - 1;
+    // 快路：先按行拼一遍文本（末行去掉补位空白），扫不到就直接跳过，不建逐格映射。
+    const quick = group.rows.map(({ line }, i) => line.translateToString(i === last));
+    if (quick.join("").toLowerCase().indexOf(needle) === -1) continue;
+
+    // 慢路：逐格建映射。translateToString 给的是"字符下标"，而 select() 要的是"格号"：
+    // 宽字符占两格却只出一个字符，一行里只要有中文，字符下标就会比格号小。
+    const chars = [];
+    const where = [];
+    group.rows.forEach(({ row, line }, i) => {
+      const upto = i === last ? findTrimmed(line) : line.length;
+      for (let c = 0; c < upto; c += 1) {
+        const cell = line.getCell(c);
+        if (!cell) continue;
+        const s = cell.getChars() || " ";
+        for (let k = 0; k < s.length; k += 1) {
+          chars.push(s[k]);
+          where.push({ row, col: c });
+        }
+      }
+    });
+    const hay = chars.join("").toLowerCase();
     let at = hay.indexOf(needle);
-    if (at === -1) continue;
-    // translateToString 给的是"字符下标"，而 select() 要的是"格号"：宽字符占两格却只出一个字符，
-    // 一行里只要有中文，字符下标就会比格号小。只在真命中时才逐格建一次映射，平时不花这笔钱。
-    const cellOf = [];
-    for (let c = 0; c < line.length; c += 1) {
-      const cell = line.getCell(c);
-      const s = cell ? cell.getChars() : "";
-      for (let k = 0; k < s.length; k += 1) cellOf.push(c);
-    }
     while (at !== -1) {
-      all.push({ row, col: cellOf[at] ?? at });
+      const from = where[at];
+      const to = where[at + needle.length - 1];
+      let span;
+      if (to.row === from.row) {
+        span = to.col - from.col + 1;
+      } else {
+        // 跨折行：从起点到本行末 + 中间整行 + 末行到终点，全按格算
+        span = 0;
+        for (const { row, line } of group.rows) {
+          if (row < from.row) continue;
+          if (row > to.row) break;
+          if (row === from.row) span += line.length - from.col;
+          else if (row === to.row) span += to.col + 1;
+          else span += line.length;
+        }
+      }
+      all.push({ row: from.row, col: from.col, span });
       at = hay.indexOf(needle, at + needle.length);
     }
   }
@@ -1024,7 +1084,8 @@ function findJump(delta) {
   }
   findHits.at = findStep(n, findHits.at, delta);
   const hit = findHits.all[findHits.at];
-  term.select(hit.col, hit.row, findHits.q.length);
+  // span 是按格算的跨折行长度；老条目没有这个字段时退回"查询词长度"（单行情形两者该相等）
+  term.select(hit.col, hit.row, hit.span ?? findHits.q.length);
   term.scrollToLine(Math.max(0, hit.row - Math.floor(term.rows / 2)));
   findPaint();
 }
@@ -3625,6 +3686,7 @@ if (location.hash.includes("theme-test")) {
 // ① 计数与我自己重扫一遍 buffer 的结果一致 ② 每条命中的行列坐标确实落在查询词上
 // ③ 首跳落在第 1 条并选中它 ④ 环回序号算得对 ⑤ 无命中转红、恢复后摘红
 // ⑥ 查找条不越出终端面板、不压标题条 ⑦ 关掉后选区与序号都收拾干净。
+// ⑧ 长 buffer（宽字符 / emoji / 组合字符 / ANSI / 居中 / 贴底）⑨ 跨折行命中（折点上那半截、硬换行不许拼）。
 if (location.hash.startsWith("#find-test")) {
   document.body.classList.add("dragging", "dragging-x"); // 关过渡，只量终态
   const bad = [];
@@ -3809,8 +3871,71 @@ if (location.hash.startsWith("#find-test")) {
         return;
       }
       checkLong(got);
+      wrapPhase();
+    })();
+  }
+
+  // ---------- ⑨ 跨折行：长命令折成两行时，命中的那一截骑在折点上 ----------
+  // 逐行扫永远搜不到这种命中，用户只会说"明明终端里有，就是搜不出来"。这里不看条数对不对，
+  // 只看三件事：① 拼起来才存在的词要搜得到，且起点落在折点前那一行的确切格号上
+  // ② 跳过去选中的是整串（选区真的绕过了折行，不许被截成半截）
+  // ③ 两个硬换行各写一半、拼起来正好能凑成的词，不许被算成命中。
+  const q3 = "Portio_wrap";
+  function wrapPhase() {
+    // 填 cols-4 个 w，查询词正好从第 cols-4 格起：前 4 个字符留在折行前那一行
+    const filler = "w".repeat(Math.max(1, term.cols - 4));
+    term.write(`\r\n${filler}${q3} 尾巴\r\n`);
+    term.write("\r\nabc\r\ndef\r\n"); // 诱饵：硬换行两侧各一半，拼起来才是 "abcdef"
+    let t3 = 0;
+    (function waitWrap() {
+      const hit = findScan(q3)[0];
+      if (!hit && t3 < 60) {
+        t3 += 1;
+        setTimeout(waitWrap, 50);
+        return;
+      }
+      checkWrap(hit);
       finish();
     })();
+  }
+
+  function checkWrap(hit) {
+    const cols = term.cols;
+    seen.wrap = { cols, col: hit?.col, span: hit?.span };
+    if (!hit) {
+      bad.push(`跨折行的 ${q3} 搜不到（退回逐行扫了？）`);
+      return;
+    }
+    const found = findScan(q3);
+    if (found.length !== 1) bad.push(`跨折行命中应 1 处，实际 ${found.length} 处`);
+    if (hit.col !== cols - 4) bad.push(`折行命中的起点在第 ${hit.col} 格，应为第 ${cols - 4} 格`);
+    // 长度必须超出本行剩下的格数，否则说明这一条根本没绕过折行
+    const left = cols - hit.col;
+    if (!(hit.span > left)) bad.push(`跨折行长度 ${hit.span} 没超出本行剩余 ${left} 格`);
+
+    findInput.value = q3;
+    findRefresh();
+    findHits.at = -1;
+    findJump(1);
+    const sel = term.getSelection();
+    seen.wrap.sel = sel;
+    if (sel.toLowerCase() !== q3.toLowerCase()) {
+      bad.push(`跨折行跳过去选中的是 ${JSON.stringify(sel)}，应是整串 ${JSON.stringify(q3)}`);
+    }
+
+    findInput.value = "abcdef";
+    findRefresh();
+    seen.wrap.hard = findHits.all.length;
+    if (findHits.all.length !== 0) {
+      bad.push(`硬换行两侧各一半的词被算成了 ${findHits.all.length} 处命中，拼折行不能越过硬换行`);
+    }
+
+    findInput.value = "";
+    findHits.q = "";
+    findHits.all = [];
+    findHits.at = -1;
+    findPaint();
+    if (term) term.clearSelection();
   }
 
   // 量一次"边打边扫"要扫多少东西：每次按键都会把整段 buffer 重扫一遍，
