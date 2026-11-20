@@ -3854,3 +3854,89 @@ A37 只搬了「不动设置」的七条。剩下九条（主题 / 界面字号 
 - 下一轮：物料已对齐，回到没人自动核的地方——安装包装出来那份能不能跑（两条路仍等你拍板）、
   真服务器端到端、mac / linux；`CHANGELOG` 与 `release-notes` 的版本串此后每轮必须一起动，
   这轮漂了六版才被发现。
+## 2026-11-21 · v1.0.9-RC8 · 坏掉的会话清单会被下一次存盘整份盖掉（含发版）
+
+**版本**：`1.0.9-RC8`（七处已校验：`OK v1.0.9-RC8（7 处一致）`）
+**提交**：`9a4364f` fix(sessions): 读坏的会话清单先另存再从头开始，别被下一次存盘整份盖掉
+**tag**：`v1.0.9-RC8`（annotated，已推）
+
+**做了什么**
+
+`docs/autopilot.md` 的作业依据、`autopilot-log` 上一轮、`decisions.md` 与排期都先读过，才动的手。
+这一版是 1.0.9 前七版那套核法（A36–A41 把 21 条自检全搬进真窗口 / 真后端）抓到的**第一个真 Bug**：
+
+- 病根：`sessions.json` 被断电写成半截（或版本串比程序还新）时，前端 `loadSessions` 的 `JSON.parse`
+  一抛就落到空清单。看着只是「这次没会话」，可用户随手存一条，`sessions_write` 就把整份文件盖成一条，
+  老记录再也找不回来。
+- 后端（`crates/app/src/session_store.rs`）：新增
+  - `store_text_is_readable()`——「读不懂」的判定只用 `SessionStore::from_json` 这一套规则（前端不得另写），
+    空文件 / 只有空白 / 文件不存在**都不算**坏；
+  - `salvage_broken(path)`——读不懂就把原文件 `fs::copy` 成 `sessions.json.broken-<毫秒>`（先拷后写，
+    里面**没有** `remove_file`、没有 `write_store_atomic`，原文件一个字不动），返回副本路径；
+  - 命令 `sessions_salvage`，注册进 `lib.rs` 的 `invoke_handler`。
+- 前端（`ui/app.js`）：`persistSessions()` 改走 `fakeInvoke ?? bridge` 那道口子（无头自检里核得到「到底写了什么」）；
+  新增 `tryInvoke()`（静默版，失败不弹 toast）；`loadSessions()` 改 async，把「读不出来」（文件系统 / 权限）
+  与「读坏了」（内容坏了）分开说话——坏档先叫 `sessions_salvage`，toast 里写清另存成的文件名；急救自己失败
+  则拦一句「先别存新会话」。`{"version":1}`（没写 records）仍算空清单，不另存。
+- 新自检 `#broken-store-test`（无头，六组判据）：好文件 1 条 1 行且不叫急救 / 半截写入必须叫一次急救且 toast
+  写清 `sessions.json.broken-1763000123456` / 三类非清单 JSON 都算读不懂、而 `{"version":1}` 不另存 /
+  读失败不谎称坏档 / 急救失败要拦 / 坏档之后还存得进新会话且落盘只有新那条。
+- 门禁与单测：`scripts/rc.py` 加 A42（模块头改「A1–A42」+ 由来段 + 计划表 + 分派）；
+  新增 `scripts/test_rc_broken.py` 12 条接线单测（计划表 / 分派 / 命令已注册 / 先拷不写 / 复用 Core 解析 /
+  只在解析失败时叫急救 / 自检收场摘替身）；Rust 侧 3 条单测（另存后原文件被覆盖副本仍保原字节 / 好文件与
+  空白 / 缺文件不动 / 非 UTF-8 与 `{"version":9}` 也算读不懂）。
+- 文档与物料：`CHANGELOG` 加 `1.0.9-RC8` 段；`release-notes` 追平（并把 `1.0.9-RC3` 那条原先误挂在 RC6 名下的
+  事改正）；`rc-checklist` 首部整跑、A41/A42 两行结论、§7 加 RC8 行；`backlog` 记下「A42 的真 exe 那一路
+  还没做成每轮自动跑的项」；`docs/shots` 十张重出到 RC8。
+
+**验证证据**
+
+- `cargo test -p portio-app -j 1` → **28 passed**（含 3 条新单测）。
+- `python scripts\rc.py`（全量 A1–A42）：**42 通过 / 0 失败 / 0 未验，287.9s，退出码 0**（`D:\portio-rc-full32.log`）。
+  A1 `52.8s 100 passed`；A11 `Portio_1.0.9-RC8_x64-setup.exe`；A32 `38.7s fmt 干净、clippy 零警告`；
+  A34 包里那份 `13692416` 字节逐字节一致（只差 `UNK → NSS`）；A35 `389 条`；A36 `版本 1.0.9-RC8、DOM 94619 字节`；
+  A39 `23.4s`、A40 `19.0s`（1024 宽 834px / 900 宽 710px）、A41 `4.1s`、A42 `5.4s`
+  （`BROKEN-STORE-SELFTEST-OK`）。
+  第一次整跑 A32 是红的——`cargo fmt` 没跑，`session_store.rs` 5 处不合格式；`cargo fmt --all` 后重跑才转绿。
+  重跑之后又按 fmt 后的源码重打了一次包，`A10 A11 A33 A34` 单跑复核 **4 项全过，14.9s**
+  （包 3384309 B、包里那份 exe 13692416 B 逐字节一致）。
+- 反向验证两处（`_rev42.py` 实测后还原）：① 去掉 `await tryInvoke("sessions_salvage", {})` →
+  `BROKEN-STORE-SELFTEST-FAIL ["坏文件必须叫一次急救（不然下次存盘就整份盖掉）：[\"sessions_read\"]", …]`；
+  ② `persistSessions` 改回只认真桥 → `FAIL ["存新会话要真写到后端","走坏档启动的过程抛了异常：
+  Cannot read properties of null (reading 'records')"]`；还原后回 `BROKEN-STORE-SELFTEST-OK`。
+- 真 exe 手验一次（`_r18_real.py`，本轮手工、不进每轮自动）：真 app-data 的 `sessions.json` 换成一截坏 JSON
+  再拉起 release exe → 冒出 `sessions.json.broken-1795206086490`、内容与原文件一字不差、原文件没被改写；
+  对照组好文件 → `[]`（一个副本不冒）；两次窗口标题都没有 `ERR:`。
+- 发版：CI run `44813495335` **五项全 success**（version rule / fmt·clippy·test / windows / ubuntu / macos）；
+  Release run `44813502560` **gate + 三平台 build 四项全 success**。Release `Portio 1.0.9-RC8`
+  四资产 exe **3392579 B** / dmg **9523466 B** / deb **4983314 B** / AppImage **83167736 B**
+  （对照 RC7：3382501 / 9524372 / 4965942 / 83151352）。
+- 本地包：`D:\portio-target\release\bundle\nsis\Portio_1.0.9-RC8_x64-setup.exe` **3384309 B**，已复制到
+  `…\new-chat\Portio_1.0.9-RC8_x64-setup.exe` 交付；`new-chat` 里 RC7 那个旧包已删（它还在 Releases 上）。
+  与 CI 那份差 8270 B——这轮代码真改了，压缩抖动比平时大，属正常。
+- `check_versions.py` → `OK v1.0.9-RC8（7 处一致）`；`check_site.py`（A28）→ `OK 说明页 16 项设置 / 40 个档位`；
+  `python scripts\shots.py` → 十张 2360×1380 全过、1.58 MiB。
+
+**踩到的坑**
+
+1. 后端 A32 第一次整跑红：`cargo fmt` 没跑。规矩是「提交前先 fmt」，这次是先跑整跑才想起来。
+2. 自检第一版忘写 `fakeInvoke = back;`，所有 `calls` 为空、全线翻红；补上即绿。
+3. `persistSessions` 原来只认 `bridge`，无头自检里核不到「到底写了什么」——改成统一走 `fakeInvoke ?? bridge`。
+4. exe 体积从 13709312 掉到 13692416（新增代码 + 优化后重排，不是异常）；RC7 那版 13709312 是「只换版本串」。
+5. 首次整跑用的包是 fmt 前那份，重跑 fmt 后重新打包才对得上提交的源码——以后「先 fmt 再打包再整跑」一次做完。
+
+**下一步**
+
+- 进 1.0.9 段的最后两格：RC9 / RC10（还没定这两格做什么；按守则 1.0.9 满 10 之后进 1.0.10-RC1）。
+- 把 A42 的真 exe 那一路做成每轮自动跑的项（难点已记 backlog：`APP_DATA_BACKUP` 只认三份固定文件，
+  `.broken-*` 不在回收名单）。
+- 一直在等的事没变：安装包装出来那份能不能跑（两条路等你拍板）、真服务器端到端（B1–B9 全未做）、
+  mac / linux 真机、S14 gate 三项（签名证书 / 自动更新端点 / 崩溃上报）。
+
+**未验**
+
+- 真实 SSH / PTY / tmux / 真 SFTP 上传下载：无测试服务器与凭据，仍只有协议层与本地回环。
+- 「安装包装到机器上那份能不能跑」全程未验（装要写注册表与开始菜单，属「不动用户机器」范围）。
+- A42 的真 exe 那一路只在本轮手验一次；每轮跑的是无头页 + 后端替身。
+- mac / linux 包只到「CI 构建通过」，未真机装过。
+- C 盘停在 **0.21 GB**（整轮没再掉），`D:\portio-target`、`D:\portio-tmp`、`D:\portio-*.log` 未清（等你拍板）。
