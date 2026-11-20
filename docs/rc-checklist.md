@@ -12,14 +12,14 @@
 | ✗ | 已知缺口：代码里就没有，或明知不合格 |
 | 🚫 | 卡外部条件：缺服务器 / 缺证书 / 缺平台机器，写清差什么 |
 
-**最近一次整跑**：2026-11-20 · `v1.0.8-RC2` · `python scripts/rc.py`（全量，含 A1）→ **31 通过 / 0 失败 / 0 跳过，214.1s**（A1 在 `CARGO_TARGET_DIR=D:\portio-target` 上 151.5s / 97 passed，其余三十项 60 秒上下）；同日 `python scripts/rc.py A5 A6` 2 项 / 1.4s、`python scripts/rc.py A31` 单项 0.0s；更早 `v1.0.8-RC1` 与 `v1.0.8-RC2`（代码轮）各跑过一次全量 30 通过 / 0 跳过；
+**最近一次整跑**：2026-11-20 · `v1.0.8-RC3` · `python scripts/rc.py`（全量，含 A1）→ **31 通过 / 0 失败 / 1 跳过，88.0s**（唯一跳过的是 A11：整跑时 `1.0.8-RC3` 的安装包还没打，它点了名「这些是旧包、不算」；打完包单跑 `python scripts/rc.py A11` 转 PASS，A1 17.4s / 97 passed、A32 3.3s）；
 人工项与真服务器项仍未跑（见 §7）。
 
 ---
 
 ## 1. 本机自动化（一条命令一项，五分钟跑完）
 
-**这一段现在有固定入口**：`python scripts/rc.py` 按顺序跑完 A1–A31，逐项打 `[PASS]` / `[FAIL]` / `[SKIP]`，
+**这一段现在有固定入口**：`python scripts/rc.py` 按顺序跑完 A1–A32，逐项打 `[PASS]` / `[FAIL]` / `[SKIP]`，
 最后一行是汇总，可以直接贴进 §7。全跑一分钟上下（`cargo test` 占大头），只改前端时用 `--fast` 跳过 A1；
 只想核其中几项就直接写编号——`python scripts/rc.py A11`、`python scripts/rc.py A10 A11`、
 `python scripts/rc.py A10,A11` 都认，只跑选中的那几项；编号写错会回一句「不认识的编号」并以退出码 2 结束，
@@ -59,6 +59,8 @@
 | A29 | 传输队列的空态、计数与几条文案 | `python scripts\rc.py`（内部打开 `#transfer-test`） | 标题 `TRANSFER-SELFTEST-OK`：空队列时那句「空。上传、下载、同步的进度都会在这里」在；第一行一出现它就消失（`empty:false`）；三条之后行数 3、标题条计数 `3`、正文里 3 条 `.tr`；45600000/106000000 的进度条是 `43%`、行尾写「43% · 101 MB」；完成那条满格且写「完成 · 6.0 KB」；还没开始那条写「排队」；每个传输行都有尺寸且右缘不越出抽屉 | ✅ 反向验证两条都翻红：① 把空态删除改回 `.hint` 旧写法 → FAIL「队列里有行了，空态提示还挂着」「三条都在跑了，空态提示还挂着」（`empty:true`）；② 让 `transferRow` 不调 `syncTransferCount` → FAIL「标题条计数应是 3：2」（`num:2`）。还原后 `TRANSFER-SELFTEST-OK {"rows":3,"num":"3","bar":"43%","empty":false}` |
 | A30 | 后端出错时界面有没有话说 | `python scripts\rc.py`（内部打开 `#net-fail-test`） | 标题 `NET-FAIL-SELFTEST-OK`：四类回包（`No such file or directory` / `Permission denied` / `Connection refused` / `no space left on device`）都翻成「发生了什么 + 下一步怎么做」，认不出的保留原文并带命令名；列目录失败时块里留一句「列目录失败，原因见右下角提示」、路径条不被写成打错的路径、不抛；上传 / 下载失败各落成「失败」红条（进度条 `0%` 且用 `--danger`）、标题条计数为 2、toast 分别是「远端磁盘已满：…」与「连接超时：…」 | ✅ 反向验证两条都翻红：① 下载改回直连 `bridge.invoke` → FAIL「核后端出错这一路的过程抛了异常：Cannot read properties of null (reading 'invoke')」（行停在「排队」）；② 错误翻译改回大小写敏感 → FAIL「「No such file or directory」应翻成「路径不存在：…」」「「Permission denied」应翻成「权限不足：…」」。还原后 `NET-FAIL-SELFTEST-OK {"remote":"列目录失败，原因见右下角","failed":2}` |
 | A31 | 发布截图是本版本那一套 | `python scripts/rc.py`（纯 Python 读清单对图，不开浏览器） | `docs/shots/manifest.json` 的 `version` 与界面里的版本串一致，清单里十张图逐张都在 `docs/shots/` 里、字节数跟清单记的一样；版本对不上 → **SKIP 并点名是哪一版**（不报 PASS，别拿旧界面当本版物料）；版本对上但少图 / 字节数变了 → **FAIL 并点名那张** | ✅ 10 张全是 1.0.8-RC2 的（1.58 MiB）；反向验证两条：① 给 `portio-dark-main.png` 尾部多写 1 字节 → `FAIL … portio-dark-main.png（清单 126790 字节 / 现在 126791 字节）`；② 清单版本改回 `1.0.7-RC9` → `SKIP … 这套图是 1.0.7-RC9 那一版的，当前是 1.0.8-RC2`。还原后 PASS |
+
+| A32 | 格式与 lint 闸（跟 CI 那关同一个口径） | `python scripts/rc.py`（内部跑 `cargo fmt --all --check` 与 `cargo clippy --workspace --all-targets -- -D warnings`） | 两条都干净才 PASS；格式没过要报出 `文件:行`（同一文件的两个 hunk 折成一条）、clippy 没过要报出 `文件:行:列`，两道同时没过时一次说清 | ✅ 12.2s（增量，clippy 零警告）；反向验证两条都翻红：① 往 `crates/core/src/lib.rs` 塞一行 `pub fn _rc_probe( )->i32{1}` → `FAIL … fmt 有文件没格式化：crates\core\src\lib.rs:36`；② 塞 `let unused = 1` 那句 → `FAIL … clippy 有警告：crates\core\src\lib.rs:39`。还原后 PASS |
 
 
 ### 怎么跑 A6–A9（无头）
@@ -217,5 +219,6 @@ foreach ($frag in "", "#split-test", "#clip-test", "#fold-test") {
 | 2026-11-20 | `v1.0.8-RC1` | `scripts/rc.py` → **30 通过 / 0 失败 / 0 跳过**，56.5s（A11 改判：只认 `Portio_<当前版本>_x64-setup.exe`，找不到就 SKIP 并点名旧包；A10 改沿 `CARGO_TARGET_DIR` 取这一轮构建出来的 exe）；反向验证两条翻红点名；另 13 条单测（`scripts/test_rc_artifacts.py`） | 未跑 | 未跑 | 同一目录里躺着 RC3 旧包也不再判过了——A11 从「有没有留下过安装包」变成了「当前版本的包在不在、体积像不像话」 |
 | 2026-11-20 | `v1.0.8-RC2` | `scripts/rc.py` → **30 通过 / 0 失败 / 0 跳过**，56.5s；`python -m unittest scripts.test_rc_selection` 13 通过（与另三份合跑 67 条全过）；反向验证两条：认不出的编号静悄悄丢掉 → `FAILED (failures=2)` 且 `rc.py A99` 变成「只跑 0 项 / 汇总 0 通过 / exit=0」；顺序退回按书写顺序 → `FAILED (failures=1)` | 未跑 | 未跑 | 回归脚本能只跑一项了（`A11` / `A10 A11` / `A10,A11` 都认），改一处核一处从一分钟降到几秒 |
 | 2026-11-20 | `v1.0.8-RC2`（物料轮，未进位） | `scripts/rc.py` → **31 通过 / 0 失败 / 0 跳过**，214.1s（A1 151.5s / 97 passed；新增 A31 0.0s）；`python -m unittest scripts.test_shots` 8 通过；反向验证两条（多写 1 字节 → FAIL 点名、清单写旧版本 → SKIP 点名），还原后 PASS | 未跑 | 未跑 | 十张首发截图重出到 `1.0.8-RC2`（原来还是 `1.0.7-RC9` 的界面，press-kit 还指着它们）并配上 `docs/shots/manifest.json`；不单独推 RC tag：纯物料轮，产品代码一个字没动 |
+| 2026-11-20 | `v1.0.8-RC3` | `scripts/rc.py` → **31 通过 / 0 失败 / 1 跳过**，88.0s（新增 A32 3.3s：`cargo fmt --check` + `cargo clippy -D warnings`；A1 17.4s / 97 passed；唯一跳过的是 A11，整跑时 RC3 的包还没打，打完包单跑转 PASS）；`test_rc_lints` 13 通过、`test_set_version` 9 通过；反向验证两条：① 往 `crates/core/src/lib.rs` 塞 `pub fn _rc_probe( )->i32{1}` → FAIL「fmt 有文件没格式化：crates\core\src\lib.rs:36」；② 塞 `let unused = 1` → FAIL「clippy 有警告：crates\core\src\lib.rs:39」。还原后 PASS | 未跑 | 未跑 | 本地的绿等于 CI 的绿：A1 只跑测试，A32 管格式与 lint。顺带把这轮 A28 抓到的「进位了、说明页没跟」交给脚本修（`set_version.py` 现在连 `docs/site/index.html` 的版本串一起换） |
 
 每一轮 RC 回归跑完，在表格里加一行；过不了的那几项写进下一轮的「下一步」。

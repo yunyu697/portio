@@ -11,6 +11,22 @@
 > 只写用户能感知的变化；内部重构放 `### Changed`，未验证的能力写进 `### Known limitations`。
 > 口吻：站在用这个软件的人这一侧说话（"我把 X 改成 Y"），不写成第三方播报。
 
+## [1.0.8-RC3] - 2026-11-20
+
+### Changed
+
+- **本地全绿不再等于推上去才发现红。** 回归脚本多一项 A32：`cargo fmt --all --check` 与
+  `cargo clippy --workspace --all-targets -- -D warnings`，跟 CI 那关同一个口径。
+  A1 一直只跑 `cargo test`，而 CI 是 `fmt → clippy → test` 三道——2026-11-19 就出过一次
+  「本机全过、推上去红在 clippy」，回头补一遍 `cargo fmt --all` 才平掉。现在两条都过，
+  「回归全过」这句话才配得上。
+- **报错说到点子上。** 格式没过报 `crates\core\src\lib.rs:36` 这样的位置（同一个文件的两个 hunk
+  折成一条，不重复也不虚高）；clippy 报 `文件:行:列`；两道同时没过时一次说清，不用你自己翻日志。
+
+### Known limitations
+
+- A32 在本机增量约 7–45 秒，全量首跑要几分钟（CI 上走 rust-cache，与本机耗时不是一回事）。
+
 ## [1.0.8-RC2] - 2026-11-20
 
 ### Changed

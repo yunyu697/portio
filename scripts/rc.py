@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / SKIP。
 
-对应 docs/rc-checklist.md §1 的 A1–A31。以前这些步骤散在日志里，每轮都要手打一遍命令，
+对应 docs/rc-checklist.md §1 的 A1–A32。以前这些步骤散在日志里，每轮都要手打一遍命令，
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
 
 用法：
-    python scripts/rc.py              # 全跑（A1 最慢，其余几十秒）
+    python scripts/rc.py              # 全跑（A1 与 A32 最慢，其余几十秒）
     python scripts/rc.py --fast       # 跳过 A1 的 cargo test（只改前端时够用）
     python scripts/rc.py --list       # 只列出会跑哪些项
     python scripts/rc.py A11          # 只跑这一项（改一项时可边改边核）
@@ -359,6 +359,78 @@ def a31_shots() -> tuple[str, str]:
     return check_shots(load_manifest(SHOTS_MANIFEST), current_version(), SHOTS_DIR)
 
 
+# ---------- A32：格式与 lint 闸 -------------------------------------------------
+
+FMT_DIFF = re.compile(r"Diff in (.+?):(\d+):")
+CLIPPY_SPOT = re.compile(r"--> (\S+:\d+):(\d+)")
+
+
+def fmt_spots(text: str) -> list[str]:
+    """把 rustfmt 的 `Diff in <文件>:<行>:` 收成 `文件:行`，去掉 `\\\\?\\` 前缀与重复。
+
+    Windows 上 rustfmt 打的是 `Diff in \\\\?\\C:\\…\\lib.rs:36:`，同一个文件常出现两次
+    （两个 hunk）——直接贴给人看既眼花又重复，顺手折一下。
+    """
+    out: list[str] = []
+    for m in FMT_DIFF.finditer(text or ""):
+        path = m.group(1).strip()
+        if path.startswith("\\\\?\\"):
+            path = path[4:]
+        root = str(ROOT)
+        if path.startswith(root + os.sep):
+            path = os.path.relpath(path, root)
+        spot = f"{path}:{m.group(2)}"
+        if spot not in out:
+            out.append(spot)
+    return out
+
+
+
+def lint_verdict(fmt: tuple[int, str], clippy: tuple[int, str]) -> tuple[str, str]:
+    """`cargo fmt --check` 与 `cargo clippy -D warnings` 两份结果 → 三态。
+
+    为什么单立一项：A1 只跑 `cargo test`，而 CI 那关是 `fmt → clippy → test`。
+    本地一路全绿、CI 红在 clippy 这种事发生过一次（2026-11-19，run 44505662151），
+    补跑一遍 `cargo fmt --all` 加 clippy 才平掉——本地的绿必须等于 CI 的绿，
+    否则「回归全过」这句话就只对一半。
+    """
+    bad: list[str] = []
+    fmt_code, fmt_text = int(fmt[0] or 0), fmt[1] or ""
+    if fmt_code != 0:
+        spots = fmt_spots(fmt_text)
+        if spots:
+            more = f" 等 {len(spots)} 处" if len(spots) > 2 else ""
+            bad.append("fmt 有文件没格式化：" + "、".join(spots[:2]) + more)
+        else:
+            bad.append(f"fmt 没过（退出码 {fmt_code}）：{tail(fmt_text, 2)}")
+    clippy_code, clippy_text = int(clippy[0] or 0), clippy[1] or ""
+    if clippy_code != 0:
+        spots = [m.group(1) for m in CLIPPY_SPOT.finditer(clippy_text)]
+        if spots:
+            more = f" 等 {len(spots)} 条" if len(spots) > 2 else ""
+            bad.append("clippy 有警告：" + "、".join(spots[:2]) + more)
+        else:
+            bad.append(f"clippy 没过（退出码 {clippy_code}）：{tail(clippy_text, 2)}")
+    if bad:
+        return FAIL, "；".join(bad) + "（本地这一项跟 CI 的 fmt / clippy 关同一个口径，改完再推）"
+    return PASS, "fmt 干净、clippy 零警告（与 CI 那关同口径）"
+
+
+def a32_lints() -> tuple[str, str]:
+    cargo = find_cargo()
+    if not cargo:
+        return SKIP, "找不到 cargo（设 PORTIO_CARGO）"
+    env = with_path(str(Path(cargo).parent))
+    fmt = run([cargo, "fmt", "--all", "--check"], timeout=300, env=env)
+    clippy = run(
+        [cargo, "clippy", "--workspace", "--all-targets", "--", "-D", "warnings"],
+        timeout=1800,
+        env=env,
+    )
+    return lint_verdict((fmt.returncode, fmt.stdout + fmt.stderr),
+                        (clippy.returncode, clippy.stdout + clippy.stderr))
+
+
 # ---------- 只跑其中几项 ---------------------------------------------------
 
 def split_ids(items: list[str]) -> list[str]:
@@ -432,6 +504,7 @@ def main(argv: list[str]) -> int:
         ("A29", "#transfer-test = TRANSFER-SELFTEST-OK（空态随第一行消失、计数跟实际行数、43% 与完成/排队文案、行不出抽屉）", True),
         ("A30", "#net-fail-test = NET-FAIL-SELFTEST-OK（后端出错也要有话说：列目录失败留话、传输失败落红条而不是永远排队、错因翻成人话）", True),
         ("A31", "发布截图是本版本那一套（docs/shots/manifest.json 的版本串与当前一致、十张图逐张对得上字节数）", True),
+        ("A32", "cargo fmt --check + cargo clippy -D warnings（本地的绿要等于 CI 的绿）", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -543,9 +616,12 @@ def main(argv: list[str]) -> int:
         elif code == "A30":
             # 塞一个会抛错的后端替身，量列目录失败有没有话说、传输失败落不落红条、错因翻没翻成人话
             status, detail = a_page(chrome, profile, "#net-fail-test", "NET-FAIL-SELFTEST-OK", "1180,690", 8000)
-        else:
-            # A31：纯 Python 读清单对图，不开浏览器
+        elif code == "A31":
+            # 纯 Python 读清单对图，不开浏览器
             status, detail = a31_shots()
+        else:
+            # A32：跑 cargo fmt / clippy，跟 CI 那关同一个口径
+            status, detail = a32_lints()
         results.append((code, label, status, detail))
         print(f"[{status}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
 

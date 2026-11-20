@@ -2833,3 +2833,52 @@ sis`
 - push 之后 main CI run `44651589032` **六项全 success**（version rule / fmt·clippy·test / windows / macos / ubuntu），
   提交 `fd5a18a` 已在远端；不推 tag、不发 Release——图换了不等于产品变了——所以 `Release` 上的 `v1.0.8-RC2`
   资产还是上一轮那四只（exe 3379620 / dmg 9518592 / deb 4963646 / AppImage 83147256）。
+
+## 2026-11-20 · v1.0.8-RC3 · 本地的绿要等于 CI 的绿
+
+**做了什么**
+
+回归里 A1 一直只跑 `cargo test`，而 CI 那关是 `fmt → clippy → test` 三道。2026-11-19 就栽过一次：
+本机全绿，推上去红在 clippy（run 44505662151），回头补跑 `cargo fmt --all` 与 clippy 才平掉。
+「回归全过」这句话当时只对一半，而且没人会在推之前自己想起去补这两条。
+
+- **加了 A32**（`scripts/rc.py`）：`cargo fmt --all --check` 与
+  `cargo clippy --workspace --all-targets -- -D warnings`，跟 CI 同一个口径，两条都干净才 PASS。
+  `lint_verdict(fmt, clippy)` 是个纯函数（两份「退出码 + 输出」→ 三态），单测直接钉它。
+- **报错说到点子上**：格式没过报 `crates\core\src\lib.rs:36` 这样的位置——Windows 上 rustfmt 打的是
+  `Diff in \\?\C:\…`，同一个文件常出现两个 hunk，这里去掉前缀、折重，顺手改相对路径；
+  clippy 报 `文件:行:列`；两道同时没过时一次说清（一条分号隔开），不用自己翻日志。
+- **顺手堵上 A28 这轮抓到的那处漏**：进位到 `1.0.8-RC3` 之后，全量回归里 A28 立刻红了——
+  「说明页版本串过期：1.0.8-RC2 ≠ 1.0.8-RC3」。说明页那五处版本串一直是手改的，这一轮就漏了。
+  现在 `scripts/set_version.py` 把 `docs/site/index.html` 一起写（按 token 整体替换，`1.0.8-RC20`
+  这种更长的号不会被误伤；页面上要提旧版就写「上一版」，别写完整号）。
+
+**验证证据**
+
+- `python -m unittest scripts.test_rc_lints` → **13 通过**（两道都干净 / 只 format 脏 / 只 clippy 脏 /
+  两道都脏 / 输出认不出也得 FAIL / 同文件两个 hunk 只报一次 / `Finished` 但退出码非 0 不算过 / 多处计数）。
+- `python -m unittest scripts.test_set_version` → **9 通过**（span 读版本 / 整页换 / 两位序号 /
+  数字不是版本号不动 / 空版本号不动作 / 仓库现状与界面版本一致）。
+- 反向验证两条，都在真命令上跑：
+  ① 往 `crates/core/src/lib.rs` 末尾塞 `pub fn _rc_probe( )->i32{1}` →
+  `[FAIL] A32 … fmt 有文件没格式化：crates\core\src\lib.rs:36`；
+  ② 塞 `pub fn _rc_probe() -> i32 { let unused = 1; 0 }` →
+  `[FAIL] A32 … clippy 有警告：crates\core\src\lib.rs:39`（这一跑 fmt 也脏，所以一次报了两条）。
+  两处都 `git checkout` 还原后 `[PASS] A32 … fmt 干净、clippy 零警告`。
+- `python scripts/rc.py` 全量 → **31 通过 / 0 失败 / 1 跳过，88.0s**（A1 17.4s / 97 passed、A32 3.3s；
+  唯一跳过的是 A11：整跑时 RC3 的包还没打，它点了名「这些是旧包、不算」）。
+- 打包后再单跑 `python scripts/rc.py A10 A11` → 2 项全 PASS：
+  `Portio_1.0.8-RC3_x64-setup.exe 4588057 字节（4.38 MiB）← D:\portio-target\debug\bundle\nsis`。
+- `python scripts/shots.py` → 10 张全过，清单写成 `1.0.8-RC3`（版本串变了图就得跟着变，A31 才认得住）。
+- `python scripts/check_versions.py` → `OK v1.0.8-RC3`；`check_site.py` → `OK 16 项设置 / 40 个档位，版本 v1.0.8-RC3`。
+
+**下一步**
+
+- 推 tag `v1.0.8-RC3`，等三平台包出来，把 press-kit / release-notes 的下载表回填成真值。
+- 往下继续搬能自动化的项：§2 里剩下全是「实机一眼」，桌面还锁着；B 类仍缺服务器。
+
+**未验证**
+
+- A32 在本机的耗时是增量口径（3–45s 视编译状态），CI 上走 rust-cache，两边不同，别拿本机耗时对照 CI。
+- 真机窗口仍没点过（`LogonUI.exe` 在跑）：M1–M12 的手感、以及「重开 Portio 后按偏好收放」都还等着。
+- 无 SSH 服务器：真实登录、PTY 交互、tmux 全屏、真实 SFTP 仍只有协议层与本地回环。
