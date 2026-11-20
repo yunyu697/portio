@@ -3091,3 +3091,72 @@ xterm 自己会绕过折行把整串选上。
 - 本地 NSIS 包 **4586339 B** → 复制到 `…\new-chat\Portio_1.0.8-RC6_x64-setup.exe` 并交付。
 - press-kit 下载表与 release-notes 的版本段回填成本次 Release 真值（提交 `4002816`）；
   十张首发图仍是本版本那一套（`1.0.8-RC6`，随进位重出）。
+
+## 2026-11-20 · v1.0.8-RC7 ·「子系统是 GUI」不等于「这份 exe 起得来」
+
+**上一轮留下的那个口子**：A10 认的只是 PE 头里 `OptionalHeader+68` 那个 `Subsystem` 字段等于 2。
+它能说明这份 exe 被**标记**成窗口程序，可它有四件事一件都说明不了：跑起来会不会当场退出、
+WebView2 起不起来、窗口标题对不对、启动后几秒内崩不崩。RC6 立下的规矩是「没核过的不许算通过」，
+按这条规矩，这一项一直是「核了个外壳」——它绿，不代表这份二进制能起来。
+
+**做了什么**
+
+1. 新增 A33「这份 exe 真的起得来」：`probe_launch()` 拉起 `portio-app.exe`（沿 `CARGO_TARGET_DIR`
+   找这一轮构建出来的那份，跟 A10 同一个口径），最多等 10s 让顶层窗口出现；平时每 0.4s 看一次，
+   顺带盯 `poll()`——进程提前退了就不再等。窗口出来后**再撑 4s**，专治「首帧之后才崩」那种。
+2. 窗口标题怎么拿：`user32.EnumWindows` + `GetWindowThreadProcessId`，按 pid 过滤后读
+   `GetWindowTextW`。没走「找窗口类名 / 猜句柄」的路子，枚举一遍就够，也不依赖窗口被激活。
+3. 收尾必须收干净：`taskkill /T /F /PID` 连 WebView2 那些子进程一起收，不在桌面上留窗口。
+   单测里钉住这条（`killed == [4242]`）——拉起过就必须收掉。
+4. 判定抽成纯函数 `launch_verdict(titles, alive, waited)`，五条分支：
+   进程自己退了（报跑了多少秒）、进程在但一个窗口标题都没拿到（卡首帧）、
+   标题不对（点名看到的是什么）、标题里出现 `ERR:`（多窗口时只要有一个就红，不挑好看的那个报）、
+   标题带 `Portio` 且撑住（PASS，带上秒数）。
+5. `sys.platform != "win32"` 直接报「未验」：mac / linux 上没有 user32，不许静悄悄算过。
+6. `rc.py` 计划表加 A33、分派链从 A32 的 `else` 改成 `elif` + 新 `else`（下次加 A34 记得再挪一位）；
+   模块头「A1–A32」改「A1–A33」。新增 `scripts/test_rc_launch.py` 12 条。
+
+**验证证据**
+
+- `python -m unittest scripts.test_rc_launch` → **12 条**（11 过 + 1 条按平台跳过）：五种判定各一条、
+  `ERR:` 压过好看标题、同进程多窗口里任一带 `Portio` 即算、拉起过必须收掉、提前退出不留尾巴、
+  以及「判定写得再好，没接进计划表也是白写」（读 `rc.py` 源码 assert `("A33",` 后面真有 `a33_launch()`）。
+- 单跑：`python scripts\rc.py A33` → `[PASS] A33 … (15.1s) 窗口标题 'Portio'，撑过 14s 没退`；
+  跑完 `Get-Process portio-app` 一条都没有（收干净了）。
+- 整跑（先打包再整跑，A11 不落未验）：`python scripts\rc.py` →
+  **33 通过 / 0 失败 / 0 未验，225.8s，退出码 0**。
+  A1 `97 passed, 0 failed`（95.6s）、A11 `Portio_1.0.8-RC7_x64-setup.exe 4591521 字节（4.38 MiB）`、
+  A31 `10 张全是 1.0.8-RC7 的`、A32 `fmt 干净、clippy 零警告`（46.3s）、A33 `(14.4s) 窗口标题 'Portio'`。
+- 进位：`python scripts\set_version.py 1.0.8-RC7` → 写六处；
+  `python scripts\check_versions.py` → `OK v1.0.8-RC7（7 处一致；最小与补丁位均在 0–10）`。
+- 十张首发图重出到 `1.0.8-RC7`：`python scripts\shots.py` → 十张 2360×1380 全过、
+  `清单 OK …（10 张，版本 1.0.8-RC7）`；`python scripts\check_site.py` → `OK … 版本 v1.0.8-RC7`。
+- 打包：`tauri build --debug --bundles nsis` → `Portio_1.0.8-RC7_x64-setup.exe` **4591521 字节**
+  （对照 RC6 4586339，+5182 B——只动了 Python 脚本与文档，exe 里的前端与 Rust 侧没变，差值来自版本串与压缩抖动）。
+
+**下一步**
+
+- 推 tag `v1.0.8-RC7`、等三平台包，回填下载表与发版补记。
+- 接着问同一类问题：**A11 认的只是「文件名对 + 体积在区间内」，它也没核「装上去能跑」**。
+  装一次要动系统（写注册表、装开始菜单项），按守则属于不动用户机器，所以这一项要先想清楚
+  是「走便携目录不装」还是「装到临时目录再卸」，别一上来就改人家系统。
+
+**未验证**
+
+- A33 只在 Windows 上真跑；mac / linux 上报「未验」，那两边的包仍只到「CI 构建通过」。
+- A33 核的是 **debug 构建**的 exe（与 A10 同一个 `debug` 目录口径），Release 版 exe 没单独拉起来核过；
+  两者注入的 WebView2 与前端资源在同一个 tauri 配置下，但这不是一次核过。
+- 真机手感（hover / 拖拽 / 真右键 / 真键盘）仍未点过；`LogonUI.exe` 在跑，桌面是锁着的。
+- 无 SSH 服务器：真实登录、PTY 交互、真实 SFTP 传输仍全部未验证。
+
+## 2026-11-20 · v1.0.8-RC7 · 发版补记
+
+- 提交 `e176b0c` 已 push main，tag `v1.0.8-RC7` 已推；main CI run `44686089496` **五项全 success**，
+  Release run `44686108025` **gate + 三平台 build 四项全 success**。
+- Release `Portio 1.0.8-RC7`：`prerelease:true`、`draft:false`，四资产
+  exe **3380393 B** / dmg **9522493 B** / deb **4965414 B** /
+  AppImage **83151352 B**（对照 RC6：3381761 / 9522832 / 4965716 / 83155448；
+  本轮只改 Python 脚本与文档，exe 仍小了 1368 B、AppImage 小了 4096 B，差值来自版本串与压缩抖动，
+  不是代码变化）。
+- 本地 NSIS 包 **4591521 B** → 复制到 `…\new-chat\Portio_1.0.8-RC7_x64-setup.exe` 并交付。
+- press-kit 下载表与 release-notes 的版本段回填成本次 Release 真值；十张首发图随进位重出到 `1.0.8-RC7`。
