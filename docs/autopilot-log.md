@@ -2771,4 +2771,17 @@ sis`
 - 这轮只动脚本与文案，产品代码没动：`cargo test` 是缓存命中，不能证明这一刻的二进制跟上一轮一样能装能跑；
   真机装包仍没做（桌面锁屏）。
 - 单跑几项时的「通过」只覆盖那几项，不是整套回归的结论——清单首部已写明这条。
+**同轮补记（发版之后）**
+
+- 提交 `c929803` 已 push main，tag `v1.0.8-RC2` 已推；main CI run `44646668954` **六项全 success**，
+  Release run `44646676889` **gate + 三平台 build 四项全 success**。
+- Release `Portio 1.0.8-RC2`：`prerelease:true`、`draft:false`，四资产
+  exe 3379620 B / dmg 9518592 B / deb 4963646 B / AppImage 83147256 B
+  （对照 RC1：3379239 / 9517571 / 4966616 / 83147256；只有文案与脚本改动，exe 多 381 B）。
+- 本地 NSIS 包 4589055 B（源 `D:\portio-target\debug\bundle\nsis\Portio_1.0.8-RC2_x64-setup.exe`）
+  → 复制到 `…\\new-chat\\Portio_1.0.8-RC2_x64-setup.exe` 并交付。
+  **顺手验了新判据**：`rc.py A10 A11` 2 项 0.0s 全 PASS，A11 认的就是刚出的
+  `Portio_1.0.8-RC2_x64-setup.exe 4589055 字节 ← D:\portio-target\debug\bundle\nsis`——
+  D 盘那份目录里同时躺着 RC1 的旧包，它没去拿旧的（这正是上一轮那条判据想要的样子）。
+- 物料页下载表字节数已回填成 Release 上的真值。
 
