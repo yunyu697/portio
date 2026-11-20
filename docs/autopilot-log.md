@@ -3714,3 +3714,19 @@ A37 只搬了「不动设置」的七条。剩下九条（主题 / 界面字号 
 - A1 的「降并行度重跑」这条路径只有单测覆盖（用记录下来的真实 OOM 输出喂进去），没有在真 OOM 上端到端复现过。
 - 仍是「没装到机器上跑过」；真实 SSH / PTY / SFTP 仍未验证（缺测试服务器）。
 
+## 2026-11-21 · 1.0.9-RC5 · 发版补记
+
+- 提交 `7174277` 已 push main，tag `v1.0.9-RC5` 已推；main CI run `44785789001` **五项全 success**
+  （version rule / fmt·clippy·test / windows / ubuntu / macos），Release run `44785801834`
+  **gate + 三平台 build 四项全 success**。
+- Release `Portio 1.0.9-RC5`：`prerelease:true`、`draft:false`，四资产
+  exe **3381710 B** / dmg **9523593 B** / deb **4965872 B** / AppImage **83147256 B**
+  （对照 1.0.9-RC4：3379253 / 9523243 / 4969102 / 83155448）。
+- 本机 release 包 **3382696 B**（源 `D:\portio-target\release\bundle\nsis\`），与 CI 那份
+  3381710 B 差 986 B。已复制到 `…\new-chat\Portio_1.0.9-RC5_x64-setup.exe` 并交付。
+- 磁盘这轮又差点把整轮废掉：开到一半 C 盘 0 字节，连命令脚本都写不出来。清完之后稳在 1.3 GB，
+  整跑期间没再掉。删掉的那 2.1 GB 旧客户端日志，空间还挂在客户端打开着的句柄上，没真正回到可用空间；
+  真要松口气得等客户端重启，或者由人决定还能清哪些。`new-chat` 里现在只留 RC4 / RC5 两个包。
+- 0.4 gate 的自动化一侧现在是 40 项；界面自检只剩 `#net-fail-test` / `#connect-entry-test`
+  没进真窗口。剩下的缺口仍是那两条：装到机器上跑、真服务器。
+- 下一轮：借 A39 的存/收/核去确认 `#net-fail-test` / `#connect-entry-test` 在真窗口里不落盘。
