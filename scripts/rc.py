@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / 未验。
 
-对应 docs/rc-checklist.md §1 的 A1–A37。以前这些步骤散在日志里，每轮都要手打一遍命令，
+对应 docs/rc-checklist.md §1 的 A1–A38。以前这些步骤散在日志里，每轮都要手打一遍命令，
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
 
 用法：
@@ -28,6 +28,10 @@ A33 只核「进程没退 + 标题带 Portio」，而那个标题是配置文件
 **自检只在无头里跑过，等于没在真窗口里跑过**：A37 把其中不动设置的那几条搬进真 webview 跑一遍
 （真 localStorage、真后端）。跑前先把 localStorage 存下来，跑完一字不差写回去——
 实测这些自检会把 `portio.drawer` 从 2 改成 3，那是我自己的偏好，不该被回归挪动。
+**要改设置的那批，靠「跑完写回」不如靠「别碰我的」**：A38 只给子进程一份一次性 WebView2 profile
+（进程级环境变量），那批要改主题 / 字号 / 密度 / 强调色 / 终端配色 / 启动布局 / 权限列 / 开局格数 /
+面板宽度 的九条都在里面跑；跑完连目录一起删，再核我自己的偏好库文件数 / 字节 / 时间戳一个没变。
+会话与已知主机两条不搬——它们在真后端上起手就把会话清单清空。
 环境变量可覆盖探测结果：PORTIO_CHROME、PORTIO_NODE、PORTIO_CARGO、PORTIO_7Z。
 """
 
@@ -1021,13 +1025,7 @@ def selftest_verdict(rows: list[tuple[str, str, str]],
     """
     if not rows:
         return FAIL, "一条自检都没跑（等于没核）"
-    bad = []
-    for hook, expect, title in rows:
-        title = title or ""
-        if "ERR:" in title:
-            bad.append(f"{hook} 自己报了红：{title}")
-        elif not title.startswith(expect):
-            bad.append(f"{hook} 没跑出结果（标题 {title or '空'}，期望以 {expect} 开头）")
+    bad = rows_bad(rows)
     if bad:
         return FAIL, "；".join(bad)
     if restored is False:
@@ -1154,6 +1152,214 @@ def a37_selftests() -> tuple[str, str]:
     return status, f"{detail}（{kind_label(kind)}）"
 
 
+# ---------- A38：会改设置的那批自检，换一份一次性 profile 去跑 -----------------
+
+# A37 只搬了「不动设置」的七条。剩下那批要改主题 / 界面字号 / 密度 / 强调色 / 终端配色 /
+# 启动布局 / 权限列 / 开局格数 / 面板宽度——在真 profile 里跑，改的就是我自己的偏好。
+# 对这批复用「跑完写回去」不可靠：中途崩了、超时被杀、进程还在后台写，就写不回去。
+# 换个办法：只给这个子进程一份**一次性**的 WebView2 profile（进程级环境变量），
+# 它的 localStorage 是空的、首启默认，全不心疼；跑完连目录一起删。
+# 隔离成没成不靠嘴说：真 profile 的 localStorage 库（文件数 / 总字节 / 最新时间）跑前跑后必须一模一样。
+# 唯一绕不过去的是窗口底色文件 theme.txt——它落在真 app-data 里，新 profile 一起启动就按首启偏好
+# 重写一遍，所以跑完把它原字节写回、再核对一遍。
+# 会动真文件的会话与已知主机两条（#sessions-test / #hosts-test）不在这儿跑：
+# 它们起手就把 sessionStore.records 清空，在真后端上等于把我存过的会话清单抹掉。
+APP_IDENTIFIER = "io.portio.desktop"
+FRESH_PROFILE_WAIT = 30.0  # 新 profile 首启要先建库，比老 profile 慢
+VER_EXPR = "(document.querySelector('.ver')||{}).textContent"
+FRESH_SELFTESTS = (
+    ("panes-test", "PANES-SELFTEST-OK"),
+    ("layout-test", "LAYOUT-SELFTEST-OK"),
+    ("density-test", "DENSITY-SELFTEST-OK"),
+    ("accent-test", "ACCENT-SELFTEST-OK"),
+    ("term-theme-test", "TERM-THEME-SELFTEST-OK"),
+    ("boot-test", "BOOT-SELFTEST-OK"),
+    ("perm-test", "PERM-SELFTEST-OK"),
+    ("font-test", "FONT-SELFTEST-OK"),
+    ("theme-test", "THEME-SELFTEST-OK"),
+)
+# 这两条在真后端上会落到真文件，不搬；写进 backlog 等「后端数据也能精确还原」再说。
+FRESH_EXCLUDED = ("sessions-test", "hosts-test")
+
+
+def profile_stamp(root: Path | None) -> dict:
+    """一份 profile 里所有文件的「指纹」：文件数、总字节、最新改动时间（秒）。"""
+    if root is None or not root.exists():
+        return {"files": 0, "bytes": 0, "newest": 0}
+    files = [p for p in root.rglob("*") if p.is_file()]
+    return {
+        "files": len(files),
+        "bytes": sum(p.stat().st_size for p in files),
+        "newest": int(max((p.stat().st_mtime for p in files), default=0)),
+    }
+
+
+def localStorage_dir(identifier: str = APP_IDENTIFIER, env=None) -> Path | None:
+    """真 profile 的 localStorage 库在哪儿：Windows 上是 %LOCALAPPDATA%\\<id>\\EBWebView\\Default\\…。"""
+    base = (env if env is not None else os.environ).get("LOCALAPPDATA")
+    if not base:
+        return None
+    return Path(base) / identifier / "EBWebView" / "Default" / "Local Storage" / "leveldb"
+
+
+def app_data_file(name: str, identifier: str = APP_IDENTIFIER, env=None) -> Path | None:
+    """真 app-data 里的某一份文件（`theme.txt` 这种窗口底色提示就放在这里）。"""
+    base = (env if env is not None else os.environ).get("APPDATA")
+    if not base:
+        return None
+    return Path(base) / identifier / name
+
+
+def fresh_profile_db(prof: Path | None) -> Path | None:
+    """一次性 profile 里 localStorage 库落在哪儿。
+
+    给的那层目录下 WebView2 会再套一层 `EBWebView`（实测 `…\\_p38d_prof\\EBWebView\\Default\\…`），
+    所以这里不拼死路径，直接找「哪儿真的建出了库」。
+    """
+    if prof is None or not prof.exists():
+        return None
+    for d in prof.rglob("leveldb"):
+        if d.is_dir() and d.parent.name == "Local Storage" and any(d.iterdir()):
+            return d
+    return None
+
+
+def restore_bytes(path: Path | None, data: bytes | None) -> bool | None:
+    """把一份真文件写回原样，回「回没回去」。
+
+    本来就该没有、现在也没有 = 不用还原（回 None，由调用方当「没事」）。
+    原来有、现在被我写坏了 = 写回再核对；原来没有、现在冒出来一份 = 不替你删，报红。
+    """
+    if path is None:
+        return None
+    now = path.read_bytes() if path.exists() else None
+    if now == data:
+        return True
+    if data is None:
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    return path.read_bytes() == data
+
+
+def rows_bad(rows: list[tuple[str, str, str]]) -> list[str]:
+    """逐条核「这条钩子自己的标题」：报红 / 前缀不够都算没跑出结果。"""
+    bad = []
+    for hook, expect, title in rows:
+        title = title or ""
+        if "ERR:" in title:
+            bad.append(f"{hook} 自己报了红：{title}")
+        elif not title.startswith(expect):
+            bad.append(f"{hook} 没跑出结果（标题 {title or '空'}，期望以 {expect} 开头）")
+    return bad
+
+
+def fresh_verdict(rows: list[tuple[str, str, str]], fresh_used: bool,
+                  real_untouched: bool | None, theme_ok: bool | None) -> tuple[str, str]:
+    """把「一次性 profile 里跑的这批」逐层判（纯函数，好测）。
+
+    四层各自独立：自检本身过没过、隔离到底生不生效、我的偏好库动没动、底色文件回没回去。
+    少核一层就等于这次跑可能改了我自己的东西而我不知道。
+    """
+    if not rows:
+        return FAIL, "一条自检都没跑（等于没核）"
+    bad = rows_bad(rows)
+    if bad:
+        return FAIL, "；".join(bad)
+    if not fresh_used:
+        return FAIL, "一次性 profile 里没冒出 localStorage 库——隔离没生效，这批是在我自己的偏好里跑的"
+    if real_untouched is False:
+        return FAIL, "跑完我自己的偏好库被动过（文件数 / 字节 / 时间戳变了）——隔离没挡住"
+    if real_untouched is None:
+        # 量不到「有没有被动」不算核过：宁可红，也不许含糊成通过
+        return FAIL, "量不到我自己的偏好库在哪儿，隔离有没有挡住这轮没核到"
+    if theme_ok is False:
+        return FAIL, "窗口底色文件没写回原样（theme.txt 跟我跑前存的那份不一样）"
+    return PASS, (f"{len(rows)} 条在一次性 profile 里跑过（{'、'.join(h for h, _, _ in rows)}）；"
+                  "我自己的偏好库一个字节没动，底色文件写回原样")
+
+
+def probe_fresh_selftests(exe: Path, version: str, wait: float = FRESH_PROFILE_WAIT,
+                          port: int | None = None, popen=subprocess.Popen, kill=kill_tree,
+                          hooks=FRESH_SELFTESTS, runner=run_selftest, value=cdp_value,
+                          mkdtemp=tempfile.mkdtemp, sleep=time.sleep) -> tuple[str, str]:
+    """拉起 exe（配一份一次性 profile），把这批会改设置的自检跑一遍，收干净并核隔离。"""
+    port = port or free_port()
+    prof = Path(mkdtemp(prefix="portio-fresh-"))
+    db = localStorage_dir()
+    theme = app_data_file("theme.txt")
+    db_before = profile_stamp(db)
+    theme_before = theme.read_bytes() if theme and theme.exists() else None
+    env = dict(os.environ)
+    # 两个都只给这一个子进程：调试口与一次性偏好目录，机器上的设置一个字不动
+    env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = f"--remote-debugging-port={port}"
+    env["WEBVIEW2_USER_DATA_FOLDER"] = str(prof)
+    started = time.time()
+    proc = popen([str(exe)], cwd=str(exe.parent), env=env,
+                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    rows: list[tuple[str, str, str]] = []
+    err: Exception | None = None
+    try:
+        page = None
+        seen: list[str] = []
+        while time.time() - started < wait:
+            if proc.poll() is not None:
+                return FAIL, f"{time.time() - started:.0f}s 内进程自己退了（码 {proc.returncode}）"
+            targets = cdp_targets(port)
+            if targets:
+                seen = [t.get("url") or "" for t in targets]
+            page = next((t for t in targets
+                         if "tauri.localhost" in (t.get("url") or "")), None)
+            if page:
+                break
+            time.sleep(0.5)
+        if not page:
+            why = f"调试口里的页面一直是 {seen[-1] or '空的'}" if seen else "调试口一直没开"
+            return FAIL, f"{time.time() - started:.0f}s 内没进到界面（{why}）——自检没跑过，等于没核"
+        ws = page["webSocketDebuggerUrl"]
+        # 空 profile 首启时，导航之前那一帧也是 readyState=complete（那是 about:blank），
+        # 光等 complete 会读到空白页。所以等的是「标题栏那个版本串真的出现」。
+        deadline = time.time() + wait
+        ver = ""
+        while time.time() < deadline:
+            ver = str(value(ws, VER_EXPR) or "").strip()
+            if ver:
+                break
+            sleep(0.3)
+        if not ver:
+            return FAIL, (f"{time.time() - started:.0f}s 内那个版本串还没出现——"
+                          "界面没进到本应用（空白页也算加载完了，别被它骗）")
+        if version and ver != version:
+            return SKIP, (f"这份 exe 里的界面是 {ver}，仓库是 {version}——不是本版构建，"
+                          "这批自检在一次性 profile 里跑不跑得动这轮没核到")
+        for hook, expect in hooks:
+            rows.append(runner(ws, hook, expect))
+    except Exception as e:  # noqa: BLE001 - 连不上就把原因报出来，不许当通过
+        err = e
+    finally:
+        if proc.poll() is None:
+            kill(proc.pid)
+            sleep(1.5)  # 等它把库文件关掉、时间戳落地，不然「有没有动」量不准
+        fresh_used = fresh_profile_db(prof) is not None
+        db_after = profile_stamp(db)
+        theme_ok = restore_bytes(theme, theme_before)
+        shutil.rmtree(prof, ignore_errors=True)
+    if err is not None:
+        return FAIL, f"进了界面但自检没跑成：{err}"
+    return fresh_verdict(rows, fresh_used, db_before == db_after, theme_ok)
+
+
+def a38_fresh_selftests() -> tuple[str, str]:
+    """A38：会改设置的那几条自检，在一份一次性 profile 里跑得动吗。"""
+    if sys.platform != "win32":
+        return SKIP, "只在 Windows 上核（mac / linux 没有 WebView2 这套调试口）"
+    exe, kind = find_app_exe(app_exe_dirs())
+    if exe is None:
+        return SKIP, "还没构建 portio-app.exe（先 npm run build 或 tauri build）"
+    status, detail = probe_fresh_selftests(exe, current_version())
+    return status, f"{detail}（{kind_label(kind)}）"
+
+
 def split_ids(items: list[str]) -> list[str]:
     """把 `A10 A11` / `A10,A11` 拆成编号列表：大写、去空、去重、按出现顺序。
 
@@ -1263,6 +1469,7 @@ def main(argv: list[str]) -> int:
         ("A35", "回归脚本自己那批单测（scripts/test_*.py 全跑，口径跟 CI 的 discover 一致；一条都没跑到也算红）", True),
         ("A36", "窗口起来了，界面也真画出来了（走 WebView2 调试口进真 webview：加载完没、版本串是不是这一版、app.js 跑完没、终端对象在不在、DOM 有没有肉）", True),
         ("A37", "那几条自检在真窗口里也跑得动（真后端 + 真偏好里跑 split/clip/fold/ctx/find/find-pane/transfer 七条；跑前存下偏好、跑完一字不差写回去）", True),
+        ("A38", "会改设置的那批自检也在真窗口里跑（换一份一次性 profile 跑 panes/layout/density/accent/term-theme/boot/perm/font/theme 九条；跑完核我自己的偏好库一个字节没动、底色文件写回原样）", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -1395,6 +1602,9 @@ def main(argv: list[str]) -> int:
         elif code == "A37":
             # 在真窗口里把这七条自检跑一遍，跑完把偏好写回去
             status, detail = a37_selftests()
+        elif code == "A38":
+            # 会改设置的那批：换一份一次性 profile 跑，跑完核我自己的偏好库没被动
+            status, detail = a38_fresh_selftests()
         results.append((code, label, status, detail))
         print(f"[{LABEL[status]}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
 

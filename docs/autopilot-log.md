@@ -3509,3 +3509,62 @@ WebView2 起不来、资源路径错、`app.js` 语法炸，全都拦不住。
   A33 拉起、A35 脚本自测、A36 真 webview 里的界面、A37 真窗口里的七条自检。
   **仍是「未装到机器上跑」**——两条路在 backlog，等拍板。
 - 下一轮按「满 10 进 patch 回 RC1」继续在 1.0.9 段里找下一层「绿其实没核」，或按用户指示进 1.0.10-RC1。
+
+## 2026-11-20 · 1.0.9-RC3 · 要改设置的那批自检，也搬进真窗口了
+
+**做了什么**
+
+A37 只搬了「不动设置」的七条。剩下九条（主题 / 界面字号 / 密度 / 强调色 / 终端配色 /
+启动布局 / 权限列 / 开局格数 / 面板宽度）要改的正是我自己的偏好，靠「跑完写回」不可靠——
+中途崩了、超时被杀就写不回去。这轮换成**物理隔离**：只给这个子进程一份一次性 WebView2 profile
+（进程级 `WEBVIEW2_USER_DATA_FOLDER`），它的 localStorage 是空的、首启默认，全不心疼；跑完连目录一起删。
+
+隔离成没成不靠嘴说，三层证据缺一不可：① 一次性目录里真建出了 localStorage 库；
+② 我真 profile 的库（文件数 / 总字节 / 最新时间）跑前跑后一模一样；③ 真目录里的 `theme.txt`
+（启动会按新偏好的主题重写它）按原字节写回、写完再读一遍核对。
+
+实测撞出三个坑：
+
+1. **给的那层目录下 WebView2 会再套一层 `EBWebView`**：第一次跑判「隔离没生效」，
+   原因是我拼死了 `…/Default/Local Storage/leveldb`，实际落在 `…/EBWebView/Default/…`。
+   改成不拼路径、直接找「哪儿真建出了库」。
+2. **空 profile 首启时 `about:blank` 那一帧也是 `readyState=complete`**：光等「加载完」会读到空白页，
+   `.ver` 是空的、`localStorage` 还会抛 `SecurityError`。改成等标题栏那个版本串真出现才认。
+3. **启动本身会写真目录里的 `theme.txt`**：新 profile 主题是首启默认（深色），于是把我原来那份
+   「light」覆盖掉了。这条不能靠隔离解决（文件在真 app-data 里），只能存字节、跑完写回、写完核对。
+
+另外摸清了为什么剩下几条不能搬：`#sessions-test` / `#hosts-test` 起手就把 `sessionStore.records`
+清空，在真后端上等于抹掉我存过的会话清单；`#narrow-test` 要两个宽度，真窗口只有一个。
+
+**验证证据**
+
+- 全量 `python scripts\rc.py`：**38 通过 / 0 失败 / 0 未验，288.5s，退出码 0**（`D:\portio-rc-full25.log`）。
+- A38 `11.3s`：`9 条在一次性 profile 里跑过（panes-test、layout-test、density-test、accent-test、
+  term-theme-test、boot-test、perm-test、font-test、theme-test）；我自己的偏好库一个字节没动，
+  底色文件写回原样（release 构建）`。
+- A35 由 205 涨到 **239 条**（新增 `scripts/test_rc_fresh.py` 34 条）；A1 `97 passed, 0 failed`（143.8s）；
+  A32 fmt/clippy 干净（41.0s）；A33 撑过 14.7s；A34 包里那份 **13708800 字节**逐字节一致；
+  A36 版本串 `1.0.9-RC3`、DOM 94619 字节；A11 `Portio_1.0.9-RC3_x64-setup.exe 3382424 字节`；
+  A31 十张重出到 `1.0.9-RC3`（1.58 MiB）。
+- 连跑两遍 A38，真 profile 的库指纹三次都是 `{'files': 6, 'bytes': 8314, 'newest': 1795173901}`，
+  `theme.txt` 跑完仍是 `light`（说明写回真的落盘了，不是只比不比）。
+- 反向验证两次都翻红、退出码 1：① 让写回只比对不落盘 → `FAIL … 窗口底色文件没写回原样`；
+  ② 假装一次性目录没建出库 → `FAIL … 一次性 profile 里没冒出 localStorage 库——隔离没生效`。
+  另有一次真实翻红来自第 1 个坑（拼死路径）——那是真的判据在起作用。日志 `D:\portio-rev38.log`、
+  `D:\portio-rev38b.log`。
+- 单测：`python -m unittest scripts.test_rc_fresh` **34 条全过**（`VerdictTest` 9 / `StampTest` 7 /
+  `RestoreTest` 4 / `RowsTest` 2 / `WiredTest` 12）。
+
+**下一步**
+
+- 推 main、打 tag `v1.0.9-RC3`、三平台包、本地 release 包交付、回填下载表。
+- 再往里一层还剩：①「装到机器上跑起来的那份」未核（两条路在 `docs/backlog.md`，等拍板）；
+  ② `#sessions-test` / `#hosts-test` 要搬进来，先得有后端写盘文件的备份与回滚。
+
+**未验证**
+
+- 会话与已知主机两条仍只在无头里跑（它们会动真文件）。
+- 窄窗那条仍只在无头里跑两档宽度。
+- 只在 Windows 上核；mac / linux 没有 WebView2 调试口，那两处报未验。
+- 不核界面长什么样（视觉靠 `docs/shots` 十张图与无头截图）。
+- 真实 SSH 登录、PTY 交互、真 SFTP 传输仍未验证（缺测试服务器）。

@@ -12,14 +12,14 @@
 | ✗ | 已知缺口：代码里就没有，或明知不合格 |
 | 🚫 | 卡外部条件：缺服务器 / 缺证书 / 缺平台机器，写清差什么 |
 
-**最近一次整跑**：2026-11-20 · `v1.0.9-RC2` · `python scripts/rc.py`（全量，含 A1）→ **37 通过 / 0 失败 / 0 未验，95.4s，退出码 0**（这轮多了 A37：在真窗口里把七条自检跑了一遍，`7 条在真窗口里跑过（split-test、clip-test、fold-test、ctx-test、find-test、find-pane-test、transfer-test）；跑前存下、跑完写回的偏好一字没动`；A1 `97 passed, 0 failed`、A35 `205 条通过`、A34 包里那份 13708800 字节逐字节一致、A31 十张图全是 1.0.9-RC2 的）。
+**最近一次整跑**：2026-11-20 · `v1.0.9-RC3` · `python scripts/rc.py`（全量，含 A1）→ **38 通过 / 0 失败 / 0 未验，288.5s，退出码 0**（这轮多了 A38：换一份一次性偏好目录，把会改设置的那九条自检也在真窗口里跑了一遍，`9 条在一次性 profile 里跑过（panes-test、layout-test、density-test、accent-test、term-theme-test、boot-test、perm-test、font-test、theme-test）；我自己的偏好库一个字节没动，底色文件写回原样（release 构建）`；A35 由 205 涨到 239 条）。
 人工项与真服务器项仍未跑（见 §7）。
 
 ---
 
 ## 1. 本机自动化（一条命令一项，五分钟跑完）
 
-**这一段现在有固定入口**：`python scripts/rc.py` 按顺序跑完 A1–A37，逐项打 `[PASS]` / `[FAIL]` / `[未验]`，
+**这一段现在有固定入口**：`python scripts/rc.py` 按顺序跑完 A1–A38，逐项打 `[PASS]` / `[FAIL]` / `[未验]`，
 最后一行是汇总，可以直接贴进 §7。全跑五分钟上下（`cargo test` 与 `clippy` 各占一半），只改前端时用 `--fast` 跳过 A1；
 只想核其中几项就直接写编号——`python scripts/rc.py A11`、`python scripts/rc.py A10 A11`、
 `python scripts/rc.py A10,A11` 都认，只跑选中的那几项；编号写错会回一句「不认识的编号」并以退出码 2 结束，
@@ -80,6 +80,8 @@
 
 | A37 | 那几条自检在真窗口里也跑得动 | `python scripts\rc.py`（同一个 WebView2 调试口：拉起 exe → 先读版本串确认是本版 → 存下 localStorage → 逐条 `Page.navigate` 到自检钩子 → 读**页面自己**的 `document.title` → 跑完把偏好写回去 → `taskkill /T` 收干净；非 Windows 报「未验」） | 七条（split / clip / fold / ctx / find / find-pane / transfer）每条都得对上**它自己的**前缀（`CLIP-SELFTEST-OK 10`、`CTX-SELFTEST-OK 9` 这种全文，不是笼统一个 `SELFTEST-OK`），而且只在 `location.hash` 对上、`readyState = complete` 之后才认；任一条 `ERR:` / 没跑出结果 / 标题空 → FAIL 并点名；跑前跑后的偏好必须同一份，写回后不一致 → FAIL（「我的偏好被自检挪了」）；这份 exe 不是本版构建 → 未验 | ✅ 3.7s：`7 条在真窗口里跑过（split-test、clip-test、fold-test、ctx-test、find-test、find-pane-test、transfer-test）；跑前存下、跑完写回的偏好一字没动（release 构建）`；单测 24 条（`scripts/test_rc_selftests.py`），含「读到上一条的标题必须红」「前缀对上但缺数字必须红」「一条都没跑必须红」「没写回必须红」；反向验证两次都翻红：① 把第一条挪成不存在的 `nope-test` → `FAIL … nope-test 没跑出结果（标题 Portio，期望以 SELFTEST-OK 开头）`、退出码 1；② 把「确认写回」那行改成恒 False → `FAIL … 跑完没把设置写回去——我的偏好被自检挪动了`、退出码 1 |
 | A37 的由来（2026-11-20 · 1.0.9-RC2） | 那 21 条自检一直跑在 `file://` 上：没有真后端、`localStorage` 是临时 profile，真窗口是另一回事。实测挖出三个坑：① 只改 fragment 是同文档导航，页面不重载，启动那段自检压根不跑（标题一直是 `Portio`，等 25s 也没结果）；② `/json/list` 里的标题比页面慢一拍——翻到 `ctx-test` 读到的却是上一条 `fold-test` 的结果；③ 跑完一看 `portio.drawer` 从 28 变成 172，那是我的偏好被自检挪了。所以改成「带查询串才叫真重载、标题从页面自己嘴里读且只在 hash 对上后认前缀、跑前存偏好跑完写回」。会改设置的那几条（主题 / 字号 / 密度 / 强调色 / 终端配色 / 启动布局 / 权限列 / 开局格数 / 面板宽度 / 会话 / 已知主机 / 窄窗）**不进这一轮**——它们动的是我的真偏好，甚至真文件 |
+| A38 | 会改设置的那批自检也在真窗口里跑 | `python scripts\rc.py`（同一个调试口，额外给它一份一次性偏好目录：拉起 exe → 等标题栏版本串出现（不是等 `readyState`）→ 逐条 `Page.navigate` 到九个自检钩子、读页面自己的 `document.title` → 收进程 → 删临时目录） | 九条（panes / layout / density / accent / term-theme / boot / perm / font / theme）各自前缀全对才过；还要三层证据俱在：一次性目录里真建出了 localStorage 库（隔离生效）、我真偏好库的文件数 / 总字节 / 最新时间跑前跑后一模一样（没被碰）、`theme.txt` 按原字节写回并核对；任一层不成立都 FAIL 并点名；不是本版构建 → 未验 | ✅ 9.9s：`9 条在一次性 profile 里跑过（panes-test、layout-test、density-test、accent-test、term-theme-test、boot-test、perm-test、font-test、theme-test）；我自己的偏好库一个字节没动，底色文件写回原样（release 构建）`；单测 34 条（`scripts/test_rc_fresh.py`），含「隔离没生效必须红」「偏好库被动必须红」「量不到也得红」「底色文件没写回必须红」「会话与已知主机不许进表」；反向验证：① 让写回只比对不落盘 → `FAIL … 窗口底色文件没写回原样`、退出码 1；② 假装一次性目录没建出库 → `FAIL … 一次性 profile 里没冒出 localStorage 库——隔离没生效`、退出码 1 |
+| A38 的由来（2026-11-20 · 1.0.9-RC3） | A37 只搬了不动的七条，剩下九条要改的正是我自己的偏好。「跑完写回」对它们不可靠：中途崩、超时被杀就写不回去。实测发现 WebView2 认进程级的 `WEBVIEW2_USER_DATA_FOLDER`，于是换成「物理隔离」——空偏好目录、跑完删掉，比还原稳。同时撞出两个坑：① 给的那层目录下 WebView2 会再套一层 `EBWebView`，判「隔离生效」不能拼死路径；② 空偏好首启时 `about:blank` 那一帧也报 `complete`，等「加载完」会读到空白页、版本串是空的。另外发现启动本身会按新偏好的主题重写真目录里的 `theme.txt`，所以这份文件得存了再写回。 |
 
 ### 怎么跑 A6–A9（无头）
 
@@ -249,3 +251,4 @@ foreach ($frag in "", "#split-test", "#clip-test", "#fold-test") {
 每一轮 RC 回归跑完，在表格里加一行；过不了的那几项写进下一轮的「下一步」。
 | 2026-11-20 | `v1.0.9-RC1` | A1–A36：**36 通过 / 0 失败 / 0 未验**，276.5s，退出码 0（新增 A36：进真 webview 读到 `版本 1.0.9-RC1、DOM 94619 字节、xterm 1 个（release 构建）`；A35 随之 181 条；A11 `3382341 字节`、A34 包里那份逐字节一致、A33 14.8s、A32 41.7s） | 未跑 | 未跑 | 窗口起来了不等于界面画出来了：A33 的标题是配置文件写死的，这轮补上「真 webview 里界面到底加载出来没有」；不带 `CARGO_TARGET_DIR` 时会拿到旧 debug，实测界面里还是 **1.0.7-RC3**——以前这种情形 A33 是绿的 |
 | 2026-11-20 | `v1.0.9-RC2` | A1–A37：**37 通过 / 0 失败 / 0 未验**，95.4s，退出码 0（新增 A37：`7 条在真窗口里跑过（split-test、clip-test、fold-test、ctx-test、find-test、find-pane-test、transfer-test）；跑前存下、跑完写回的偏好一字没动（release 构建）`；A35 涨到 205 条；A31 十张图重出到 1.0.9-RC2） |
+| 2026-11-20 | `v1.0.9-RC3` | A1–A38：**38 通过 / 0 失败 / 0 未验**，288.5s，退出码 0（新增 A38：一次性 profile 里跑九条会改设置的自检，真偏好库指纹三次一致、`theme.txt` 跑完仍是 `light`；反向验证两次翻红；A35 239 条） |
