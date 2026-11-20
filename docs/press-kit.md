@@ -48,7 +48,7 @@ down, files go up. The name is **port + io** — an SSH port, and the doorway da
 
 ## 截图与说明（Ten shots：五个场景 × 深浅两套）
 
-`docs/shots/` 下十张，命名 `portio-<dark|light>-<scene>.png`（当前这一套是 `1.0.8-RC5` 的界面）。这套图是哪一版、每张多少字节，都写在 `docs/shots/manifest.json` 里——十张图躺在仓库里过一个月，谁也不会发现它们还是旧界面；所以清单记版本串、`rc.py` 的 A31 拿它对图，版本对不上会明说「这套图是 1.0.7-RC9 那一版的」，不拿旧界面当本版物料。图里的会话、已知主机与传输队列是演示数据；
+`docs/shots/` 下十张，命名 `portio-<dark|light>-<scene>.png`（当前这一套是 `1.0.8-RC6` 的界面）。这套图是哪一版、每张多少字节，都写在 `docs/shots/manifest.json` 里——十张图躺在仓库里过一个月，谁也不会发现它们还是旧界面；所以清单记版本串、`rc.py` 的 A31 拿它对图，版本对不上会明说「这套图是 1.0.7-RC9 那一版的」，不拿旧界面当本版物料。图里的会话、已知主机与传输队列是演示数据；
 文件双栏显示「连上主机后显示远端目录」是因为无头浏览器里没有后端——**这是如实的一张图，没有 P 图补内容**。
 设置面板从「自定义」做进来之后长到十六项，一屏放不下，所以拆成顶部（自定义）与滚到底（已知主机）两张。
 
@@ -62,9 +62,9 @@ down, files go up. The name is **port + io** — an SSH port, and the doorway da
 
 出图脚本：`python scripts/shots.py`（先查 `<title>` 有没有 `ERR:`，再校验 2360×1380，任一门不过即 FAIL）。
 
-## 现在可以下载什么（截至 `v1.0.8-RC5`）
+## 现在可以下载什么（截至 `v1.0.8-RC6`）
 
-最新一批包是 `v1.0.8-RC5`（预发布，从 [Releases](https://github.com/yunyu697/portio/releases) 下）。
+最新一批包是 `v1.0.8-RC6`（预发布，从 [Releases](https://github.com/yunyu697/portio/releases) 下）。
 1.0.6 的 RC1–RC3 只动过物料、文档与脚本，没单独出包；RC4 修了分屏下的查找 Bug、
 RC5 修了「新建连接」带着上一台机器端口与私钥路径的问题、RC6 修了重开之后「最近使用」分组消失的问题、
 RC7 修了「主机密钥变了」那句处理提示没送达界面的问题、RC8 修了并发写日志会丢行的问题、
@@ -74,9 +74,9 @@ RC9 修了「复制诊断信息」碰到坏字节会把整段日志读成空的�
 
 | 平台 | 产物 | 状态 |
 | --- | --- | --- |
-| Windows x64 | `Portio_1.0.8-RC5_x64-setup.exe`（NSIS，3380501 B） | 能装、能跑；未签名 |
-| macOS（Apple Silicon + Intel） | `Portio_1.0.8-RC5_universal.dmg`（9523379 B） | CI 构建通过，**未在真机装过**；未签名 |
-| Linux x64 | `Portio_1.0.8-RC5_amd64.deb`（4968540 B） / `Portio_1.0.8-RC5_amd64.AppImage`（83155448 B） | CI 构建通过，**未在真机装过** |
+| Windows x64 | `Portio_1.0.8-RC6_x64-setup.exe`（NSIS，3381761 B） | 能装、能跑；未签名 |
+| macOS（Apple Silicon + Intel） | `Portio_1.0.8-RC6_universal.dmg`（9522832 B） | CI 构建通过，**未在真机装过**；未签名 |
+| Linux x64 | `Portio_1.0.8-RC6_amd64.deb`（4965716 B） / `Portio_1.0.8-RC6_amd64.AppImage`（83155448 B） | CI 构建通过，**未在真机装过** |
 
 规则：**RC 及以后发包，Alpha 只打 tag**。tag 必须等于仓库里的版本号，对不上就不进打包流程。
 
