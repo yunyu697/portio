@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / 未验。
 
-对应 docs/rc-checklist.md §1 的 A1–A38。以前这些步骤散在日志里，每轮都要手打一遍命令，
+对应 docs/rc-checklist.md §1 的 A1–A39。以前这些步骤散在日志里，每轮都要手打一遍命令，
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
 
 用法：
@@ -32,6 +32,12 @@ A33 只核「进程没退 + 标题带 Portio」，而那个标题是配置文件
 （进程级环境变量），那批要改主题 / 字号 / 密度 / 强调色 / 终端配色 / 启动布局 / 权限列 / 开局格数 /
 面板宽度 的九条都在里面跑；跑完连目录一起删，再核我自己的偏好库文件数 / 字节 / 时间戳一个没变。
 会话与已知主机两条不搬——它们在真后端上起手就把会话清单清空。
+**后端那两份文件换不了目录，那就「先存字节、跑完收回、再读一遍核对」**：A39 把最后两条
+（`#sessions-test` / `#hosts-test`）也搬进真窗口。给子进程换 `APPDATA` 没用——Tauri 取的是
+Known Folder API，不认进程环境变量（实测新目录里什么都没长出来，真目录照样被改写），
+所以只能：跑前把 `theme.txt` / `sessions.json` / `known_hosts` 按字节存下 → 跑 → 收进程 →
+按原字节写回（原本没有的那份收走）→ 再读一遍逐字节核对。同时还得证明确实写了：
+跑完 `sessions.json` 没冒出来、没变化，说明这两条根本没走真后端，那还是「没核」。
 环境变量可覆盖探测结果：PORTIO_CHROME、PORTIO_NODE、PORTIO_CARGO、PORTIO_7Z。
 """
 
@@ -1360,6 +1366,212 @@ def a38_fresh_selftests() -> tuple[str, str]:
     return status, f"{detail}（{kind_label(kind)}）"
 
 
+# ---------- A39：最后两条会动真文件的自检，进真窗口 + 后端数据「先存、跑完收回、再核」 ----
+
+# A38 之后只剩 #sessions-test / #hosts-test 还只在无头里跑：它们走真后端，
+# 会话清单落到 %APPDATA%\<id>\sessions.json，已知主机落到同目录的 known_hosts。
+# 想给后端也换一份一次性目录没戏——实测给子进程改 `APPDATA` 没用：Tauri 取的是 Known Folder API，
+# 不认进程环境变量，新目录里什么都没长出来，真 app-data 照样被启动改写。
+# 所以后端那几份文件只能「先按字节存下 → 跑 → 收进程 → 按原字节写回（原本没有的那份收走）→ 再读一遍核对」，
+# 同时还得证明**它确实写了**：跑完 sessions.json 没冒出来也没变，说明这两条根本没走真后端，那还是「没核」。
+APP_DATA_BACKUP = ("theme.txt", "sessions.json", "known_hosts")
+A39_SELFTESTS = (
+    ("sessions-test", "SESSIONS-SELFTEST-OK"),
+    ("hosts-test", "HOSTS-SELFTEST-OK"),
+)
+APP_WRITE_PROOF = "sessions.json"  # 这两条里只有它落盘；它没动静就等于没核
+
+
+def file_stamp(path: Path | None) -> dict:
+    """一份文件的长相：在不在、多少字节、内容哈希、改动时间（秒）。
+
+    只比字节不够：同一次写回大小一样、时间戳却变了，说明中途还有人动过它。
+    """
+    if path is None or not path.exists():
+        return {"exists": False, "size": 0, "sha": "", "mtime": 0}
+    data = path.read_bytes()
+    return {
+        "exists": True,
+        "size": len(data),
+        "sha": hashlib.sha256(data).hexdigest()[:16],
+        "mtime": int(path.stat().st_mtime),
+    }
+
+
+def collect_app_state(names=APP_DATA_BACKUP, env=None) -> dict:
+    """把后端那几份文件的字节与指纹一起存下来（跑前跑后各存一份用）。"""
+    state = {}
+    for name in names:
+        p = app_data_file(name, env=env)
+        state[name] = {
+            "path": str(p) if p else None,
+            "stamp": file_stamp(p),
+            "bytes": (p.read_bytes() if p is not None and p.exists() else None),
+        }
+    return state
+
+
+def restore_app_state(state: dict) -> list[str]:
+    """把后端那几份文件收回原样，回「没收回去」的名字清单。
+
+    原来有 → 按原字节写回；原来没有 → 那份是这两条自检自己造出来的，收走。
+    （这不叫删用户文件：用户本来就没有，收走的只是测试自己写下去的。）
+    收完都再读一遍核对，回不去的一律报出来，不许静默算过。
+    """
+    bad: list[str] = []
+    for name, item in state.items():
+        path = Path(item["path"]) if item.get("path") else None
+        if path is None:
+            continue
+        want = item.get("bytes")
+        if want is None:
+            if path.exists():
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+                if path.exists():
+                    bad.append(name)
+            continue
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(want)
+        except OSError:
+            pass
+        if not path.exists() or path.read_bytes() != want:
+            bad.append(name)
+    return bad
+
+
+def residue_bad(before: dict, settled: dict | None) -> list[str]:
+    """收完之后独立再读一遍：还跟跑前存的字节不一样的，就是没收干净。
+
+    这条判据不能省：`restore_app_state` 说自己收回去了，不代表真收回去了——
+    反向验证时就撞过「还原函数什么都不做、却照样回空清单」，判据要是只信它的返回值，
+    那次跑会照样报绿，而我的会话清单其实已经被换成测试那 45 条了。
+    量不到（settled 为 None）也算没收干净：量不到不算核过。
+    """
+    if settled is None:
+        return list(before)
+    bad = []
+    for name, item in before.items():
+        if name not in settled:
+            # 那份文件这次根本没量到（不是「量到没有」），同样算没收干净
+            bad.append(name)
+            continue
+        got = (settled.get(name) or {}).get("bytes")
+        if got != item.get("bytes"):
+            bad.append(name)
+    return bad
+
+
+def app_files_verdict(rows: list[tuple[str, str, str]], wrote: bool,
+                      restore_bad: list[str]) -> tuple[str, str]:
+    """把这批「走真后端」的自检逐层判（纯函数，好测）。
+
+    三层缺一不可：自检本身过没过、它到底有没有在真后端上落盘、我有没有把落下去的收回来。
+    最后那层是我自己的会话清单，收不回来就等于这次跑改了我的东西。
+    """
+    if not rows:
+        return FAIL, "一条自检都没跑（等于没核）"
+    bad = rows_bad(rows)
+    if bad:
+        return FAIL, "；".join(bad)
+    if not wrote:
+        return FAIL, (f"跑完 {APP_WRITE_PROOF} 没冒出来也没变——这说明这两条没在真后端上跑过，"
+                      "还只是无头里那份，等于没核")
+    if restore_bad:
+        return FAIL, "这几份后端文件没收回原样：" + "、".join(restore_bad)
+    return PASS, (f"{len(rows)} 条在真窗口 + 真后端里跑过（{'、'.join(h for h, _, _ in rows)}）；"
+                  f"会话清单确实落了盘（{APP_WRITE_PROOF} 变了），跑完按原字节收回、逐字节核对一致")
+
+
+def probe_app_selftests(exe: Path, version: str, wait: float = FRESH_PROFILE_WAIT,
+                        port: int | None = None, popen=subprocess.Popen, kill=kill_tree,
+                        hooks=A39_SELFTESTS, runner=run_selftest, value=cdp_value,
+                        mkdtemp=tempfile.mkdtemp, sleep=time.sleep,
+                        collect=collect_app_state, restore=restore_app_state) -> tuple[str, str]:
+    """拉起 exe（一次性 profile），把这两条会写盘的自检跑一遍，跑完把后端文件收回原样。"""
+    port = port or free_port()
+    prof = Path(mkdtemp(prefix="portio-appdata-"))
+    before = collect()
+    env = dict(os.environ)
+    # 调试口与一次性 profile 只给这一个子进程；后端目录换不了（见段首），靠存/收兜
+    env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = f"--remote-debugging-port={port}"
+    env["WEBVIEW2_USER_DATA_FOLDER"] = str(prof)
+    started = time.time()
+    proc = popen([str(exe)], cwd=str(exe.parent), env=env,
+                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    rows: list[tuple[str, str, str]] = []
+    err: Exception | None = None
+    try:
+        page = None
+        seen: list[str] = []
+        while time.time() - started < wait:
+            if proc.poll() is not None:
+                return FAIL, f"{time.time() - started:.0f}s 内进程自己退了（码 {proc.returncode}）"
+            targets = cdp_targets(port)
+            if targets:
+                seen = [t.get("url") or "" for t in targets]
+            page = next((t for t in targets
+                         if "tauri.localhost" in (t.get("url") or "")), None)
+            if page:
+                break
+            time.sleep(0.5)
+        if not page:
+            why = f"调试口里的页面一直是 {seen[-1] or '空的'}" if seen else "调试口一直没开"
+            return FAIL, f"{time.time() - started:.0f}s 内没进到界面（{why}）——自检没跑过，等于没核"
+        ws = page["webSocketDebuggerUrl"]
+        deadline = time.time() + wait
+        ver = ""
+        while time.time() < deadline:
+            ver = str(value(ws, VER_EXPR) or "").strip()
+            if ver:
+                break
+            sleep(0.3)
+        if not ver:
+            return FAIL, (f"{time.time() - started:.0f}s 内那个版本串还没出现——"
+                          "界面没进到本应用（空白页也算加载完了，别被它骗）")
+        if version and ver != version:
+            return SKIP, (f"这份 exe 里的界面是 {ver}，仓库是 {version}——不是本版构建，"
+                          "这两条在真后端上跑不跑得动这轮没核到")
+        for hook, expect in hooks:
+            rows.append(runner(ws, hook, expect))
+    except Exception as e:  # noqa: BLE001 - 连不上就把原因报出来，不许当通过
+        err = e
+    finally:
+        if proc.poll() is None:
+            # 后端落盘是「先写 .tmp 再改名」，收进程后多等一会儿再量，不然量到半截
+            kill(proc.pid)
+            sleep(2.0)
+        after = collect()
+        wrote = after[APP_WRITE_PROOF]["stamp"] != before[APP_WRITE_PROOF]["stamp"]
+        restore_bad = restore(before)
+        # 还原函数自己说的不算：收完再独立读一遍，跟跑前存的字节逐份对
+        try:
+            settled = collect()
+        except Exception:  # noqa: BLE001 - 量不到就当没收干净，不许含糊成通过
+            settled = None
+        for name in residue_bad(before, settled):
+            if name not in restore_bad:
+                restore_bad.append(name)
+        shutil.rmtree(prof, ignore_errors=True)
+    if err is not None:
+        return FAIL, f"进了界面但自检没跑成：{err}"
+    return app_files_verdict(rows, wrote, restore_bad)
+
+
+def a39_appdata_selftests() -> tuple[str, str]:
+    """A39：会写盘的那两条自检，在真窗口 + 真后端上跑得动吗，跑完后端文件收得回来吗。"""
+    if sys.platform != "win32":
+        return SKIP, "只在 Windows 上核（mac / linux 没有 WebView2 这套调试口）"
+    exe, kind = find_app_exe(app_exe_dirs())
+    if exe is None:
+        return SKIP, "还没构建 portio-app.exe（先 npm run build 或 tauri build）"
+    status, detail = probe_app_selftests(exe, current_version())
+    return status, f"{detail}（{kind_label(kind)}）"
+
+
 def split_ids(items: list[str]) -> list[str]:
     """把 `A10 A11` / `A10,A11` 拆成编号列表：大写、去空、去重、按出现顺序。
 
@@ -1470,6 +1682,7 @@ def main(argv: list[str]) -> int:
         ("A36", "窗口起来了，界面也真画出来了（走 WebView2 调试口进真 webview：加载完没、版本串是不是这一版、app.js 跑完没、终端对象在不在、DOM 有没有肉）", True),
         ("A37", "那几条自检在真窗口里也跑得动（真后端 + 真偏好里跑 split/clip/fold/ctx/find/find-pane/transfer 七条；跑前存下偏好、跑完一字不差写回去）", True),
         ("A38", "会改设置的那批自检也在真窗口里跑（换一份一次性 profile 跑 panes/layout/density/accent/term-theme/boot/perm/font/theme 九条；跑完核我自己的偏好库一个字节没动、底色文件写回原样）", True),
+        ("A39", "会写盘的那两条自检也在真窗口 + 真后端里跑（#sessions-test / #hosts-test；跑前把 theme.txt / sessions.json / known_hosts 按字节存下，跑完收进程再按原字节收回、逐字节核对；还要证明会话清单确实落了盘）", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -1605,6 +1818,9 @@ def main(argv: list[str]) -> int:
         elif code == "A38":
             # 会改设置的那批：换一份一次性 profile 跑，跑完核我自己的偏好库没被动
             status, detail = a38_fresh_selftests()
+        elif code == "A39":
+            # 会写盘的那两条：真窗口 + 真后端，跑前存字节、跑完收回、再读一遍核对
+            status, detail = a39_appdata_selftests()
         results.append((code, label, status, detail))
         print(f"[{LABEL[status]}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
 
