@@ -2101,6 +2101,8 @@ def a41_real_selftests() -> tuple[str, str]:
 # 种下去那份有没有被反手写成空清单（那是「下次存盘就整份盖掉」的前一步）→ 按原字节收回、独立复量。
 # 再加一趟对照：把种下的收走、回到「还没有这份清单」再拉一次，核「一个副本都不许冒」——
 # 没有这一趟，判据就退化成「看见副本就算过」；哪天急救连好文件也另存，照样绿。
+# 1.0.9-RC10 又加了一层：种下的坏档**原封不动**再拉一次，副本数不许再涨、提示条报的还得是同一份——
+# 急救改成「已有字节相同的副本就复用」，这层就是核它，否则每启动一次就又拷一份，盘上会越攒越多。
 BROKEN_PLANT = b'{"version":1,"records":[{"id":'
 BROKEN_COPY_GLOB = "sessions.json.broken-*"
 BROKEN_TOAST_HINT = "另存为"
@@ -2167,6 +2169,17 @@ def broken_store_verdict(facts: dict | None) -> tuple[str, str]:
     if BROKEN_TOAST_HINT not in str(facts.get("toast") or ""):
         return FAIL, (f"界面上没说清另存成了什么（提示条原话：{facts.get('toast') or '空'}）——"
                       "用户只会觉得「这次没会话」")
+    # 1.0.9-RC10：同一份坏档再拉一次，急救该复用先前那份副本，不许再拷
+    if not facts.get("reuse_ok"):
+        return FAIL, (f"第二次拉起没进到界面（{facts.get('reuse_err') or '没说原因'}）——"
+                      "「同一份坏档不再重复拷」这条没核到")
+    if facts.get("reuse_new"):
+        return FAIL, ("同一份坏档再拉一次又冒了新副本："
+                      + "、".join(facts["reuse_new"])
+                      + "——每启动一次拷一份，app-data 里会越堆越多")
+    if copies[0] not in str(facts.get("reuse_toast") or ""):
+        return FAIL, (f"第二次拉起没说复用的是哪份副本（提示条原话：{facts.get('reuse_toast') or '空'}）"
+                      f"——该报的还是 {copies[0]}，别悄悄换个地方")
     if not facts.get("control_ok"):
         return FAIL, f"好档那一趟没进到界面：{facts.get('control_err') or '没说原因'}"
     if facts.get("restore_bad"):
@@ -2177,6 +2190,7 @@ def broken_store_verdict(facts: dict | None) -> tuple[str, str]:
                       + "——要么急救把好文件也当坏档了，要么上一趟种下去的没收拾干净")
     return PASS, (f"坏档：真后端另存出 {copies[0]}，跟种下去那份逐字节一致；原文件一个字没动；"
                   f"提示条原话「{str(facts.get('toast')).strip()}」；"
+                  f"同一份坏档再拉一次没再冒新副本（报的还是 {copies[0]}）；"
                   "好档对照那趟一个副本都没冒；跑完按跑前状态收回、独立复量一致")
 
 
@@ -2210,7 +2224,8 @@ def probe_broken_store(exe: Path, version: str, wait: float = WEBVIEW_WAIT,
     before = collect()
     before_copies = [p.name for p in broken_copies(root)]
     facts: dict = {"copies": [], "control_new": [], "toast": "", "load_err": "",
-                   "copy_bytes_ok": None, "original_intact": None}
+                   "copy_bytes_ok": None, "original_intact": None,
+                   "reuse_new": [], "reuse_toast": "", "reuse_ok": None, "reuse_err": ""}
     proc = None
     err: Exception | None = None
     try:
@@ -2262,6 +2277,46 @@ def probe_broken_store(exe: Path, version: str, wait: float = WEBVIEW_WAIT,
                                                     and planted.read_bytes() == BROKEN_PLANT)
                 except OSError:
                     facts["original_intact"] = False
+        if proc.poll() is None:
+            kill(proc.pid)
+            sleep(BROKEN_SETTLE)
+        proc = None
+
+        # ---- 第一趟半：同一份坏档再拉一次，不许再拷一份 ----------------
+        # 1.0.9-RC9 之前是「读不懂就拷一份新的」，可用户不去动那份坏文件的话，应用每启动一次
+        # 就再拷一份（毫秒不同，名字也不同），十几次之后 app-data 里就躺着一堆没人看的文件。
+        # 急救改成「已有字节相同的副本就复用那份」，这一趟就是核它：副本数不许再涨，
+        # 提示条报的还得是同一份名字（复用不是悄悄换了个地方）。
+        again_before = [p.name for p in broken_copies(root)]
+        again_port = port or free_port()
+        again_env = dict(env)
+        again_env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = f"--remote-debugging-port={again_port}"
+        proc = popen([str(exe)], cwd=str(exe.parent), env=again_env,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        ws3, why3 = _await_webview_page(proc, again_port, wait, sleep)
+        facts["reuse_err"] = why3
+        facts["reuse_ok"] = ws3 is not None
+        if ws3 is not None:
+            ver3 = ""
+            deadline = time.time() + BROKEN_COPY_WAIT
+            while time.time() < deadline:
+                try:
+                    sig3 = json.loads(value(ws3, BROKEN_EXPR) or "{}")
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    sig3 = {}
+                toast3 = str(sig3.get("toast") or "")
+                if len(toast3) > len(facts["reuse_toast"]):
+                    facts["reuse_toast"] = toast3
+                if not ver3:
+                    ver3 = str(value(ws3, VER_EXPR) or "").strip()
+                if ver3 and BROKEN_TOAST_HINT in facts["reuse_toast"]:
+                    break
+                sleep(0.2)
+            if version and not ver3:
+                return FAIL, (f"第二次拉起后 {BROKEN_COPY_WAIT:.0f}s 内版本串还没出现——"
+                              "这一趟没进到本应用，复用没核到")
+            facts["reuse_new"] = [p.name for p in broken_copies(root)
+                                  if p.name not in again_before]
         if proc.poll() is None:
             kill(proc.pid)
             sleep(BROKEN_SETTLE)

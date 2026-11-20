@@ -71,11 +71,43 @@ fn store_text_is_readable(bytes: &[u8]) -> bool {
     }
 }
 
+/// 目录里有没有一份内容跟 `bytes` 一字不差的旧副本；有就挑最近的那份。
+///
+/// 为什么不干脆每次另存一份新的：用户要是没去动那份坏文件，应用**每启动一次**就会再拷一份
+/// （毫秒时间戳不同，名字也就不同），十几次之后 app-data 里就躺着一堆没人看的文件。
+/// 内容既然一模一样，复用先前那份就够了——提示条报的名字还是那份，用户照样找得到。
+fn existing_broken_copy(dir: &std::path::Path, bytes: &[u8]) -> Option<PathBuf> {
+    let prefix = format!("{FILE_NAME}.broken-");
+    let mut best: Option<PathBuf> = None;
+    for entry in fs::read_dir(dir).ok()?.flatten() {
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !name.starts_with(&prefix) || !path.is_file() {
+            continue;
+        }
+        if fs::read(&path).map(|prev| prev == bytes).unwrap_or(false) {
+            // 名字尾巴是毫秒时间戳：取最大的那份，跟「最近一次另存的」对齐
+            let newer = match &best {
+                Some(prev) => {
+                    entry.file_name().to_string_lossy()
+                        > prev.file_name().unwrap().to_string_lossy()
+                }
+                None => true,
+            };
+            if newer {
+                best = Some(path);
+            }
+        }
+    }
+    best
+}
+
 /// 清单读坏了就先另存一份，返回另存到哪儿；文件本来好好的（或还没有文件）返回 `None`。
 ///
 /// 为什么非另存不可：前端解析不了时只能从空清单起步，而用户随后随手存一条会话，
 /// `sessions_write` 就会把整份文件覆盖掉——原来那些记录再也读不回来，也说不清丢在哪。
 /// 所以先把原文件按字节拷成 `sessions.json.broken-<毫秒时间戳>`，再让前端从空清单开始。
+/// 已经有一份字节相同的副本时不重复拷，直接报那份的名字。
 fn salvage_broken(path: &std::path::Path) -> Result<Option<PathBuf>, String> {
     let bytes = match fs::read(path) {
         Ok(b) => b,
@@ -84,6 +116,12 @@ fn salvage_broken(path: &std::path::Path) -> Result<Option<PathBuf>, String> {
     };
     if store_text_is_readable(&bytes) {
         return Ok(None);
+    }
+    if let Some(prev) = path
+        .parent()
+        .and_then(|dir| existing_broken_copy(dir, &bytes))
+    {
+        return Ok(Some(prev));
     }
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -730,6 +768,83 @@ Host *
             salvage_broken(&path).unwrap().is_some(),
             "版本比程序新的也读不懂"
         );
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn salvage_reuses_a_copy_with_the_same_bytes() {
+        let dir = temp_store_dir("reuse");
+        let path = dir.join(FILE_NAME);
+        let trash = "{\"version\":1,\"records\":[{\"host\":\"web-01.p";
+        fs::write(&path, trash.as_bytes()).unwrap();
+
+        let first = salvage_broken(&path)
+            .expect("坏文件不该报错")
+            .expect("坏文件要另存一份");
+        let count = |dir: &std::path::Path| -> usize {
+            fs::read_dir(dir)
+                .unwrap()
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    e.file_name()
+                        .to_string_lossy()
+                        .starts_with("sessions.json.broken-")
+                })
+                .count()
+        };
+        assert_eq!(count(&dir), 1, "第一次该另存一份");
+
+        // 用户没去动那份坏文件，下次启动再走一遍：字节既然一模一样，就别再拷新的一份
+        let second = salvage_broken(&path)
+            .expect("第二次也不该报错")
+            .expect("还是得说有另存");
+        assert_eq!(count(&dir), 1, "内容相同就不该再冒一份新副本");
+        assert_eq!(second, first, "第二次报的名字得是先前那份，用户照着找得到");
+
+        // 内容换了（比如又坏成另一种样子）才该另存新的一份，不能拿旧副本糊弄
+        fs::write(&path, b"{\"version\":9,\"records\":[]}").unwrap();
+        // 名字尾巴是毫秒时间戳：隔上两毫秒，别让两份副本撞成同一个名字
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let third = salvage_broken(&path).unwrap().expect("新内容也得另存");
+        assert_ne!(third, first, "字节不一样就得另存新的一份");
+        assert_eq!(count(&dir), 2, "新旧两份副本各归各的");
+        assert_eq!(
+            fs::read_to_string(&third).unwrap(),
+            "{\"version\":9,\"records\":[]}",
+            "新副本里放的得是这次的原样字节"
+        );
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn salvage_reuse_ignores_lookalikes_and_unreadable_neighbours() {
+        let dir = temp_store_dir("lookalike");
+        let path = dir.join(FILE_NAME);
+        let trash = b"{\"version\":1,\"records\":[{\"id\":";
+
+        // 名字像、内容也像，但根本不是副本（没有 `.broken-` 那段）：不许拿它当回收站
+        fs::write(dir.join("sessions.json.bak"), trash).unwrap();
+        // 名字对、内容不对：同样不许复用
+        fs::write(dir.join("sessions.json.broken-111"), b"something else").unwrap();
+        // 名字对的是个目录：跳过
+        fs::create_dir_all(dir.join("sessions.json.broken-222")).unwrap();
+
+        fs::write(&path, trash).unwrap();
+        let kept = salvage_broken(&path).unwrap().expect("坏文件要另存");
+        assert!(
+            kept.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("sessions.json.broken-"),
+            "另存的得是副本名：{}",
+            kept.display()
+        );
+        assert_ne!(
+            kept.file_name().unwrap().to_string_lossy(),
+            "sessions.json.broken-111",
+            "内容对不上的旧文件不许被当成这次的副本"
+        );
+        assert_eq!(fs::read(&kept).unwrap(), trash, "副本里得是原样字节");
         fs::remove_dir_all(&dir).ok();
     }
 }

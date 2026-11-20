@@ -3,7 +3,8 @@
 A42 那套跑在无头页里、后端是自检自己扮的替身；A43 才是真 exe、真 app-data、真 `fs::copy`。
 这里钉四层：
 ① 判据本身：每种不合格都得点名（没冒副本 / 冒了两份 / 副本字节不对 / 原文件被改写 /
-   提示条没说清另存成什么 / 好档那趟没进界面 / 好档也另存 / 没收干净），全对才 PASS；
+   提示条没说清另存成什么 / 同一份坏档再拉一次又冒副本 / 复用的名字报错了 /
+   好档那趟没进界面 / 好档也另存 / 没收干净），全对才 PASS；
 ② 盘上那几个小工具：副本只认 `.broken-` 前缀、按名字比新旧、种下去的就是那几字节；
 ③ 接线：计划表 / 分派链里有 A43，且走的是自定义探针，不是无头页；
 ④ 安全：这一项**故意不给**一次性 profile（要的就是我的真偏好），收场只删自己种出来的副本。
@@ -27,6 +28,10 @@ GOOD_FACTS = {
     "copies": ["sessions.json.broken-1795209010083"],
     "copy_bytes_ok": True,
     "original_intact": True,
+    # 同一份坏档再拉一次：该复用先前那份副本，不再拷
+    "reuse_ok": True,
+    "reuse_new": [],
+    "reuse_toast": "会话清单读坏了，原文件已另存为 sessions.json.broken-1795209010083，这次从空清单开始",
     "control_ok": True,
     "control_new": [],
     "restore_bad": [],
@@ -56,6 +61,7 @@ class VerdictTest(unittest.TestCase):
         self.assertIn("sessions.json.broken-1795209010083", detail)
         self.assertIn("逐字节一致", detail)
         self.assertIn("好档对照那趟一个副本都没冒", detail)
+        self.assertIn("没再冒新副本", detail)
 
     def test_nothing_measured_is_red(self):
         status, detail = self.rc.broken_store_verdict(None)
@@ -96,6 +102,29 @@ class VerdictTest(unittest.TestCase):
         status, detail = self.verdict(title="ERR: TypeError")
         self.assertEqual(status, self.rc.FAIL)
         self.assertIn("ERR:", detail)
+
+    def test_reuse_page_missing_is_red(self):
+        status, detail = self.verdict(reuse_ok=False, reuse_err="调试口一直没开")
+        self.assertEqual(status, self.rc.FAIL)
+        self.assertIn("第二次拉起", detail)
+
+    def test_reuse_making_another_copy_is_red(self):
+        # 1.0.9-RC10 的病根：用户不动那份坏文件，应用每启动一次就再拷一份
+        status, detail = self.verdict(reuse_new=["sessions.json.broken-1795209064860"])
+        self.assertEqual(status, self.rc.FAIL)
+        self.assertIn("又冒了新副本", detail)
+        self.assertIn("越堆越多", detail)
+
+    def test_reuse_toast_must_name_the_same_copy(self):
+        status, detail = self.verdict(
+            reuse_toast="会话清单读坏了，原文件已另存为 sessions.json.broken-1795209064860，这次从空清单开始")
+        self.assertEqual(status, self.rc.FAIL)
+        self.assertIn("sessions.json.broken-1795209010083", detail)
+
+    def test_reuse_toast_silent_is_red(self):
+        status, detail = self.verdict(reuse_toast="")
+        self.assertEqual(status, self.rc.FAIL)
+        self.assertIn("第二次拉起没说", detail)
 
     def test_control_page_missing_is_red(self):
         status, detail = self.verdict(control_ok=False, control_err="调试口一直没开")
@@ -177,11 +206,13 @@ class WiringTest(unittest.TestCase):
         last = max(int(n) for n in re.findall(r'\("A(\d+)"', self.text))
         self.assertEqual(int(m.group(1)), last)
 
-    def test_probe_runs_two_rounds(self):
+    def test_probe_runs_three_rounds(self):
         body = self.text.split("def probe_broken_store", 1)[1].split("\ndef ", 1)[0]
         self.assertIn("第一趟", body)
+        self.assertIn("第一趟半", body, "同一份坏档得再拉一次，核它不重复拷")
         self.assertIn("第二趟", body, "得有好档对照，不然『看见副本就算过』")
         self.assertIn("ctl_before", body)
+        self.assertIn("again_before", body, "第二次拉起前得记一份现有副本名，好按差集判")
 
     def test_no_one_off_profile_on_purpose(self):
         # 这一项要的就是我的真偏好与真后端：给一次性 profile 会让它在一份空偏好里绿得漂亮
