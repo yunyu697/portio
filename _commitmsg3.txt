@@ -1,37 +1,4 @@
-feat(theme): 终端配色四档，跟界面主题解耦（自定义第二单元）
+docs(release): 1.0.9-RC7 发版补记（CI / Release / 本地包 / 物料回填）
 
-上一版能换主色，但终端那套色还跟界面主题绑着——界面切浅色，终端也得跟着变白。
-这一版把终端配色单独拎出来：换终端主题界面不动，换界面深浅终端不动。
-
-改法：`ui/tokens.css` 末段开 `html[data-term="<名字>"]` 三套预设——Dracula / Solarized / Nord，
-每套**成套换九个令牌**（--term-bg / --term-fg / --term-selection + --ansi-* 八色）。
-只换底不换字那种事没干：浅底配浅字等于让人瞎。
-不设 data-term 就是「跟界面」，沿用界面深浅那两套。
-
-一条规则写进规范 §10 #42：**预设档里不许放 --term-cursor**。光标永远跟主色走（它归强调色管），
-否则用户会以为"我换了个终端配色，光标颜色怎么也变了"。
-「跟界面」这一档是 delete root.dataset.term，不是写成 data-term="auto"——写 auto 属性一直在，
-浅色档永远回不去（这坑我自己踩了一版才看见）。
-
-界面：设置面板「终端配色」一行四档（跟界面 / Dracula / Solarized / Nord），复用 .seg 形态；
-落盘 portio.termTheme，认不出的值回「跟界面」。另加演示钩子 #term-demo / #term-demo-light 与
-#term-palette*（把 ANSI 八色真写进终端给截图比对，不参与逻辑）。
-
-测试：新增自检 A22 `#term-theme-test`（ui/app.js + scripts/rc.py 分派链 + rc-checklist §1）。
-九条判据：① 默认「跟界面」且 html 上没有 data-term；② 选 Nord 后底/字/ANSI 绿成套换、底色与界面
-底色不同源；③ 界面切浅色后终端那套一动不动（且界面底色确实变浅）；④ 真终端对象的 options.theme
-当场就是 Nord（查在切主题之前，否则 applyTheme 会顺手重挂把 bug 盖住——反向验证时真被盖过一次）；
-⑤ Dracula 与 Nord 两套真的不同；⑥ 回「跟界面」后属性消失、深色下终端底色回到原值；
-⑦ 认不出的值读成「跟界面」；⑧ 换主色不动 Nord 的 ANSI 绿、光标仍跟主色；⑨ seg 里只有 Nord 一颗选中。
-期望值一律拿"改前/改后"互相比，不写死色值（写死就等于把配色又钉回代码里，配色只许住 tokens.css）。
-
-验证：反向验证两条都翻红并点名——
-① 去掉 eachTerm((t) => t.options.theme = terminalTheme())（CSS 换了、真终端没换）
-→ FAIL「真终端的背景就是 Nord 的底："#090c10" ≠ "#2e3440"」「真终端的绿就是 Nord 的绿："#2fb39a" ≠ "#a3be8c"」；
-② 把 delete root.dataset.term 改成 dataset.term = "auto" → FAIL「没选过时 html 上没有 data-term："auto" ≠ undefined」。
-还原后 OK。python scripts/rc.py → 22 通过 / 0 失败（新增 A22 1.2s，全量 50.4s）。
-node --check ui/app.js、check_design_tokens.py（第一版自检里写了 9 处字面色值被它拦下，已改成令牌互比）、
-check_ui_scale.py 全 OK。三张截图核过：Nord / Solarized / 跟界面 三套 ANSI 八色肉眼可分。
-版本进位 v1.0.7-RC3。
-
-未验证：真窗口里没点过（桌面锁着）；无 SSH 服务器，真实会话里大量 ANSI 内容下的观感未验证。
+CI 44801466697 五项 success，Release 44801477165 四项 success；
+四资产 3382501 / 9524372 / 4965942 / 83151352；本机包 3380746 B 已复制到 new-chat 并交付。

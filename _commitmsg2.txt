@@ -1,9 +1,0 @@
-docs(release): press-kit 与 backlog 跟上 1.0.9-RC7 的 Release 真值
-
-- press-kit.md：下载表换成 RC7 四资产（3382501 / 9524372 / 4965942 / 83151352），
-  包名与物料版本串全部对齐；故事线补一句「RC7 只把这一页纸跟手上的包对齐」
-- backlog.md：记一笔「A41 的『这两条自检不写盘』是实测结论、不是承诺」，
-  将来若有连接成功才写会话的路径，结论口径要复查
-
-验证：gh release view v1.0.9-RC7 --json assets 的四个 size 与表内数字逐一对上；
-Release run 44801477165 四项 success，CI run 44801466697 五项 success。

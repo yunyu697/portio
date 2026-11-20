@@ -3836,3 +3836,21 @@ A37 只搬了「不动设置」的七条。剩下九条（主题 / 界面字号 
 
 - 这一版只改文档，界面与逻辑都没动；A1–A41 的绿与 RC6 同源，不代表新核过什么。
 - 仍是「没装到机器上跑过」；真实 SSH / PTY / SFTP 缺测试服务器，未验证。
+
+## 2026-11-21 · v1.0.9-RC7 · 发版补记
+
+- 提交 `7ab3f57`（发布说明回填 + 版本进位 + 十张物料重出）已 push main，tag `v1.0.9-RC7` 已推；
+  CI run `44801466697` **五项全 success**（version rule / fmt·clippy·test / windows / ubuntu / macos），
+  Release run `44801477165` **gate + 三平台 build 四项全 success**。这一轮等得比上次快，没有撞上慢轮。
+- Release `Portio 1.0.9-RC7`：`prerelease:true`、`draft:false`，四资产
+  exe **3382501 B** / dmg **9524372 B** / deb **4965942 B** / AppImage **83151352 B**
+  （对照 1.0.9-RC6：3381229 / 9523143 / 4964870 / 83151352）。AppImage 一字节没变——这一版只换了版本串，
+  三个平台里 Linux 那份是 relink 后体积不变，不算异常。
+- 本机 release 包 **3380746 B**（源 `D:\portio-target\release\bundle\nsis\`），与 CI 那份差 1755 B
+  （打包器标记与压缩抖动的老差距）。已复制到 `…\new-chat\Portio_1.0.9-RC7_x64-setup.exe` 并交付；
+  `new-chat` 里 RC5 / RC6 两个旧包顺手删了（它们都在 Releases 上，本地不用留三份）。
+- 物料回填随 `29dc536` 提交：`press-kit` 四资产与包名全对 RC7，`backlog` 记下「A41 的『不写盘』是实测、
+  不是承诺」。
+- 下一轮：物料已对齐，回到没人自动核的地方——安装包装出来那份能不能跑（两条路仍等你拍板）、
+  真服务器端到端、mac / linux；`CHANGELOG` 与 `release-notes` 的版本串此后每轮必须一起动，
+  这轮漂了六版才被发现。
