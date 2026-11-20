@@ -3730,3 +3730,49 @@ A37 只搬了「不动设置」的七条。剩下九条（主题 / 界面字号 
 - 0.4 gate 的自动化一侧现在是 40 项；界面自检只剩 `#net-fail-test` / `#connect-entry-test`
   没进真窗口。剩下的缺口仍是那两条：装到机器上跑、真服务器。
 - 下一轮：借 A39 的存/收/核去确认 `#net-fail-test` / `#connect-entry-test` 在真窗口里不落盘。
+
+## 2026-11-21 · v1.0.9-RC6
+
+**做了什么**
+
+最后两条只在无头里跑的自检（`#net-fail-test` / `#connect-entry-test`）搬进真窗口，新增 **A41**。
+本以为要照抄 A39 那套「存 / 收 / 核」，结果先量出一件以前没人量过的事：**这两条根本不写盘**——
+`#net-fail-test` 塞的是后端替身，`#connect-entry-test` 只点入口不连主机，跑完 `sessions.json` 连冒都没冒出来、
+`theme.txt` 一个字节没动。于是判据重心换了地方：从 1.0.9-RC3 起凡要改设置的自检都换一次性 profile，
+这套法子用错地方，这两条会在一份空偏好里跑得漂漂亮亮，却跟我的会话清单一句话都没说上。
+所以先证现场——页面里真有 Tauri 桥、`localStorage` 里真有我的 `portio.theme`、界面底色跟应用数据目录的
+`theme.txt` 对得上、再让后端真回一次 `sessions_read`；证不到就不许报绿。收 / 核那套仍然留着，但结论里写明它是护栏。
+
+顺带把「头部编号写死」那条测试（`test_rc_narrow.py` 断言 `A1–A40`）改成按计划表里最大的编号比——
+这轮它正好把 A41 的存在当成错误，是测试替错误背书的那一类写法。
+
+**验证证据**
+
+- `python scripts\rc.py`（全量 A1–A41）：**41 通过 / 0 失败 / 0 未验，344.3s，退出码 0**（`D:\portio-rc-full29.log`）。
+- A41 `4.3s`：`2 条在真窗口 + 真后端里跑过（net-fail-test、connect-entry-test）；跑完 theme.txt / sessions.json /
+  known_hosts 一个字节没动（这两条自检这回没写盘——收回这套是护栏，不是它们的证据）（release 构建）`。
+- 反向验证两条（`_rev41.py`，跑完已删）：
+  ① 把子进程换成一次性空 profile → `FAIL … 界面底色是「dark」、真 app-data 里是「light」——两边对不上，
+     这轮没读我的真偏好`（自检全绿也照样判红）；② 故意在自检过程中往 `sessions.json` 写一笔、还原做成空转 →
+     `FAIL … 这几份后端文件没收回原样：sessions.json`；同一笔写、还原照做 → 绿，并如实写「跑完这几份被动过
+     （sessions.json），已按跑前状态收回」。
+- 单测：新增 `scripts/test_rc_quiet.py` **41 条**；全批 `scripts/test_*.py` **377 条**（跳 1），
+  跟 CI 的 `unittest discover` 同口径（A35 实测 377 条通过）。
+- `python scripts\check_versions.py` → `OK v1.0.9-RC6（7 处一致；最小与补丁位均在 0–10）`；
+  `check_site.py` → `OK 说明页 16 项设置 / 40 个档位与代码对上，版本 v1.0.9-RC6`。
+- `python scripts\shots.py` → 十张 2360×1380 全过，`清单 OK …（10 张，版本 1.0.9-RC6）`，1.58 MiB。
+- 打包 `Portio_1.0.9-RC6_x64-setup.exe` **3382412 字节**；A34 包里那份 `13709312` 字节与构建产物逐字节一致。
+
+**下一步**
+
+- 界面自检 21 条至此全部在真窗口里跑过；剩下的是「安装包装出来那份能不能跑」（两条路等拍板）、
+  真服务器端到端、mac / linux 上那几条没有调试口的核验。
+- 机器侧：A1 这轮又跑到 164.4s（97 passed），整跑 344.3s，比 RC5 那次久，属于机器吃力不是代码退化。
+
+**未验**
+
+- A41 只在 Windows 上核；mac / linux 没有 WebView2 那套调试口，报未验。
+- 这两条自检的「不写盘」是实测结论（`sessions.json` / `theme.txt` 跑完没变），不代表它们在别的路径上
+  （比如以后加上「连接成功才写会话」）也不会写——收 / 核那套护栏仍然每轮在跑。
+- 仍是「没装到机器上跑过」；真实 SSH / PTY / SFTP 缺测试服务器，未验证。
+

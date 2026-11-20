@@ -319,8 +319,14 @@ class WiredTest(unittest.TestCase):
         self.assertEqual(rc.NARROW_VIEWPORTS[0][0], 1024)
         self.assertEqual(rc.NARROW_VIEWPORTS[1][0], 900)
 
-    def test_header_counts_to_a40(self):
-        self.assertIn("A1–A40", self.text)
+    def test_header_counts_to_last_item(self):
+        # 别写死编号：每加一项就得改一次测试，改漏了这条测试反而替错误背书
+        import re
+
+        m = re.search(r"A1–A(\d+)", self.text)
+        self.assertIsNotNone(m, "头部那句「对应 A1–A<最后一项>」不见了")
+        last = max(int(n) for n in re.findall(r'\("A(\d+)"', self.text))
+        self.assertEqual(int(m.group(1)), last)
 
     def test_uses_emulation_command(self):
         self.assertIn("Emulation.setDeviceMetricsOverride", self.text)

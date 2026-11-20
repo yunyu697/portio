@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / 未验。
 
-对应 docs/rc-checklist.md §1 的 A1–A40。以前这些步骤散在日志里，每轮都要手打一遍命令，
+对应 docs/rc-checklist.md §1 的 A1–A41。以前这些步骤散在日志里，每轮都要手打一遍命令，
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
 
 用法：
@@ -42,6 +42,11 @@ Known Folder API，不认进程环境变量（实测新目录里什么都没长�
 `Emulation.setDeviceMetricsOverride` 把布局视口换成 1024 / 900 两档再跑 `#narrow-test`——
 这条命令一断连接就失效（`cdp_call` 每次都是新会话），所以两档得在一根长连的会话里跑完。
 判据拿界面自报的 innerWidth 跟要求的对：对不上就是拿一档宽窗冒充窄窗，自检再绿也不算核过。
+**最后两条自检搬进真窗口，还得证明不是在一份空偏好里跑的**：A41 跑 `#net-fail-test` 与
+`#connect-entry-test`（后者起手会把内存里的会话清单清空），沿用 A39 的存 / 收 / 核，
+另加一层 A39 没有的：页面里真有 Tauri 桥、localStorage 里真有我的偏好、界面底色跟真 app-data 的
+`theme.txt` 对得上、后端真回了一次 `sessions_read`。否则这两条在一份一次性 profile 里跑得再绿，
+也跟我的会话清单一句话都没说上。
 环境变量可覆盖探测结果：PORTIO_CHROME、PORTIO_NODE、PORTIO_CARGO、PORTIO_7Z。
 """
 
@@ -1862,6 +1867,216 @@ def a40_narrow_viewports() -> tuple[str, str]:
     return status, f"{detail}（{kind_label(kind)}）"
 
 
+# ---------- A41：最后两条自检也进真窗口，并证明它们没落到我的盘上 -------------
+
+# A37–A40 之后只剩这两条：#net-fail-test 塞一个会抛错的后端替身，核「后端出事时界面有没有话说」；
+# #connect-entry-test 把三条连接入口逐个点一遍，还钉住「新建连接必须从空白起」。
+# 两条在真窗口里都会摸到真后端，而第二条起手就把内存里的会话清单清空（`sessionStore.records = []`）——
+# 盘上那份要是跟着被写空，我存过的会话就没了。所以复用 A39 那套：
+# 跑前把 theme.txt / sessions.json / known_hosts 按字节存下 → 跑 → 收进程 → 按原字节写回 → 独立再读一遍核对。
+# A39 没有的一层是「证明这轮真跑在我的真后端 / 真偏好上」：要是错跑进 A38 那种一次性 profile，
+# 两条自检照样能绿（界面画得出来），可它们根本没碰我的会话清单，那叫「没核」。
+# 认的凭据三样：页面里真有 Tauri 桥、localStorage 里真有我的偏好（空 profile 是空的）、
+# 界面底色跟真 app-data 里 theme.txt 的字节对得上；再真读一次后端（sessions_read），回的字节数记进结论。
+A41_SELFTESTS = (
+    ("net-fail-test", "NET-FAIL-SELFTEST-OK"),
+    ("connect-entry-test", "CONNECT-ENTRY-SELFTEST-OK"),
+)
+A41_PROOF_EXPR = (
+    "JSON.stringify({bridge:!!(window.__TAURI__&&window.__TAURI__.core&&"
+    "typeof window.__TAURI__.core.invoke==='function'),"
+    "keys:localStorage.length,"
+    "themePref:localStorage.getItem('portio.theme'),"
+    "themeNow:document.documentElement.dataset.theme})"
+)
+# 只读一次真后端：能回出字节数，说明后端是活的；回 ERR 开头就是没应答，不许含糊成通过
+A41_BACKEND_EXPR = ("window.__TAURI__.core.invoke('sessions_read',{})"
+                    ".then(t=>(''+(t||'')).length).catch(e=>'ERR '+(e&&e.message?e.message:e))")
+
+
+def backend_alive(value) -> tuple[bool, str]:
+    """那次只读调用到底回了什么：回数字就是后端活着，回了 ERR / 空的就不是。"""
+    if value is None or isinstance(value, bool):
+        return False, "后端没回话（sessions_read 一句都没回来）"
+    text = str(value)
+    if text.startswith("ERR "):
+        return False, "后端回了个错：" + text[4:]
+    try:
+        n = int(text)
+    except ValueError:
+        return False, f"后端回的说不清：{text[:40]}"
+    return True, f"{n} 字节"
+
+
+def real_proof_bad(proof: dict | None, theme_bytes: bytes | None,
+                   alive: tuple[bool, str] | None) -> list[str]:
+    """这轮到底有没有跑在我的真后端 / 真偏好上（纯函数，好测）。
+
+    这条判据不是形式主义：A38 起就在用一次性 profile，写错一个环境变量，
+    这两条自检会在一份空偏好里跑得照样漂亮，可它们跟我的会话清单一句话都没说上。
+    """
+    if not proof:
+        return ["页面里量不到现场（真后端、真偏好一个都没读到）"]
+    if not proof.get("bridge"):
+        return ["这个页面没有 Tauri 桥——跑的是浏览器预览，不是真窗口"]
+    bad: list[str] = []
+    if alive is None:
+        bad.append("没敢问后端一句（sessions_read 那次没跑到）")
+    elif not alive[0]:
+        bad.append(alive[1])
+    if int(proof.get("keys") or 0) <= 0:
+        bad.append("localStorage 是空的——这轮跑在一次性 profile 上，不是我的真偏好")
+    if not proof.get("themePref"):
+        bad.append("偏好里没有 portio.theme——我的真偏好没读进来")
+    if theme_bytes is None:
+        bad.append("真 app-data 里没有 theme.txt 可对")
+    else:
+        want = theme_bytes.decode("utf-8", "ignore").strip()
+        if str(proof.get("themeNow") or "") != want:
+            bad.append(f"界面底色是「{proof.get('themeNow')}」、真 app-data 里是「{want}」——"
+                       "两边对不上，这轮没读我的真偏好")
+    return bad
+
+
+def quiet_verdict(rows: list[tuple[str, str, str]], proof_bad: list[str],
+                  restore_bad: list[str], changed: list[str] | None = None) -> tuple[str, str]:
+    """把这两条自检逐层判（纯函数，好测）：过没过、是不是真窗口、有没有留下东西。
+
+    `changed` 是「跑完到底有没有东西被动过」的实测清单。它有用是因为这两条自检**本来就不该写盘**：
+    实测它们一张纸都不写，那「收得回来」这条就永远成立、永远绿的——把「没动过」跟「动过但收回来了」
+    分开写，才不至于让人以为这条判据在替它们担什么保。
+    """
+    if not rows:
+        return FAIL, "一条自检都没跑（等于没核）"
+    bad = rows_bad(rows)
+    if bad:
+        return FAIL, "；".join(bad)
+    if proof_bad:
+        return FAIL, "没证明这轮跑在我的真后端 / 真偏好上：" + "；".join(proof_bad)
+    if restore_bad:
+        return FAIL, "这几份后端文件没收回原样：" + "、".join(restore_bad)
+    if changed:
+        return PASS, (f"{len(rows)} 条在真窗口 + 真后端里跑过（{'、'.join(h for h, _, _ in rows)}）；"
+                      f"跑完这几份被动过（{'、'.join(changed)}），已按跑前状态收回、独立复量一致")
+    return PASS, (f"{len(rows)} 条在真窗口 + 真后端里跑过（{'、'.join(h for h, _, _ in rows)}）；"
+                  "跑完 theme.txt / sessions.json / known_hosts 一个字节没动"
+                  "（这两条自检这回没写盘——收回这套是护栏，不是它们的证据）")
+
+
+def probe_quiet_selftests(exe: Path, version: str, wait: float = FRESH_PROFILE_WAIT,
+                          port: int | None = None, popen=subprocess.Popen, kill=kill_tree,
+                          hooks=A41_SELFTESTS, runner=run_selftest, value=cdp_value,
+                          call=cdp_call, sleep=time.sleep, collect=collect_app_state,
+                          restore=restore_app_state) -> tuple[str, str]:
+    """拉起 exe（真 profile、真 app-data），把这两条自检跑一遍，跑完把后端文件收回原样。"""
+    port = port or free_port()
+    before = collect()
+    theme_before = (before.get("theme.txt") or {}).get("bytes")
+    env = dict(os.environ)
+    # 只给调试口；**故意不给** WEBVIEW2_USER_DATA_FOLDER——这一轮要的就是我的真偏好
+    env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = f"--remote-debugging-port={port}"
+    started = time.time()
+    proc = popen([str(exe)], cwd=str(exe.parent), env=env,
+                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    rows: list[tuple[str, str, str]] = []
+    proof: dict | None = None
+    alive: tuple[bool, str] | None = None
+    restored: bool | None = None
+    changed: list[str] = []
+    err: Exception | None = None
+    restore_bad: list[str] = []
+    try:
+        page = None
+        seen: list[str] = []
+        while time.time() - started < wait:
+            if proc.poll() is not None:
+                return FAIL, f"{time.time() - started:.0f}s 内进程自己退了（码 {proc.returncode}）"
+            targets = cdp_targets(port)
+            if targets:
+                seen = [t.get("url") or "" for t in targets]
+            page = next((t for t in targets
+                         if "tauri.localhost" in (t.get("url") or "")), None)
+            if page:
+                break
+            time.sleep(0.5)
+        if not page:
+            why = f"调试口里的页面一直是 {seen[-1] or '空的'}" if seen else "调试口一直没开"
+            return FAIL, f"{time.time() - started:.0f}s 内没进到界面（{why}）——自检没跑过，等于没核"
+        ws = page["webSocketDebuggerUrl"]
+        deadline = time.time() + wait
+        ver = ""
+        while time.time() < deadline:
+            ver = str(value(ws, VER_EXPR) or "").strip()
+            if ver:
+                break
+            sleep(0.3)
+        if not ver:
+            return FAIL, (f"{time.time() - started:.0f}s 内那个版本串还没出现——"
+                          "界面没进到本应用（空白页也算加载完了，别被它骗）")
+        if version and ver != version:
+            return SKIP, (f"这份 exe 里的界面是 {ver}，仓库是 {version}——不是本版构建，"
+                          "这两条在真窗口里跑不跑得动这轮没核到")
+        try:
+            proof = json.loads(value(ws, A41_PROOF_EXPR) or "{}")
+        except (json.JSONDecodeError, TypeError, ValueError):
+            proof = None
+        try:
+            raw = call(ws, "Runtime.evaluate",
+                       {"expression": A41_BACKEND_EXPR, "returnByValue": True,
+                        "awaitPromise": True})
+            alive = backend_alive((((raw.get("result") or {}).get("result") or {}).get("value")))
+        except Exception:  # noqa: BLE001 - 问不到后端就当没证到，绝不默认「活着」
+            alive = None
+        ls_before = value(ws, WEBVIEW_BACKUP_EXPR) or "{}"
+        for hook, expect in hooks:
+            rows.append(runner(ws, hook, expect))
+        ls_after = value(ws, WEBVIEW_BACKUP_EXPR) or "{}"
+        if not settings_same(ls_after, ls_before):
+            # 这两条本来不该动偏好；真动了就原样写回去，再确认一次真回去了
+            value(ws, localstorage_restore_expr(ls_before))
+            restored = settings_same(value(ws, WEBVIEW_BACKUP_EXPR) or "{}", ls_before)
+    except Exception as e:  # noqa: BLE001 - 连不上就把原因报出来，不许当通过
+        err = e
+    finally:
+        if proc.poll() is None:
+            # 后端落盘是「先写 .tmp 再改名」，收进程后多等一会儿再量，不然量到半截
+            kill(proc.pid)
+            sleep(2.0)
+        # 收之前先量一遍：这两条到底动没动我的盘（不动就跟「动过但收回来了」分开记）
+        try:
+            touched = collect()
+            changed = [name for name, item in before.items()
+                       if (touched.get(name) or {}).get("bytes") != item.get("bytes")]
+        except Exception:  # noqa: BLE001 - 量不到就当「不知道」，结论里不夸口
+            changed = []
+        restore_bad = restore(before)
+        # 还原函数自己说的不算：收完再独立读一遍，跟跑前存的字节逐份对
+        try:
+            settled = collect()
+        except Exception:  # noqa: BLE001 - 量不到就当没收干净
+            settled = None
+        for name in residue_bad(before, settled):
+            if name not in restore_bad:
+                restore_bad.append(name)
+    if err is not None:
+        return FAIL, f"进了界面但自检没跑成：{err}"
+    bad = real_proof_bad(proof, theme_before, alive)
+    if restored is False:
+        bad.append("跑完没把偏好写回去——我的偏好被自检挪动了")
+    return quiet_verdict(rows, bad, restore_bad, changed)
+
+
+def a41_real_selftests() -> tuple[str, str]:
+    """A41：最后两条自检，在真窗口 + 真后端里跑得动吗，跑完我的盘有没有被改。"""
+    if sys.platform != "win32":
+        return SKIP, "只在 Windows 上核（mac / linux 没有 WebView2 这套调试口）"
+    exe, kind = find_app_exe(app_exe_dirs())
+    if exe is None:
+        return SKIP, "还没构建 portio-app.exe（先 npm run build 或 tauri build）"
+    status, detail = probe_quiet_selftests(exe, current_version())
+    return status, f"{detail}（{kind_label(kind)}）"
+
+
 def split_ids(items: list[str]) -> list[str]:
     """把 `A10 A11` / `A10,A11` 拆成编号列表：大写、去空、去重、按出现顺序。
 
@@ -1974,6 +2189,7 @@ def main(argv: list[str]) -> int:
         ("A38", "会改设置的那批自检也在真窗口里跑（换一份一次性 profile 跑 panes/layout/density/accent/term-theme/boot/perm/font/theme 九条；跑完核我自己的偏好库一个字节没动、底色文件写回原样）", True),
         ("A39", "会写盘的那两条自检也在真窗口 + 真后端里跑（#sessions-test / #hosts-test；跑前把 theme.txt / sessions.json / known_hosts 按字节存下，跑完收进程再按原字节收回、逐字节核对；还要证明会话清单确实落了盘）", True),
         ("A40", "#narrow-test 在真窗口里按 1024 / 900 两档视口跑（调试口改布局视口，两档得一根长连胜跑完；判据拿界面自报的 innerWidth 对我要求的那档，对不上就是拿宽窗冒充窄窗；一次性 profile 里跑，核我自己的偏好库没被动）", True),
+        ("A41", "最后两条自检也在真窗口 + 真后端里跑（#net-fail-test / #connect-entry-test；先证明这轮真在我的真偏好与真后端上（Tauri 桥、真偏好、底色对得上、sessions_read 真回话），跑前存下 theme.txt / sessions.json / known_hosts、跑完按原字节收回并独立复量）", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -2115,6 +2331,9 @@ def main(argv: list[str]) -> int:
         elif code == "A40":
             # 窄窗那条：真窗口 + 两档视口（一根长连会话里设视口、导航、读标题）
             status, detail = a40_narrow_viewports()
+        elif code == "A41":
+            # 最后两条：真窗口 + 真后端，先证「真跑在我的真偏好上」，再存/收/核后端三份文件
+            status, detail = a41_real_selftests()
         results.append((code, label, status, detail))
         print(f"[{LABEL[status]}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
 
