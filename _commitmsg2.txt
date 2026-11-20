@@ -1,13 +1,9 @@
-docs(release): 对外说法与回归记录跟到 1.0.7-RC1
+docs(release): press-kit 与 backlog 跟上 1.0.9-RC7 的 Release 真值
 
-包已发出去（run 44530154521 四 job success），把对外文档与记录一起对上：
+- press-kit.md：下载表换成 RC7 四资产（3382501 / 9524372 / 4965942 / 83151352），
+  包名与物料版本串全部对齐；故事线补一句「RC7 只把这一页纸跟手上的包对齐」
+- backlog.md：记一笔「A41 的『这两条自检不写盘』是实测结论、不是承诺」，
+  将来若有连接成功才写会话的路径，结论口径要复查
 
-- README 版本段 → v1.0.7-RC1
-- docs/release-notes.md 当前状态补一句这一版修了什么 + 三处产物名
-- docs/site/index.html 五处版本串
-- docs/press-kit.md 下载表换 1.0.7-RC1 四产物与体积（3357107 / 9473551 / 4942768 / 83134968）
-- docs/rc-checklist.md 最近一次整跑改 1.0.7-RC1 / 20 项 / 137.6s，§7 补这一行
-- docs/autopilot-log.md 追加当轮记录（反向验证打出的断言原文、main CI 五项全绿、四资产体积）
-
-验证：check_versions.py → OK v1.0.7-RC1；Select-String 复查 README / release-notes / press-kit / site
-已无 1.0.6-RC10 残留（CHANGELOG 与清单里的历史行保持原样，属历史记录）。
+验证：gh release view v1.0.9-RC7 --json assets 的四个 size 与表内数字逐一对上；
+Release run 44801477165 四项 success，CI run 44801466697 五项 success。
