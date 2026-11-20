@@ -2944,3 +2944,15 @@ xterm 自己会绕过折行把整串选上。
 - 无 SSH 服务器：长命令在真实 PTY 里的折行宽度（远端 `COLUMNS` 与本机 `cols` 是否一致）没端到端验过，
   只在自检页构造的 buffer 上验了折行本身。
 
+## 2026-11-20 · v1.0.8-RC4 · 发版补记
+
+- 提交 `8ee16cd` 已 push main，tag `v1.0.8-RC4` 已推；main CI run `44666006158` **六项全 success**
+  （version rule / fmt·clippy·test / windows / ubuntu / macos），Release run `44666014600`
+  **gate + 三平台 build 四项全 success**。
+- Release `Portio 1.0.8-RC4`：`prerelease:true`、`draft:false`，四资产
+  exe **3382348 B** / dmg **9523743 B** / deb **4965934 B** / AppImage **83155448 B**
+  （对照 RC3：3380114 / 9520126 / 4966838 / 83147256；只动了 `ui/app.js` 与脚本，包体量的增减都在几 KB 量级）。
+- 本地 NSIS 包 **4588609 B**（源 `D:\portio-target\debug\bundle\nsis\Portio_1.0.8-RC4_x64-setup.exe`）
+  → 复制到 `…\new-chat\Portio_1.0.8-RC4_x64-setup.exe` 并交付。
+- press-kit 下载表、release-notes 的版本段都已回填成本次 Release 的真值；十张首发图随版本重出到
+  `1.0.8-RC4`（A31 认的就是这套）。
