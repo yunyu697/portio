@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / 未验。
 
-对应 docs/rc-checklist.md §1 的 A1–A42。以前这些步骤散在日志里，每轮都要手打一遍命令，
+对应 docs/rc-checklist.md §1 的 A1–A43。以前这些步骤散在日志里，每轮都要手打一遍命令，
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
 
 用法：
@@ -51,6 +51,12 @@ Known Folder API，不认进程环境变量（实测新目录里什么都没长�
 合法 JSON 但不是一份清单，这几种「读不懂」都得先让后端把原文件另存成 `sessions.json.broken-<毫秒>`，
 再让界面从空清单起步。不然用户随后随手存一条会话，`sessions_write` 就把整份盖掉，原来那些记录
 再也找不回来。反向验证两处：去掉另存那一步、把写盘口子改回只认真桥，都各自翻红。
+**可 A42 的后端是自检自己扮的**：A42 跑在无头页里、后端是 `fakeInvoke` 替身，`salvage_broken`
+真去 `fs::copy` 一次这件事一条真路径都没走过——1.0.9-RC8 我亲手换过一截坏 JSON 验过一次，
+那是一把一次性手活，不进每轮。A43 把那次手活写成门禁：把真 app-data 的 `sessions.json` 先按字节存下、
+种一截「断电写到一半」的 JSON、拉起 release 那份 exe，核真后端有没有另存出 `.broken-<毫秒>`、
+副本跟种下去的一字不差、种下去那份有没有被反手写成空清单，再拿「还没有这份清单」跑一趟对照
+（好档一个副本都不许冒），跑完按原字节收回、独立复量。
 环境变量可覆盖探测结果：PORTIO_CHROME、PORTIO_NODE、PORTIO_CARGO、PORTIO_7Z。
 """
 
@@ -202,6 +208,9 @@ def with_path(bin_dir: str | None) -> dict:
 RESOURCE_SPOTS = ("out of memory", "页面文件太小", "os error 1455",
                   "cannot allocate memory", "STATUS_STACK_BUFFER_OVERRUN")
 A1_RETRY_JOBS = (2, 1)
+# 2026-11-21 实测：整跑里 A1 撞红（rustc 退出码 0xc0000409），同一份代码趁机器空下来 `-j 1`
+# 单跑 0 退出。差别就是重跑时机器还没缓过来——所以降并行度之前先歇一会儿，别一格接一格地撞。
+A1_RETRY_SLEEP = 15
 
 
 def resource_bad(out: str) -> bool:
@@ -232,7 +241,8 @@ def a1_cargo_test() -> tuple[str, str]:
         if proc.returncode == 0 or not resource_bad(proc.stdout + proc.stderr):
             # 过了，或者报的是代码问题：后一种绝不拿「降并行度重跑」糊过去
             break
-        note = f"第一次是机器扛不住（{resource_reason(proc.stdout + proc.stderr)}），降到 {jobs} 路重跑"
+        note = f"第一次是机器扛不住（{resource_reason(proc.stdout + proc.stderr)}），歇 {A1_RETRY_SLEEP}s 再降到 {jobs} 路重跑"
+        time.sleep(A1_RETRY_SLEEP)
         proc = run([cargo, "test", "--workspace", "-j", str(jobs)], timeout=1200, env=env)
     passed = failed = 0
     for m in re.finditer(r"test result: \w+\. (\d+) passed; (\d+) failed", proc.stdout):
@@ -2081,6 +2091,262 @@ def a41_real_selftests() -> tuple[str, str]:
     return status, f"{detail}（{kind_label(kind)}）"
 
 
+# ---------- A43：坏档急救在真 exe 上真跑一遍（A42 之前只在无头页 + 替身里核过） ----------
+
+# A42 核的是「读不懂时要不要另存、另存之后还存不存得进新会话」这些前端决策，可它跑在无头页里、
+# 后端是自检自己扮的 `fakeInvoke`：`salvage_broken` 真去 `fs::copy` 一次这件事，一条真路径都没走过。
+# 1.0.9-RC8 我亲手把真 app-data 的清单换成一截坏 JSON 验过一次，可那是一把一次性手活，不进每轮。
+# 这一项把那次手活写成门禁：先按字节存下真 app-data 的三份文件 → 种一截「断电写到一半」的清单 →
+# 拉起 release 那份 exe → 看真后端有没有另存出 `.broken-<毫秒>`、内容跟种下去的一字不差、
+# 种下去那份有没有被反手写成空清单（那是「下次存盘就整份盖掉」的前一步）→ 按原字节收回、独立复量。
+# 再加一趟对照：把种下的收走、回到「还没有这份清单」再拉一次，核「一个副本都不许冒」——
+# 没有这一趟，判据就退化成「看见副本就算过」；哪天急救连好文件也另存，照样绿。
+BROKEN_PLANT = b'{"version":1,"records":[{"id":'
+BROKEN_COPY_GLOB = "sessions.json.broken-*"
+BROKEN_TOAST_HINT = "另存为"
+BROKEN_COPY_WAIT = 8.0
+BROKEN_SETTLE = 2.0
+BROKEN_EXPR = ("JSON.stringify({title:document.title,"
+               "toast:(document.getElementById('toast')||{}).textContent||''})")
+
+
+def app_data_dir(identifier: str = APP_IDENTIFIER, env=None) -> Path | None:
+    """真 app-data 目录（`theme.txt` 就在这儿）。"""
+    base = (env if env is not None else os.environ).get("APPDATA")
+    if not base:
+        return None
+    return Path(base) / identifier
+
+
+def broken_copies(root: Path | None) -> list[Path]:
+    """真 app-data 里现成躺着的另存副本，按名字排，好跟跑前那份清单比。"""
+    if root is None or not root.exists():
+        return []
+    return sorted(p for p in root.glob(BROKEN_COPY_GLOB) if p.is_file())
+
+
+def plant_broken_store(root: Path | None, payload: bytes = BROKEN_PLANT) -> Path | None:
+    """把一截半截写入的清单种进真 app-data，回种在哪。
+
+    这是整个门禁里唯一会写我盘的一步，而且只写 `sessions.json` 这一份；
+    种之前 `collect_app_state` 已经把原字节存下，收场按原字节收回。
+    """
+    if root is None:
+        return None
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / "sessions.json"
+    path.write_bytes(payload)
+    return path
+
+
+def new_copies(root: Path | None, before_names: list[str]) -> list[Path]:
+    """跑完冒出来的副本：名字不在跑前那份清单里就算新的。"""
+    return [p for p in broken_copies(root) if p.name not in before_names]
+
+
+def broken_store_verdict(facts: dict | None) -> tuple[str, str]:
+    """把这一趟逐层判（纯函数，好测）。任一层不成立都点名，不许含糊成通过。"""
+    if not facts:
+        return FAIL, "这一轮什么都没量到（没跑到真 exe 上，等于没核）"
+    why = str(facts.get("load_err") or "")
+    if why:
+        return FAIL, f"坏档那一趟没进到界面：{why}"
+    if "ERR:" in str(facts.get("title") or ""):
+        return FAIL, f"界面自己报了红：{facts.get('title')}"
+    copies = list(facts.get("copies") or [])
+    if not copies:
+        return FAIL, ("把清单种成半截之后再拉起来，一个副本都没冒出来——"
+                      "急救没在真后端上跑过，这条还是没核")
+    if len(copies) > 1:
+        return FAIL, f"一截坏清单冒出 {len(copies)} 份副本（{'、'.join(copies)}），说不清哪份算数"
+    if not facts.get("copy_bytes_ok"):
+        return FAIL, f"副本 {copies[0]} 的内容跟种下去那份按字节对不上——拷的不是原文件"
+    if not facts.get("original_intact"):
+        return FAIL, ("种下去那份 sessions.json 被改写了（下一步一存新会话就会整份盖掉）——"
+                      "另存之后原文件得一个字不动")
+    if BROKEN_TOAST_HINT not in str(facts.get("toast") or ""):
+        return FAIL, (f"界面上没说清另存成了什么（提示条原话：{facts.get('toast') or '空'}）——"
+                      "用户只会觉得「这次没会话」")
+    if not facts.get("control_ok"):
+        return FAIL, f"好档那一趟没进到界面：{facts.get('control_err') or '没说原因'}"
+    if facts.get("restore_bad"):
+        return FAIL, "这几份后端文件没收回原样：" + "、".join(facts["restore_bad"])
+    if facts.get("control_new"):
+        return FAIL, ("好档（还没有这份清单）拉起来又冒了副本："
+                      + "、".join(facts["control_new"])
+                      + "——要么急救把好文件也当坏档了，要么上一趟种下去的没收拾干净")
+    return PASS, (f"坏档：真后端另存出 {copies[0]}，跟种下去那份逐字节一致；原文件一个字没动；"
+                  f"提示条原话「{str(facts.get('toast')).strip()}」；"
+                  "好档对照那趟一个副本都没冒；跑完按跑前状态收回、独立复量一致")
+
+
+def _await_webview_page(proc, port: int, wait: float, sleep=time.sleep,
+                        targets=cdp_targets) -> tuple[str | None, str]:
+    """等调试口里出现应用页，回（ws 地址, 没等到时的原因）。"""
+    started = time.time()
+    seen: list[str] = []
+    while time.time() - started < wait:
+        if proc.poll() is not None:
+            return None, f"{wait:.0f}s 内进程自己退了（码 {proc.returncode}）"
+        found = targets(port)
+        if found:
+            seen = [t.get("url") or "" for t in found]
+        page = next((t for t in found if "tauri.localhost" in (t.get("url") or "")), None)
+        if page:
+            return page["webSocketDebuggerUrl"], ""
+        sleep(0.5)
+    why = f"调试口里的页面一直是 {seen[-1] or '空的'}" if seen else "调试口一直没开"
+    return None, f"{wait:.0f}s 内没进到界面（{why}）"
+
+
+def probe_broken_store(exe: Path, version: str, wait: float = WEBVIEW_WAIT,
+                       port: int | None = None, popen=subprocess.Popen, kill=kill_tree,
+                       value=cdp_value, sleep=time.sleep, collect=collect_app_state,
+                       restore=restore_app_state, root: Path | None = None) -> tuple[str, str]:
+    """拉起 release 那份 exe 两趟：先种一截坏清单，再跑一趟好档对照，跑完把盘收回原样。"""
+    root = root if root is not None else app_data_dir()
+    if root is None:
+        return SKIP, "拿不到真 app-data 目录（APPDATA 没设）"
+    before = collect()
+    before_copies = [p.name for p in broken_copies(root)]
+    facts: dict = {"copies": [], "control_new": [], "toast": "", "load_err": "",
+                   "copy_bytes_ok": None, "original_intact": None}
+    proc = None
+    err: Exception | None = None
+    try:
+        # ---- 第一趟：种一截坏清单，看真后端会不会先另存再重开 ----------
+        plant_broken_store(root)
+        probe_port = port or free_port()
+        env = dict(os.environ)
+        # 这一项要的就是我的真偏好与真后端：**故意不给**一次性 profile
+        env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = f"--remote-debugging-port={probe_port}"
+        proc = popen([str(exe)], cwd=str(exe.parent), env=env,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        ws, why = _await_webview_page(proc, probe_port, wait, sleep)
+        facts["load_err"] = why
+        if ws is not None:
+            ver = ""
+            found: list[Path] = []
+            deadline = time.time() + BROKEN_COPY_WAIT
+            while time.time() < deadline:
+                try:
+                    sig = json.loads(value(ws, BROKEN_EXPR) or "{}")
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    sig = {}
+                facts["title"] = str(sig.get("title") or "")
+                toast_text = str(sig.get("toast") or "")
+                if len(toast_text) > len(facts["toast"]):
+                    facts["toast"] = toast_text
+                if not ver:
+                    ver = str(value(ws, VER_EXPR) or "").strip()
+                found = new_copies(root, before_copies)
+                if ver and found and BROKEN_TOAST_HINT in facts["toast"]:
+                    break
+                sleep(0.2)
+            facts["title_ver"] = ver
+            if version and ver and ver != version:
+                return SKIP, (f"这份 exe 里的界面是 {ver}，仓库是 {version}——不是本版构建，"
+                              "坏档急救在真 exe 上跑不跑得动这轮没核到")
+            if version and not ver:
+                return FAIL, (f"{BROKEN_COPY_WAIT:.0f}s 内那个版本串还没出现——"
+                              "界面没进到本应用（空白页也算加载完了，别被它骗）")
+            facts["copies"] = [p.name for p in found]
+            if len(found) == 1:
+                try:
+                    facts["copy_bytes_ok"] = found[0].read_bytes() == BROKEN_PLANT
+                except OSError:
+                    facts["copy_bytes_ok"] = False
+                try:
+                    planted = root / "sessions.json"
+                    facts["original_intact"] = bool(planted.exists()
+                                                    and planted.read_bytes() == BROKEN_PLANT)
+                except OSError:
+                    facts["original_intact"] = False
+        if proc.poll() is None:
+            kill(proc.pid)
+            sleep(BROKEN_SETTLE)
+        proc = None
+
+        # ---- 第二趟：好档对照（把种下的收走，回到「还没有这份清单」）----
+        restore(before)
+        # 对照那趟的起点必须是确定的「还没有这份清单」。我自己的清单要是本来就在（哪怕是好的），
+        # 这一趟就换成了另一种情形——更糟的是：上一轮要是有哪一次跑崩了、盘上留着一份读不懂的清单，
+        # 每拉起一次应用就会又另存一份副本（实测整跑里就是这么把对照那趟弄红的）。
+        # 所以这里先把那份临时挪走（字节已经存在 before 里，收场会写回去）。
+        clean_start = root / "sessions.json"
+        if clean_start.exists():
+            try:
+                clean_start.unlink()
+            except OSError:
+                pass
+        ctl_before = [p.name for p in broken_copies(root)]
+        ctl_port = port or free_port()
+        ctl_env = dict(env)
+        ctl_env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = f"--remote-debugging-port={ctl_port}"
+        proc = popen([str(exe)], cwd=str(exe.parent), env=ctl_env,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        ws2, why2 = _await_webview_page(proc, ctl_port, wait, sleep)
+        facts["control_err"] = why2
+        facts["control_ok"] = ws2 is not None
+        if ws2 is not None:
+            deadline = time.time() + wait
+            ver2 = ""
+            while time.time() < deadline:
+                ver2 = str(value(ws2, VER_EXPR) or "").strip()
+                if ver2:
+                    break
+                sleep(0.2)
+            if version and ver2 and ver2 != version:
+                return SKIP, (f"这份 exe 里的界面是 {ver2}，仓库是 {version}——不是本版构建，"
+                              "好档那趟对照没核到")
+            if version and not ver2:
+                return FAIL, f"好档那趟 {wait:.0f}s 内版本串还没出现——界面没进到本应用"
+            sleep(1.5)  # 启动那点异步落地：急救是挂在读清单之后的
+            facts["control_new"] = [p.name for p in broken_copies(root)
+                                    if p.name not in ctl_before]
+    except Exception as e:  # noqa: BLE001 - 连不上就把原因报出来，不许当通过
+        err = e
+    finally:
+        if proc is not None and proc.poll() is None:
+            kill(proc.pid)
+            sleep(BROKEN_SETTLE)
+        # 收场：先删掉测试自己种出来的副本（原本没有，是这一趟写下去的），再按原字节收回三份文件
+        for p in broken_copies(root):
+            if p.name not in before_copies:
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
+        restore_bad = restore(before)
+        # 还原函数自己说的不算：收完再独立读一遍，跟跑前存的字节逐份对
+        try:
+            settled = collect()
+        except Exception:  # noqa: BLE001 - 量不到就当没收干净
+            settled = None
+        for name in residue_bad(before, settled):
+            if name not in restore_bad:
+                restore_bad.append(name)
+        left = [p.name for p in broken_copies(root) if p.name not in before_copies]
+        for name in left:
+            if name not in restore_bad:
+                restore_bad.append(name)
+        facts["restore_bad"] = restore_bad
+    if err is not None:
+        return FAIL, f"这一趟没跑成：{err}"
+    return broken_store_verdict(facts)
+
+
+def a43_broken_store_real() -> tuple[str, str]:
+    """A43：坏档急救在真 exe + 真后端上真跑一遍，跑完我的盘收得回来吗。"""
+    if sys.platform != "win32":
+        return SKIP, "只在 Windows 上核（mac / linux 没有 WebView2 这套调试口）"
+    exe, kind = find_app_exe(app_exe_dirs())
+    if exe is None:
+        return SKIP, "还没构建 portio-app.exe（先 npm run build 或 tauri build）"
+    status, detail = probe_broken_store(exe, current_version())
+    return status, f"{detail}（{kind_label(kind)}）"
+
+
 def split_ids(items: list[str]) -> list[str]:
     """把 `A10 A11` / `A10,A11` 拆成编号列表：大写、去空、去重、按出现顺序。
 
@@ -2195,6 +2461,7 @@ def main(argv: list[str]) -> int:
         ("A40", "#narrow-test 在真窗口里按 1024 / 900 两档视口跑（调试口改布局视口，两档得一根长连胜跑完；判据拿界面自报的 innerWidth 对我要求的那档，对不上就是拿宽窗冒充窄窗；一次性 profile 里跑，核我自己的偏好库没被动）", True),
         ("A41", "最后两条自检也在真窗口 + 真后端里跑（#net-fail-test / #connect-entry-test；先证明这轮真在我的真偏好与真后端上（Tauri 桥、真偏好、底色对得上、sessions_read 真回话），跑前存下 theme.txt / sessions.json / known_hosts、跑完按原字节收回并独立复量）", True),
         ("A42", "#broken-store-test = BROKEN-STORE-SELFTEST-OK（会话清单读坏时先另存再从头开始：半截写入 / 版本比程序新 / 合法 JSON 但不是清单都算读不懂，好文件与空清单不许被另存；读失败与急救失败各有各的话；坏档之后还存得进新会话）", True),
+        ("A43", "坏档急救在真 exe 上真跑一遍（把真 app-data 的 sessions.json 种成半截写入、拉起 release exe，核真后端有没有另存出 .broken-<毫秒>、副本逐字节对得上、原文件没被改写、提示条写清另存成了什么；再拿「还没有这份清单」跑一趟对照，好档一个副本都不许冒；跑完按原字节收回、独立复量）", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -2340,8 +2607,11 @@ def main(argv: list[str]) -> int:
             # 最后两条：真窗口 + 真后端，先证「真跑在我的真偏好上」，再存/收/核后端三份文件
             status, detail = a41_real_selftests()
         elif code == "A42":
-            # 坏掉的清单不许被下一次存盘盖掉：无头里用后端替身跑（真窗口那一版留到后面几轮）
+            # 坏掉的清单不许被下一次存盘盖掉：无头里用后端替身跑（真 exe 那一版是 A43）
             status, detail = a_page(chrome, profile, "#broken-store-test", "BROKEN-STORE-SELFTEST-OK")
+        elif code == "A43":
+            # 坏档急救在真 exe + 真后端上真跑一遍：种半截清单、看副本与原文件、好档对照、收场收回
+            status, detail = a43_broken_store_real()
         results.append((code, label, status, detail))
         print(f"[{LABEL[status]}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
 
