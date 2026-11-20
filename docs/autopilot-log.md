@@ -3080,3 +3080,14 @@ xterm 自己会绕过折行把整串选上。
   也就不存在「改了退出码把 CI 弄红」这回事（已核对 `.github/workflows` 里没有 `rc.py`）。
 - 无 SSH 服务器：真实登录、PTY 交互、真实 SFTP 传输仍全部未验证。
 
+## 2026-11-20 · v1.0.8-RC6 · 发版补记
+
+- 提交 `3fc5514` 已 push main，tag `v1.0.8-RC6` 已推；main CI run `44679666407` **五项全 success**，
+  Release run `44679673187` **gate + 三平台 build 四项全 success**。
+- Release `Portio 1.0.8-RC6`：`prerelease:true`、`draft:false`，四资产
+  exe **3381761 B** / dmg **9522832 B** / deb **4965716 B** /
+  AppImage **83155448 B**（对照 RC5：3380501 / 9523379 / 4968540 / 83155448；
+  AppImage 一个字节没变——本轮没碰 Rust 与前端，只改了 Python 脚本与文档）。
+- 本地 NSIS 包 **4586339 B** → 复制到 `…\new-chat\Portio_1.0.8-RC6_x64-setup.exe` 并交付。
+- press-kit 下载表与 release-notes 的版本段回填成本次 Release 真值（提交 `4002816`）；
+  十张首发图仍是本版本那一套（`1.0.8-RC6`，随进位重出）。
