@@ -32,7 +32,7 @@
 | A2 | 前端语法 | `node --check ui/app.js` | exit 0 | ✅ |
 | A3 | 界面无硬编码色值 | `python scripts/check_design_tokens.py` | 打印 OK | ✅ |
 | A4 | 界面尺度走令牌 | `python scripts/check_ui_scale.py` | 打印 OK | ✅ |
-| A5 | 四处版本号一致且合规 | `python scripts/check_versions.py` | `OK v<版本>` | ✅ `OK v1.0.8-RC2` |
+| A5 | 七处版本号一致且合规（清单三处 + 标题栏 `span.ver` + `Cargo.lock` 三个 crate） | `python scripts/check_versions.py` | `OK v<版本>（7 处一致…）`，任何一处漂移就退出码 1 并点名那一处 | ✅ `OK v1.0.8-RC4（7 处一致）`；反向验证：标题栏写回 RC3 → 点名「ui/index.html 标题栏」，把 `portio-ssh` 写回 RC3 → 点名「Cargo.lock portio-ssh」 |
 | A6 | 启动无 JS 报错 | 无头打开 `ui/index.html`（不带 hash），读 `<title>` | 标题是 `Portio`，**出现 `ERR:` 即失败** | ✅ `Portio` |
 | A7 | 分屏状态机 | 无头打开 `ui/index.html#split-test` | 标题 `SELFTEST-OK` | ✅ |
 | A8 | 复制粘贴按键映射 | 无头打开 `ui/index.html#clip-test` | 标题 `CLIP-SELFTEST-OK 10` | ✅ 10/10 |
@@ -220,5 +220,7 @@ foreach ($frag in "", "#split-test", "#clip-test", "#fold-test") {
 | 2026-11-20 | `v1.0.8-RC2` | `scripts/rc.py` → **30 通过 / 0 失败 / 0 跳过**，56.5s；`python -m unittest scripts.test_rc_selection` 13 通过（与另三份合跑 67 条全过）；反向验证两条：认不出的编号静悄悄丢掉 → `FAILED (failures=2)` 且 `rc.py A99` 变成「只跑 0 项 / 汇总 0 通过 / exit=0」；顺序退回按书写顺序 → `FAILED (failures=1)` | 未跑 | 未跑 | 回归脚本能只跑一项了（`A11` / `A10 A11` / `A10,A11` 都认），改一处核一处从一分钟降到几秒 |
 | 2026-11-20 | `v1.0.8-RC2`（物料轮，未进位） | `scripts/rc.py` → **31 通过 / 0 失败 / 0 跳过**，214.1s（A1 151.5s / 97 passed；新增 A31 0.0s）；`python -m unittest scripts.test_shots` 8 通过；反向验证两条（多写 1 字节 → FAIL 点名、清单写旧版本 → SKIP 点名），还原后 PASS | 未跑 | 未跑 | 十张首发截图重出到 `1.0.8-RC2`（原来还是 `1.0.7-RC9` 的界面，press-kit 还指着它们）并配上 `docs/shots/manifest.json`；不单独推 RC tag：纯物料轮，产品代码一个字没动 |
 | 2026-11-20 | `v1.0.8-RC4` | `scripts/rc.py` → **31 通过 / 0 失败 / 1 跳过**，246.6s（A1 与 A32 都是冷缓存：cargo test 现编、fmt/clippy 45.8s；唯一跳过的是 A11，整跑时 RC4 的包还没打，打完包单跑转 PASS）；反向验证：把 `findGroups` 的折行拼接条件临时改成 `false` → FAIL「跨折行的 Portio_wrap 搜不到（退回逐行扫了？）」，还原即 PASS | 未跑 | 未跑 | 折成两行的长命令现在搜得出来：先按 `isWrapped` 拼逻辑行再扫，命中回映射成（行, 格），跨折行按格累加长度交给 `select()`；只拼自动折行、不跨硬换行，末行补位空白不算内容（这个 xterm 的 `BufferLine` 没有 `getTrimmedLength`，自己数） |
+
+| 2026-11-20 | `v1.0.8-RC5` | `scripts/rc.py` → **31 通过 / 0 失败 / 1 跳过**，337.3s（A1 冷：进位改了 `Cargo.lock` 里三个 crate 的版本，三个包都得重编，224.4s；A32 fmt/clippy 51.5s；跳过项仍是 A11——整跑时 RC5 的包还没打，打完包单跑 `A10 A11` 转 PASS）；反向验证两处：① 标题栏写回 `RC3` → A5 退出码 1 并点名「ui/index.html 标题栏」；② `Cargo.lock` 里 `portio-ssh` 写回 `RC3` → 点名「Cargo.lock portio-ssh」;另证旧行为：把 lock 里 `portio-core` 写回上一版，`cargo metadata --locked` 与 `cargo build --locked` 都退出码 **101**（`cannot update the lock file … because --locked was passed`），写回新号两者都 0 | 未跑 | 未跑 | 版本号写几处就核几处：`check_versions.py` 从三处扩到七处（清单三处 + 标题栏 `span.ver` + lock 三个 crate），`set_version.py` 直接写 lock（不再等下一次构建）；新增 `test_check_versions.py` 9 条、`test_set_version.py` 4 条锁文件用例 |
 
 每一轮 RC 回归跑完，在表格里加一行；过不了的那几项写进下一轮的「下一步」。

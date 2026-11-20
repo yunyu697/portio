@@ -2956,3 +2956,57 @@ xterm 自己会绕过折行把整串选上。
   → 复制到 `…\new-chat\Portio_1.0.8-RC4_x64-setup.exe` 并交付。
 - press-kit 下载表、release-notes 的版本段都已回填成本次 Release 的真值；十张首发图随版本重出到
   `1.0.8-RC4`（A31 认的就是这套）。
+
+## 2026-11-20 · v1.0.8-RC5 · 版本号写了几处，就得核对几处
+
+上一轮把「折成两行的命令」修好了，这一轮回到这条线本身：**回归里的绿要能说明白它到底核了什么。**
+
+问题出在版本号上。`set_version.py` 一次写五处（`Cargo.toml` / `package.json` / `tauri.conf.json` /
+`ui/index.html` 的标题栏 / `docs/site/index.html`），`check_versions.py` 只核三处。漏网的两处各有各的坏：
+
+- **标题栏那个 `<span class="ver">`。** 跑起来第一眼看到的就是它。手改一次、或者改动只落了一半，
+  界面就自己撒谎，说自己不是这个版本——而三处一致的绿灯照旧。
+- **`Cargo.lock` 里三个 crate（`portio-app` / `portio-core` / `portio-ssh`）。** 它原本要等下一次构建
+  才刷新，于是「进位之后没构建就提交」会把锁文件停在上一个版本。以前只当它是个脏文件，这轮实测了一遍：
+  把 `portio-core` 的 lock 版本写回 `1.0.8-RC4`，`cargo metadata --locked` 与 `cargo build --locked`
+  **都退出码 101**，报 `cannot update the lock file … because --locked was passed`；
+  写回新号后两者都是 0。也就是说谁用 `--locked` 构建（不少 CI 就这么干）都会当场红，而本地一路绿。
+
+**做了什么**
+
+1. `check_versions.py` 从三处扩到七处：新增 `ui_version(text)`（读标题栏，认不出返回空串而不是瞎猜）
+   与 `lock_versions(text)`（只认 `[[package]]` 块，依赖列表里出现同名不算），`collect()` 把七处
+   读成一个 dict；任何一处跟别人不一样就退出码 1，并逐行打出「哪一处 = 什么版本」。
+2. `set_version.py` 增 `LOCK` 与 `rewrite_lock(text, version)`：按 `name = "portio-<x>"` 下一行改版本，
+   不跑 cargo、不联网；缺哪个 crate 只提醒不中断（交给下一步 build 补齐）。
+3. 回归 A5 的判据文字改成「七处版本一致」，`rc-checklist.md` §1 的 A5 行跟着改。
+4. 新增 `scripts/test_check_versions.py` 9 条（标题栏读法、`verchip` 不许误认、lock 只认包块、
+   依赖同名不误判、缺包、漂移点名、非法号拒绝），`test_set_version.py` 加 4 条锁文件用例。
+
+**验证证据**
+
+- `python -m unittest scripts.test_check_versions scripts.test_set_version` → **25 条全过**
+  （`-W error::ResourceWarning` 也过，顺手把 `check_versions.py` 里三处 `open().read()` 收成 `Path.read_text`）。
+- 反向验证（`_probe_versions.py`，跑完自动还原）：
+  ① 只把标题栏写回 `1.0.8-RC3` → 退出码 1，七行里点名 `ui/index.html 标题栏: 1.0.8-RC3`；
+  ② 只把 `Cargo.lock` 里 `portio-ssh` 写回 `1.0.8-RC3` → 退出码 1，点名 `Cargo.lock portio-ssh`。
+- 旧行为反证（`_probe_lock2.py`）：lock 停在上版时 `cargo metadata --locked` = 101、
+  `cargo build --locked` = 101；当前仓库两者都是 0。
+- 进位：`python scripts\set_version.py 1.0.8-RC5` → 写入六处（这次多了 `Cargo.lock`），
+  `python scripts\check_versions.py` → `OK v1.0.8-RC5（7 处一致；最小与补丁位均在 0–10）`。
+- 全量 `python scripts\rc.py` → **31 通过 / 0 失败 / 1 跳过，337.3s**（A1 224.4s 是因为三个包版本变了
+  都得重编；A32 51.5s）。A5 那行 `(0.1s)  OK v1.0.8-RC5（7 处一致）`。
+- 十张首发图重出到 `1.0.8-RC5`（`python scripts\shots.py`：十张 2360×1380 全过，清单版本 `1.0.8-RC5`）。
+- 打包后 `python scripts\rc.py A10 A11` → 2 项 PASS：`Portio_1.0.8-RC5_x64-setup.exe 4588863 字节（4.38 MiB）`。
+- `python scripts\check_site.py` → `OK 说明页 16 项设置 / 40 个档位与代码对上，版本 v1.0.8-RC5`。
+
+**下一步**
+
+- 推 tag `v1.0.8-RC5`，等三平台包出来回填下载表与发版补记。
+
+**未验证**
+
+- 真机窗口仍没点过（`LogonUI.exe` 在跑）：标题栏那一串只在无头里核过文本。
+- `cargo build --locked` 只在本机验过（用的是本地缓存与 nju 源），没在无网环境试过。
+- 无 SSH 服务器：真实登录、PTY 交互、真实 SFTP 传输仍全部未验证。
+

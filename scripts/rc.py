@@ -477,7 +477,7 @@ def main(argv: list[str]) -> int:
         ("A2", "node --check ui/app.js", True),
         ("A3", "check_design_tokens.py（无硬编码色值）", True),
         ("A4", "check_ui_scale.py（尺度走令牌）", True),
-        ("A5", "check_versions.py（四处版本一致）", True),
+        ("A5", "check_versions.py（七处版本一致：清单三处 + 标题栏 + Cargo.lock 三个 crate）", True),
         ("A6", "默认页 title 无 ERR:", True),
         ("A7", "#split-test = SELFTEST-OK", True),
         ("A8", "#clip-test = CLIP-SELFTEST-OK 10", True),

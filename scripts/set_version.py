@@ -38,10 +38,34 @@ VER_TEXT = re.compile(r'<span class="ver"[^>]*>([^<]*)</span>')
 VER_TOKEN = re.compile(r"(?<!\d)\d+\.\d+\.\d+(?:-(?:Alpha|RC)\d+)?(?!\d)")
 
 
+# Cargo.lock 里三个 workspace crate 各自一个 [[package]] 块，version 就在 name 的下一行。
+# 它是构建时才刷新的：进位之后没构建就提交，锁文件会停在上一个版本，
+# 下次谁跑 `cargo build --locked` 就当场红——所以不靠「跑一遍 cargo」，这里直接写。
+LOCK = ROOT / "Cargo.lock"
+LOCK_CRATES = ("portio-app", "portio-core", "portio-ssh")
+
+
 def current(text: str) -> str:
     """改之前先记下旧版本号。"""
     m = VER_TEXT.search(text)
     return m.group(1).strip() if m else ""
+
+
+def lock_pattern(name: str) -> re.Pattern[str]:
+    return re.compile(rf'(?m)^(name = "{re.escape(name)}"\nversion = )"[^"]*"')
+
+
+def rewrite_lock(text: str, version: str) -> tuple[str, list[str]]:
+    """把 lock 里三个 crate 的版本改成新号，返回（新文本, 改到的 crate 名）。"""
+    changed: list[str] = []
+    out = text
+    for name in LOCK_CRATES:
+        pat = lock_pattern(name)
+        if not pat.search(out):
+            continue
+        out = pat.sub(lambda m: f'{m.group(1)}"{version}"', out)
+        changed.append(name)
+    return out, changed
 
 
 def patch(text: str, pattern: re.Pattern[str], version: str) -> str:
@@ -94,7 +118,19 @@ def main(argv: list[str]) -> int:
             SITE.write_text(new, encoding="utf-8")
             changed.append(SITE.relative_to(ROOT).as_posix())
 
+    missing_lock: list[str] = []
+    if LOCK.is_file():
+        text = LOCK.read_text(encoding="utf-8")
+        new, hit = rewrite_lock(text, version)
+        missing_lock = [n for n in LOCK_CRATES if n not in hit]
+        if new != text:
+            LOCK.write_text(new, encoding="utf-8")
+            changed.append(LOCK.relative_to(ROOT).as_posix())
+
     print(f"v{version} 已写入：" + "、".join(changed) if changed else f"v{version} 无需改动")
+    if missing_lock:
+        # lock 与工作区对不上时只提醒、不中断：下一步 cargo build 会把它补齐。
+        print("  注意：Cargo.lock 里没找到这些包，跳过：" + "、".join(missing_lock))
     return 0
 
 

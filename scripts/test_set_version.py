@@ -52,6 +52,57 @@ class RewriteSiteTest(unittest.TestCase):
         self.assertEqual(sv.rewrite_site(page, "1.0.8-RC3"), page)
 
 
+class RewriteLockTest(unittest.TestCase):
+    """Cargo.lock 以前只能等下次构建才刷新，这里改成跟着进位一起写。"""
+
+    LOCK = """\
+version = 4
+
+[[package]]
+name = "portio-app"
+version = "1.0.8-RC4"
+dependencies = ["portio-core"]
+
+[[package]]
+name = "portio-core"
+version = "1.0.8-RC4"
+
+[[package]]
+name = "portio-ssh"
+version = "1.0.8-RC4"
+
+[[package]]
+name = "serde"
+version = "1.0.200"
+"""
+
+    def test_three_crates_replaced(self):
+        out, hit = sv.rewrite_lock(self.LOCK, "1.0.8-RC5")
+        self.assertEqual(hit, ["portio-app", "portio-core", "portio-ssh"])
+        self.assertEqual(out.count('version = "1.0.8-RC5"'), 3)
+        self.assertNotIn("1.0.8-RC4", out)
+
+    def test_other_packages_untouched(self):
+        out, _ = sv.rewrite_lock(self.LOCK, "1.0.8-RC5")
+        self.assertIn('name = "serde"\nversion = "1.0.200"', out)
+
+    def test_missing_crate_skipped_not_invented(self):
+        text = self.LOCK.split('[[package]]\nname = "portio-ssh"')[0]
+        out, hit = sv.rewrite_lock(text, "1.0.8-RC5")
+        self.assertEqual(hit, ["portio-app", "portio-core"])
+        self.assertNotIn("portio-ssh", out)
+
+    def test_already_current_is_noop(self):
+        out, hit = sv.rewrite_lock(self.LOCK, "1.0.8-RC4")
+        self.assertEqual(out, self.LOCK)
+        self.assertEqual(len(hit), 3)
+
+    def test_two_digit_stage_suffix_written(self):
+        """满 10 之后进 patch 再回 RC1，锁文件同样跟着走。"""
+        out, _ = sv.rewrite_lock(self.LOCK, "1.0.9-RC1")
+        self.assertEqual(out.count('version = "1.0.9-RC1"'), 3)
+
+
 class RealRepoTest(unittest.TestCase):
     def test_site_agrees_with_ui_version(self):
         """仓库现状：说明页里写的版本串与界面那个一致（不一致时 A28 会红，这里先兜一层）。"""
