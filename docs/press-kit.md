@@ -74,9 +74,9 @@ RC9 修了「复制诊断信息」碰到坏字节会把整段日志读成空的�
 
 | 平台 | 产物 | 状态 |
 | --- | --- | --- |
-| Windows x64 | `Portio_1.0.9-RC2_x64-setup.exe`（NSIS，3382475 B） | 能装、能跑；未签名 |
-| macOS（Apple Silicon + Intel） | `Portio_1.0.9-RC2_universal.dmg`（9523397 B） | CI 构建通过，**未在真机装过**；未签名 |
-| Linux x64 | `Portio_1.0.9-RC2_amd64.deb`（4965896 B） / `Portio_1.0.9-RC2_amd64.AppImage`（83155448 B） | CI 构建通过，**未在真机装过** |
+| Windows x64 | `Portio_1.0.9-RC2_x64-setup.exe`（NSIS，3383038 B） | 能装、能跑；未签名 |
+| macOS（Apple Silicon + Intel） | `Portio_1.0.9-RC2_universal.dmg`（9523872 B） | CI 构建通过，**未在真机装过**；未签名 |
+| Linux x64 | `Portio_1.0.9-RC2_amd64.deb`（4965162 B） / `Portio_1.0.9-RC2_amd64.AppImage`（83147256 B） | CI 构建通过，**未在真机装过** |
 
 规则：**RC 及以后发包，Alpha 只打 tag**。tag 必须等于仓库里的版本号，对不上就不进打包流程。
 
