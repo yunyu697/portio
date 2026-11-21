@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / 未验。
 
-对应 docs/rc-checklist.md §1 的 A1–A47。以前这些步骤散在日志里，每轮都要手打一遍命令，
+对应 docs/rc-checklist.md §1 的 A1–A48。以前这些步骤散在日志里，每轮都要手打一遍命令，
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
 
 用法：
@@ -85,6 +85,14 @@ A45 钉住六件事：`## [Unreleased]` 排在最前；每个版本标题都带 
 排在编译之后就没用了），三条判据：`deps` 里 0 字节的 `.rmeta` / `.rlib` / `.o`；其中指纹还挂着的那几份
 判红并给出 `cargo clean -p <包>`；还挂着超过一小时的 rustc（被打断没退干净的孤儿，白占提交额度）。
 一个 target 目录都没有时报未验。
+**可「核的和交的是同一份」这句话，之前只活在我自己抄的日志里**：RC4 那次我写「本地交付的就是
+Release 上那份，3384941 B、sha256 ff080346 开头」，没有一个字是机械核过的。换一版那天，
+盘上那份到底是什么、包体内写的是哪个版本，谁也说不清——**一份 RC3 的包改个文件名，字节与大小
+全对得上，装出来还是 RC3**。A48 把这条变成门禁：`docs/artifacts.json` 里记这一版交付出去的那一份
+（来源、tag、文件名、字节、sha256），三条判据——记录自己得自洽（同版同平台一条、不许记将来的版本、
+说 CI 就得写清 tag 且与版本一致、文件名里得带版本串）；盘上那份字节与 sha256 都得对上；Windows exe
+的 PE 版本资源里那个串（FileVersion / ProductVersion）得是当前版本（文件名与字节都改得动，包体内
+这个串改不动）。记录没有、或者那份包不在盘上报未验（交付文件在仓库外，换台机器就找不着）。
 环境变量可覆盖探测结果：PORTIO_CHROME、PORTIO_NODE、PORTIO_CARGO、PORTIO_7Z、PORTIO_GIT。
 """
 
@@ -2786,6 +2794,7 @@ def main(argv: list[str]) -> int:
         ("A32", "cargo fmt --check + cargo clippy -D warnings（本地的绿要等于 CI 的绿）", True),
         ("A33", "portio-app.exe 真的起得来（拉起这份 exe 等窗口、核标题带 Portio、再确认没当场退出，用完收干净）", True),
         ("A34", "包里那份就是核的那份（拆开安装包、拿里面的 portio-app.exe 跟构建产物逐字节对，只放过打包器写的标记）", True),
+        ("A48", "交出去的那份就是核的那份（docs/artifacts.json 里这一版那份包：记录自洽、盘上那份字节与 sha256 对得上、包体内版本串是这一版）", True),
         ("A35", "回归脚本自己那批单测（scripts/test_*.py 全跑，口径跟 CI 的 discover 一致；一条都没跑到也算红）", True),
         ("A36", "窗口起来了，界面也真画出来了（走 WebView2 调试口进真 webview：加载完没、版本串是不是这一版、app.js 跑完没、终端对象在不在、DOM 有没有肉）", True),
         ("A37", "那几条自检在真窗口里也跑得动（真后端 + 真偏好里跑 split/clip/fold/ctx/find/find-pane/transfer 七条；跑前存下偏好、跑完一字不差写回去）", True),
@@ -2940,6 +2949,9 @@ def main(argv: list[str]) -> int:
         elif code == "A34":
             # 拆包对字节：不开浏览器、不安装、不写注册表
             status, detail = a34_payload()
+        elif code == "A48":
+            # 交出去的那份有没有记下来、还对不对得上：记录 + 盘上字节/sha256 + 包体内版本串
+            status, detail = a_script("check_artifact_manifest.py", "交付物溯源", skip_exit=4)
         elif code == "A35":
             # 回归脚本自己的单测：1s 量级，但以前整跑从没跑过
             status, detail = a35_script_tests()

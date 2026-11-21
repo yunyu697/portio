@@ -91,6 +91,11 @@ def chrome(chrome_exe: str, url: str, profile: str, extra: list[str], timeout: i
         chrome_exe,
         "--headless=new",
         "--disable-gpu",
+        # 2026-11-21：这台机器提交内存紧（页面文件长不大）时，@2x 截图里那份 2360×1380 的
+        # 合成面会直接渲染失败——进程几秒就退了、PNG 一张没留下，也不报错。关掉 GPU 合成与
+        # 加速 2D 画布之后能稳定出图；尺寸判据（1180×690 @2x）一点没放宽。
+        "--disable-gpu-compositing",
+        "--disable-accelerated-2d-canvas",
         "--hide-scrollbars",
         "--allow-file-access-from-files",
         f"--force-device-scale-factor={SCALE}",

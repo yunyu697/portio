@@ -145,3 +145,7 @@ C 盘本来就只剩 0.2 GB，被这一堆顶到 0 字节可写——连 PowerSh
 才 0.12 GB，删了也不够让页面文件长大。**「安装包能不能在本机打出来」已经从「占地方」变成「挡住交付」**，
 要不要清 C 盘上的缓存（Doubao 客户端 `sdk_storage` / gecko 缓存、`%LOCALAPPDATA%\Temp` 里历轮目录、
 `D:\portio-target\release\bundle\nsis` 里十几个旧包）等你点头，我不动别人的东西。
+- **1.0.10-RC5 记下两条**：① 交付记录只钉 Windows 的那一份包，macOS dmg 与 Linux deb / AppImage 还没有各自
+  一条记录（等有平台机器、或者等 CI 产物也能落到本机再补）；② 十张物料重出时 `--screenshot` 在 @2x 下会静默失败
+  （进程几秒就退、PNG 一张不留、也不报错），现靠 `--disable-gpu-compositing` 与 `--disable-accelerated-2d-canvas`
+  兜住——这台机器提交内存一紧就会这样，换台机器可能要另找一组开关。
