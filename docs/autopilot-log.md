@@ -4394,3 +4394,69 @@ A37 只搬了「不动设置」的七条。剩下九条（主题 / 界面字号 
 - 真实 SSH / PTY / tmux 全屏 / 真 SFTP：仍无测试服务器与凭据。
 - 「安装器装到机器上那份能不能跑」全程未验；mac / linux 包只到「CI 构建通过」。
 - dmg / deb / AppImage 还没有各自的交付记录（A48 只钉 Windows 那一份）。
+
+## 2026-11-21 · v1.0.10-RC6 · 记录里那个 tag，指的到底是不是这一版的提交
+
+**做了什么**
+
+- A48 在 RC5 只核到「记录 ↔ 盘上那份文件」。可记录里那句「这份包来自 v1.0.10-RC5」还是我写下的一个名字：
+  tag 在不在仓库里、指向哪次提交、那次提交里版本写的是什么，一条都没问过。**tag 打错一个提交，记录照样
+  自洽、字节与 sha256 照样对得上**——因为那两栏算的是盘上那份文件。
+- 这一版给 `scripts/check_artifact_manifest.py` 加了第四组判据 `check_tags()`：读四条只读命令
+  （`rev-parse --show-toplevel` / `cat-file -t` / `rev-parse --verify <tag>^{commit}` /
+  `show <提交>:Cargo.toml` / `merge-base --is-ancestor`）。tag 得真在；它指向的那次提交里根 `Cargo.toml`
+  的版本必须等于记录写的版本；不是附注标签、或者那次提交不在当前 HEAD 的历史线上，只留 NOTE。
+- 目录不是 git 工作区、或者机器上找不到 git：这一组核不了，**整份退 4（未验）**，由 `rc.py` 折成「未验」。
+- 单测 28 → **38 条**：新增 TagTest 那 10 条全用假 git（按命令行回答，不碰真仓库）；三条原本要「绿」的
+  用例（PE 读不出、全对得上、CLI）跟着补了假 git 参数，否则它们会在「不是工作区」这一组上退 4。
+- `rc.py` 的计划表那一行与模块头 A48 由来段补上这一组；CHANGELOG、发布说明、清单、press-kit、backlog 同步。
+- 版本进位 `1.0.10-RC6`（六处写入 / 七处一致），十张物料重出到 RC6。
+
+**验证证据**
+
+- `python -m unittest scripts.test_check_artifact_manifest` → **38 条 OK**。
+- 真仓库上实跑 → 退 0：RC5 那份包 3384294 字节 / `e54ff6e9…` 与记录一致，**记录里 2 个 tag 都真指在写着
+  这一版的提交上**（`v1.0.10-RC5` → d1e8de4、`v1.0.10-RC4` → 87632ec）。
+- 反向验证 `_rev50.py` **六档全过**（真 git、临时仓库、每条命令都带 `-c user.name/email`，不碰全局身份）：
+  ① 全对得上（RC5 那条 + RC4 历史）→ 退 0；② 记录说 RC5、tag 却是 `v1.0.10-RC4` → 退 1，红在「tag 打到了
+  别的提交上，或者记录写错了版本」；③ 仓库里没有这个 tag → 退 1 并点名；④ 轻量标签（指向同一提交、
+  只是没有那段话）→ 只留 NOTE、仍退 0；⑤ 不是 git 工作区 → 退 4；⑥ 把 git 从 PATH 里拿掉 → 退 4。
+- 本地部分整跑（46 项，跳过 A1 / A32）→ **34 通过 / 0 失败 / 12 未验，124.8s，退出码 3**，
+  日志 `D:\portio-rc-part46.out`。关键：A35 **540 条**（新增 10 条已进清单）、A31 十张物料 1.58 MiB
+  全是 RC6、A45 95 个版本小节、A46 对照 `v1.0.10-RC5` 认下 26 个改动文件且门禁 48 项都有分发分支。
+- 发版：tag `v1.0.10-RC6` 已推（指向 `9b3eb44`）；CI `44866304474` 五 job 全 success；Release
+  `44866309532` 四 job 全 success（gate + linux / macos / windows）。四资产：exe **3385759** /
+  dmg **9532375** / deb **4973344** / AppImage **83159544** B。
+- 包下来之后 A48 退 0：`Portio_1.0.10-RC6_x64-setup.exe` 3385759 字节、sha256 `3a5a116f…f4ac`、
+  PE 里 FileVersion 与 ProductVersion 都是 `1.0.10-RC6`；**记录里三个 tag（RC6 / RC5 / RC4）都核过**。
+- 交付：`new-chat\Portio_1.0.10-RC6_x64-setup.exe`（Release 原样下载），旧 RC5 本地包已删。
+
+**踩到的坑**
+
+1. **这台机器的提交内存一紧，git 自己也会死**：反向验证第一次跑，`git add` 直接 `fatal: Out of memory,
+   malloc failed (tried to allocate 1048576 bytes)`，接着 python 也起不来（`Frozen object named
+   '_frozen_importlib' is invalid`），PowerShell 更是隔一会儿就 `Stack overflow` / `DLL init failed`。
+   对着同一件事反复重试没有用——最后是给 git 命令加两次重试、每条命令的输出都落成文件再看，才跑完。
+   已记 backlog：自动推进撞上这个，先等机器缓过来。
+2. **「记录自洽」这一条把要测的那条判据盖住了**：反向验证第 2 档第一版用的是 `source=ci` 但 tag 写 `v1.0.10-RC4`，
+   `check_entry` 先红了「说 CI 就得 tag 等于版本」，tag 组那条真正想验的句子排在后面。改成断言整段输出里
+   有没有那句话，才算看到它真红。
+3. **假 git 的返回值要跟真 git 一样才测得动**：`cat-file -t` 命中返回 `tag` / `commit`、不命中退 1；
+   `merge-base --is-ancestor` 用 0/1 而不是 true/false——第一版按布尔写，轻量标签那一档直接假绿。
+
+**下一步**
+
+- 1.0.10 段第 7 格。候选：① 把交付记录从「只有 Windows 那一份」扩到 dmg / deb / AppImage（各记一条、
+  拿 Release 上的字节核）；② A48 再走一步：核「记录里那份包里的 portio-app.exe，跟 tag 那次提交的
+  `Cargo.toml` 里声明的名字 / 版本 / 依赖对不对得上」；③ A47 补「增量缓存与源文件时间对不上」那一类。
+- 等拍板的没变，**C 盘空间与提交内存仍是头一条**：这一轮它先是让 git 与 python 都起不来，接着照旧
+  卡住本机打包。
+
+**未验**
+
+- 本地 `cargo build --release` / `cargo test --workspace` / `cargo clippy` 这一轮仍没跑成（页面文件不够）；
+  编译、clippy、test、三平台包只有 CI 的结果。这轮只改 Python 与文档，Rust 侧没有改动。
+- A10 / A11 / A33 / A34 / A36 / A37 / A38 / A39 / A40 / A41 / A43 这 11 条本机未验（没有本版构建的 exe 与包）。
+- 真实 SSH / PTY / tmux 全屏 / 真 SFTP：仍无测试服务器与凭据。
+- 「安装器装到机器上那份能不能跑」全程未验；mac / linux 包只到「CI 构建通过」。
+- dmg / deb / AppImage 还没有各自的交付记录（A48 只钉 Windows 那一份）。

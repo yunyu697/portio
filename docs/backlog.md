@@ -149,3 +149,8 @@ C 盘本来就只剩 0.2 GB，被这一堆顶到 0 字节可写——连 PowerSh
   一条记录（等有平台机器、或者等 CI 产物也能落到本机再补）；② 十张物料重出时 `--screenshot` 在 @2x 下会静默失败
   （进程几秒就退、PNG 一张不留、也不报错），现靠 `--disable-gpu-compositing` 与 `--disable-accelerated-2d-canvas`
   兜住——这台机器提交内存一紧就会这样，换台机器可能要另找一组开关。
+- **1.0.10-RC6 记下两条**：① A48 的 tag 组现在核到「tag 指向的提交里版本对不对」，还核不了「那次提交
+  编出来的就是这一只包」——「构建产物 ↔ 提交」这一步仍只有 CI 的日志能作证，等以后有签名 / 出处清单再看；
+  ② 这轮机器提交内存一紧，**git 自己也 `malloc failed`**（`git add` 退 128）、python 甚至起不来
+  （`Frozen object named '_frozen_importlib' is invalid`），反向验证只能给 git 加两次重试才跑完——
+  自动推进要跑的活一旦撞上这个，先等机器缓过来，别在同一处反复重试。
