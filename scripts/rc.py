@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / 未验。
 
-对应 docs/rc-checklist.md §1 的 A1–A45。以前这些步骤散在日志里，每轮都要手打一遍命令，
+对应 docs/rc-checklist.md §1 的 A1–A46。以前这些步骤散在日志里，每轮都要手打一遍命令，
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
 
 用法：
@@ -70,7 +70,15 @@ A45 钉住六件事：`## [Unreleased]` 排在最前；每个版本标题都带 
 **当前版本必须有自己那一节、排在最前、且不是空的**（先写更新内容再打包）；当前那节里不许连着两个空行、
 不许空行后面跟缩进续行、行尾不许留空白；每节都得有白名单里的 `### ` 子标题。
 历史小节只查「有没有子标题」这类硬伤，不重排 —— 已经发出去的十几段没有回头改的必要。
-环境变量可覆盖探测结果：PORTIO_CHROME、PORTIO_NODE、PORTIO_CARGO、PORTIO_7Z。
+**可排版整齐不等于话是真的**：A45 只管形状，我完全能把一句「我把 X 修了」写得漂漂亮亮，而这一版的
+代码里压根没动过 X —— 读的人看不出，我自己事后也看不出。A46 补这一半，六条判据：点到的仓库路径得真
+在仓库里（写成 `check_sites.py` 那种笔误，读的人点开是空）；写了「改 / 修 / 加了某个代码文件」时那个
+文件得真在这一版的改动集里；提到门禁编号时 `rc.py` 计划表里得真有这一项；反过来这一版新冒出来的
+编号必须写进更新内容（加了道闸不吭声，读的人不知道）；这一版新增的脚本（单测除外）要点名，或它上场的
+那道门禁被点名；计划表里写「会跑」的，分发处就得有对应分支。
+「这一版」取「版本号严格小于当前版本的那个最大的 `v*` tag」到工作区（含未提交改动），所以提交前、
+提交后、打完 tag 再跑都对得上；本地没有更早的 tag（浅克隆）报未验，不拿「没查到问题」冒充「核过了」。
+环境变量可覆盖探测结果：PORTIO_CHROME、PORTIO_NODE、PORTIO_CARGO、PORTIO_7Z、PORTIO_GIT。
 """
 
 from __future__ import annotations
@@ -278,13 +286,17 @@ def a2_node_syntax(node: str | None) -> tuple[str, str]:
     return PASS, "ui/app.js 语法通过"
 
 
-def a_script(script: str, label: str) -> tuple[str, str]:
+def a_script(script: str, label: str, skip_exit: int | None = None) -> tuple[str, str]:
+    """跑一个只读脚本。skip_exit 是「这一条这一轮没得核」时脚本自己的退出码（A46 用它报未验）。"""
     path = ROOT / "scripts" / script
     if not path.exists():
         return SKIP, f"脚本不存在：scripts/{script}"
     proc = run([sys.executable, str(path)], timeout=180)
     out = (proc.stdout or "").strip()
     if proc.returncode != 0:
+        if skip_exit is not None and proc.returncode == skip_exit:
+            # 没得核 ≠ 核过了：按未验算，整跑退出码也就不是 0
+            return SKIP, (out.splitlines()[-1] if out else label) or label
         return FAIL, tail(proc.stdout + proc.stderr)
     return PASS, (out.splitlines()[-1] if out else label)
 
@@ -2759,7 +2771,6 @@ def main(argv: list[str]) -> int:
         ("A26", "#panes-test = PANES-SELFTEST-OK（终端开局格数：只管打开应用时第一个标签、改设置不动眼前、第二标签仍一格、认不出的值回单屏且不回写）", True),
         ("A27", "#layout-test = LAYOUT-SELFTEST-OK（面板宽度两层：拖拽落记忆层、用默认按三档落宽度且分栏回 50/50 抽屉回一行、记忆层一个字不改，认不出的值各回各的默认且不回写）", True),
         ("A28", "check_site.py（说明页每一项设置与每个档位都跟设置面板对上）", True),
-    ("A45", "check_changelog.py（每个版本的更新内容能直接贴到 Release）", True),
         ("A29", "#transfer-test = TRANSFER-SELFTEST-OK（空态随第一行消失、计数跟实际行数、43% 与完成/排队文案、行不出抽屉）", True),
         ("A30", "#net-fail-test = NET-FAIL-SELFTEST-OK（后端出错也要有话说：列目录失败留话、传输失败落红条而不是永远排队、错因翻成人话）", True),
         ("A31", "发布截图是本版本那一套（docs/shots/manifest.json 的版本串与当前一致、十张图逐张对得上字节数）", True),
@@ -2776,6 +2787,8 @@ def main(argv: list[str]) -> int:
         ("A42", "#broken-store-test = BROKEN-STORE-SELFTEST-OK（会话清单读坏时先另存再从头开始：半截写入 / 版本比程序新 / 合法 JSON 但不是清单都算读不懂，好文件与空清单不许被另存；读失败与急救失败各有各的话；坏档之后还存得进新会话）", True),
         ("A43", "坏档急救在真 exe 上真跑一遍（把真 app-data 的 sessions.json 种成半截写入、拉起 release exe，核真后端有没有另存出 .broken-<毫秒>、副本逐字节对得上、原文件没被改写、提示条写清另存成了什么；再拿「还没有这份清单」跑一趟对照，好档一个副本都不许冒；跑完按原字节收回、独立复量）", True),
         ("A44", "一次性 profile 自己建自己删（盘不够先拦、并说清差多少；删不掉要判 False 并点名登记，不许再一声不响；跑前只清自己前缀且够旧的残留：刚建的那份、别人前缀的目录、同前缀的文件都不许动）", True),
+        ("A45", "check_changelog.py（每个版本的更新内容能直接贴到 Release：`## [Unreleased]` 在最前、版本标题带日期且能解析、当前版本必须有自己那一节且排最前、那节里不许连续空行 / 不许空行切断续行 / 行尾不留空白、每节都得有白名单子标题；历史小节只查硬伤、不重排）", True),
+        ("A46", "check_changelog_facts.py（这一版写的话对得上这一版真改的东西：点到的路径要存在；说改了代码文件就得真在改动集里；提到的门禁编号要在计划表里；新加的门禁要写进更新内容；新增脚本要点名或它上场的门禁被点名；计划表每一项都得有分发分支）", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -2894,6 +2907,9 @@ def main(argv: list[str]) -> int:
         elif code == "A45":
             # 更新内容那一段得是能直接贴到 Release 的形态（纯 Python，不开浏览器）
             status, detail = a_script("check_changelog.py", "更新内容格式")
+        elif code == "A46":
+            # 形状对还不够：写的话得对得上这一版真改的东西（纯 Python，读 git 的改动集）
+            status, detail = a_script("check_changelog_facts.py", "更新内容对得上改动", skip_exit=4)
         elif code == "A29":
             # 塞三条演示传输（一条在跑、一条完成、一条排队），量空态是否消失与计数、文案、几何
             status, detail = a_page(chrome, profile, "#transfer-test", "TRANSFER-SELFTEST-OK", "1180,690", 8000)
