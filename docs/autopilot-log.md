@@ -4262,3 +4262,72 @@ A37 只搬了「不动设置」的七条。剩下九条（主题 / 界面字号 
 - 真实 SSH / PTY / tmux 全屏 / 真 SFTP：仍无测试服务器与凭据。
 - 「安装器装到机器上那份能不能跑」全程未验。
 - mac / linux 包只到「CI 构建通过」，未在真机装过。
+
+## 2026-11-21 · v1.0.10-RC4 · 编译说找不到 crate，可能是我盘上那份产物本身就是空壳
+
+**做了什么**
+
+- 新增门禁 A47：`scripts/check_stale_artifacts.py`（约 240 行），三条判据——① `<target>/<profile>/deps`
+  里 0 字节的 `.rmeta` / `.rlib` / `.o`（这三种是编译与链接真读进去的东西）；② 其中 `.fingerprint/<包>-<hash>`
+  里还留着 `invoked.timestamp` 的那几份判红，并直接给出 `cargo clean -p <包>`；指纹已经没了的只留 NOTE
+  （cargo 会重编，垃圾该清）；③ 还挂着超过一小时（`--rustc-age` 可改）的 rustc 进程——被打断没退干净的孤儿。
+  一个 target 目录都不存在时报未验（退出码 4）。支持 `--target-dir`（可给多次）、`--profile`。
+- 新增单测 `scripts/test_check_stale_artifacts.py`：21 条（命名解析 4 / 空壳 5 / 假新鲜 5 / rustc 3 /
+  命令层 4）。夹具直接在临时目录里搭假 target，进程那条把结果注入进去，不碰真 target、不数真进程。
+- 接进 `scripts/rc.py`：模块头 A1–A46 → A1–A47 并补 A47 的由来段；计划表**首行**插 A47（有意排在 A1
+  之前，理由写在表里那行注释上）；分发 `if code == "A47"` → `a_script(..., skip_exit=4)` 把退出码 4 折成未验。
+- 文档：CHANGELOG 新增 `## [1.0.10-RC4]`；清单补 A47 两行（判据 / 由来）、首部整跑行换 RC4；
+  发布说明换到 RC4；十张物料重出到 RC4。
+
+**验证证据**
+
+- `python -m unittest scripts.test_check_stale_artifacts` → **21 条 OK**。
+- 实跑 `python scripts\rc.py A47` → `PASS … 两个根一起扫：357 个 rmeta / 273 个 rlib / 32 个 .o / 1473 份指纹，
+  没有一个空壳产物或假新鲜指纹；没有还挂着的 rustc`（这一版 jobs 全是 Python，1 分钟内跑完）。
+- 反向验证 `_rev48.py` **全过**：从真 target 里挑三份真存在的 rmeta（`adler2-503c0bd42a612d35`、
+  `aead-68ab1ead985494e2`、`aead-d1cd409cf38098d4`，22337 / 47132 / 61040 B），照原样搭一个假 target——
+  同名字 + 0 字节 + 指纹照拷 → **退出码 1**、三份都点名到 `cargo clean -p …`；同名字但指纹不拷 →
+  退出码 0 只留 NOTE；指纹拷了但去掉 `invoked.timestamp` → 退出码 0 只留 NOTE。
+  顺带统计「产物文件名里的 hash ↔ 指纹目录名」这条匹配规则在真 target 上 **546/546 = 100%** 命中——
+  它不是编出来的规则。
+- 本地部分整跑（45 项，`python scripts\rc.py A2 … A47`，跳过 A1 / A32）→ **36 通过 / 0 失败 / 9 未验，
+  177.9s，退出码 3**，日志 `D:\portio-rc-part44.out` / `.err`。关键：A35 **502 条**（新增 21 条已进清单）、
+  A31 十张物料 1.58 MiB 全是 RC4、A33 拉起 exe 撑过 14.5s、A45 93 个版本小节、A46 对照 `v1.0.10-RC3`
+  认下 25 个改动文件 / 2 个新增且门禁 47 项都有分支。
+- `python scripts\shots.py` → 十张 2360×1380 全过，`docs\shots\manifest.json` 版本 1.0.10-RC4。
+- 版本：`set_version.py 1.0.10-RC4` 六处 + `check_versions.py` 七处一致 + `check_site.py` 过 16 项设置 /
+  40 个档位；`check_changelog.py` 93 个版本小节；`check_changelog_facts.py` 过。
+
+- 发版：tag `v1.0.10-RC4` 已推（指向 `87632ec`）；CI `44854667488` 五 job 全 success
+  （fmt·clippy·test + version rule + windows / macos / ubuntu 三个 build）；Release `44854674291` 四 job 全 success
+  （gate + 三平台 build）。release `v1.0.10-RC4`（`Portio 1.0.10-RC4`，pre=True、draft=False）四资产：
+  `Portio_1.0.10-RC4_amd64.AppImage` **83159544** / `..._amd64.deb` **4978790** / `..._universal.dmg` **9532302** /
+  `..._x64-setup.exe` **3384941** B。
+- 本地交付：这份 Windows 安装包是从 Release 上原样下来的（**本机打不出来**，见下面第 1 条坑），已复制到
+  `new-chat\Portio_1.0.10-RC4_x64-setup.exe`（3384941 B），旧的 RC3 本地包已删。
+
+**踩到的坑**
+
+1. **本地打不出安装包**，而且这次连绕的路都没有：`& $node tauri.js build --bundles nsis` 跑到 `portio-app`
+   的 build script 就断了，报 `failed to mmap file …\release\deps\libwindows_sys-…rlib: 页面文件太小，
+   无法完成操作。 (os error 1455)`。页面文件在 C 盘，C 盘只剩 **0.11 GB**，页面文件长不大；
+   提交内存 60.2 GB / 上限 61.0 GB（98.7%）。仓库自己的 `target` 才 0.12 GB，删了也不够让页面文件长大。
+   所以这一版的包只能由 CI 三平台构建，本地这九条（A11 / A34 / A36–A41 / A43）如实记未验。
+2. **A47 的顺序不是排版问题，是能不能用的问题**：排在 A1 后面它就只是「验尸」——这一轮已经白编一遍了。
+   所以它在计划表里是**第一行**，不是最后一行；`--list` 里第一行就是它。
+3. A44 又留了一份 0 KB 的空目录（`D:\portio-tmp\portio-a44-1d2v0fia\portio-rc-5qp7r0n7`，A44 自身判
+   PASS），跟上一轮同一个形态：几秒后才松手。已登记，不当绿。
+
+**下一步**
+
+- 1.0.10 段第 5 格。候选：① A47 再进一步，把「增量缓存 vs 源文件时间对不上」那类也钉住（现在只管空壳
+  `.rmeta` / `.rlib` / `.o`）；② A46 往下走一格：核「这一版小节里点名的档位 / 数字」跟实现里真有的对不对得上。
+- 等拍板的没变，但**C 盘空间这一条已经从「占地方」变成「挡住打包」**：这轮直接因为它交不出本地包。
+
+**未验**
+
+- 本地 `cargo build --release` / `cargo test --workspace` / `cargo clippy` 这一轮全没跑成（页面文件不够），
+  `cargo fmt --all -- --check` 也没在这轮跑；编译、clippy、test、三平台包只有 CI 的结果。
+- A11 / A34 / A36 / A37 / A38 / A39 / A40 / A41 / A43 这九条本机未验（原因同上：没有本版构建的包与 exe）。
+- 真实 SSH / PTY / tmux 全屏 / 真 SFTP：仍无测试服务器与凭据。
+- 「安装器装到机器上那份能不能跑」全程未验；mac / linux 包只到「CI 构建通过」。
