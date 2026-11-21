@@ -135,4 +135,8 @@ C 盘本来就只剩 0.2 GB，被这一堆顶到 0 字节可写——连 PowerSh
 113 个目录与 `shellora-*` / `portio_shot*` 那批历史垃圾，只清了当时看得见的一次（要清全，得你点头才动
 ——那批里混着别的应用的目录）。另外 `D:\portio-target\release\bundle\nsis` 里还堆着十几个旧版本包，
 也没动。
-
+**1.0.10-RC3 顺手记下一条真坑（还没做成门禁）**：A1 这次报 `E0463: can't find crate for portio_ssh`，不是代码
+坏了，是 `D:\portio-target\debug` 里留着上一轮 LLVM OOM 被打断时写下的 **0 字节 `.rmeta`**，而对应的指纹
+已经被标成「新鲜」——cargo 认为编过了，`portio-app` 就找不着那个 crate。这类假绿比一次 OOM 难查得多：它长得
+像代码问题，其实是产物问题。想做成的样子：A1 开跑前先扫一遍 `deps`，凡 0 字节的 `.rmeta` / `.rlib`，且它的
+指纹目录被判「新鲜」，就判红并点名要求清掉重编；顺带把「上一轮遗留的 rustc 进程」也数一遍。等下一格做。
