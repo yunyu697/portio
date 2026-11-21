@@ -1,6 +1,6 @@
 {
-  "version": "1.0.10-RC5",
-  "generated": "2026-11-21T11:18:36+08:00",
+  "version": "1.0.10-RC6",
+  "generated": "2026-11-21T12:25:57+08:00",
   "window": [
     1180,
     690
@@ -14,7 +14,7 @@
       "label": "三栏：会话栏 + 终端 + 双栏文件 + 传输队列",
       "width": 2360,
       "height": 1380,
-      "bytes": 126015
+      "bytes": 126462
     },
     {
       "file": "portio-dark-split.png",
@@ -23,7 +23,7 @@
       "label": "终端 2×2 分屏",
       "width": 2360,
       "height": 1380,
-      "bytes": 140046
+      "bytes": 140417
     },
     {
       "file": "portio-dark-import.png",
@@ -32,7 +32,7 @@
       "label": "导入来源下拉展开",
       "width": 2360,
       "height": 1380,
-      "bytes": 123466
+      "bytes": 123718
     },
     {
       "file": "portio-dark-settings.png",
@@ -41,7 +41,7 @@
       "label": "设置面板顶部：自定义十六项",
       "width": 2360,
       "height": 1380,
-      "bytes": 197023
+      "bytes": 197222
     },
     {
       "file": "portio-dark-hosts.png",
@@ -50,7 +50,7 @@
       "label": "设置面板滚到底：已知主机与运行日志",
       "width": 2360,
       "height": 1380,
-      "bytes": 225932
+      "bytes": 226287
     },
     {
       "file": "portio-light-main.png",
@@ -59,7 +59,7 @@
       "label": "三栏：会话栏 + 终端 + 双栏文件 + 传输队列",
       "width": 2360,
       "height": 1380,
-      "bytes": 128617
+      "bytes": 129014
     },
     {
       "file": "portio-light-split.png",
@@ -68,7 +68,7 @@
       "label": "终端 2×2 分屏",
       "width": 2360,
       "height": 1380,
-      "bytes": 142050
+      "bytes": 142551
     },
     {
       "file": "portio-light-import.png",
@@ -77,7 +77,7 @@
       "label": "导入来源下拉展开",
       "width": 2360,
       "height": 1380,
-      "bytes": 125460
+      "bytes": 125756
     },
     {
       "file": "portio-light-settings.png",
@@ -86,7 +86,7 @@
       "label": "设置面板顶部：自定义十六项",
       "width": 2360,
       "height": 1380,
-      "bytes": 206741
+      "bytes": 206992
     },
     {
       "file": "portio-light-hosts.png",
@@ -95,7 +95,7 @@
       "label": "设置面板滚到底：已知主机与运行日志",
       "width": 2360,
       "height": 1380,
-      "bytes": 236935
+      "bytes": 237199
     }
   ]
 }

@@ -91,8 +91,12 @@ Release 上那份，3384941 B、sha256 ff080346 开头」，没有一个字是�
 全对得上，装出来还是 RC3**。A48 把这条变成门禁：`docs/artifacts.json` 里记这一版交付出去的那一份
 （来源、tag、文件名、字节、sha256），三条判据——记录自己得自洽（同版同平台一条、不许记将来的版本、
 说 CI 就得写清 tag 且与版本一致、文件名里得带版本串）；盘上那份字节与 sha256 都得对上；Windows exe
-的 PE 版本资源里那个串（FileVersion / ProductVersion）得是当前版本（文件名与字节都改得动，包体内
+PE 版本资源里那个串（FileVersion / ProductVersion）得是当前版本（文件名与字节都改得动，包体内
 这个串改不动）。记录没有、或者那份包不在盘上报未验（交付文件在仓库外，换台机器就找不着）。
+**后来又补了一格（RC6）：记录里那个 tag 到底指的哪次提交。** 光写一个 tag 名，等于我又抄了一句
+「这份包是从 v1.0.10-RC6 编出来的」——tag 打到了哪次提交、那次提交里版本写着什么，都得去问仓库：
+tag 得真在；它指向的那次提交里根 `Cargo.toml` 的版本必须等于记录写的版本（不是附注标签、或者那次提交
+不在 HEAD 线上只留 NOTE）；git 用不了就报未验，不报绿。
 环境变量可覆盖探测结果：PORTIO_CHROME、PORTIO_NODE、PORTIO_CARGO、PORTIO_7Z、PORTIO_GIT。
 """
 
@@ -2794,7 +2798,7 @@ def main(argv: list[str]) -> int:
         ("A32", "cargo fmt --check + cargo clippy -D warnings（本地的绿要等于 CI 的绿）", True),
         ("A33", "portio-app.exe 真的起得来（拉起这份 exe 等窗口、核标题带 Portio、再确认没当场退出，用完收干净）", True),
         ("A34", "包里那份就是核的那份（拆开安装包、拿里面的 portio-app.exe 跟构建产物逐字节对，只放过打包器写的标记）", True),
-        ("A48", "交出去的那份就是核的那份（docs/artifacts.json 里这一版那份包：记录自洽、盘上那份字节与 sha256 对得上、包体内版本串是这一版）", True),
+        ("A48", "交出去的那份就是核的那份（docs/artifacts.json 里这一版那份包：记录自洽、盘上那份字节与 sha256 对得上、包体内版本串是这一版、记录里那个 tag 也真指在写着这一版的提交上）", True),
         ("A35", "回归脚本自己那批单测（scripts/test_*.py 全跑，口径跟 CI 的 discover 一致；一条都没跑到也算红）", True),
         ("A36", "窗口起来了，界面也真画出来了（走 WebView2 调试口进真 webview：加载完没、版本串是不是这一版、app.js 跑完没、终端对象在不在、DOM 有没有肉）", True),
         ("A37", "那几条自检在真窗口里也跑得动（真后端 + 真偏好里跑 split/clip/fold/ctx/find/find-pane/transfer 七条；跑前存下偏好、跑完一字不差写回去）", True),

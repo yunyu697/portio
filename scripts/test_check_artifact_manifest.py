@@ -77,6 +77,57 @@ def fake_pe(versions: dict[str, str] | None):
     return lambda _path: versions
 
 
+def tags_of(rows: list[dict], *, cargo: dict[str, str] | None = None,
+            kind: str = "tag", ancestor: bool = True) -> dict[str, dict]:
+    """按记录里的 tag 名搭一张「tag → 那次提交」的表。"""
+    out: dict[str, dict] = {}
+    for i, r in enumerate(rows):
+        tag = str(r.get("tag"))
+        out[tag] = {
+            "kind": kind,
+            "commit": f"{i + 1:07x}" + "0" * 33,
+            "cargo": (cargo or {}).get(tag, str(r["version"])),
+            "ancestor": ancestor,
+        }
+    return out
+
+
+def fake_git(tags: dict[str, dict] | None = None, *, repo: bool = True, usable: bool = True):
+    """假 git：只看命令行回答，不碰真仓库。tags=None 表示一个 tag 都没有。"""
+    table = tags or {}
+
+    def runner(args: list[str], cwd):
+        if not usable:
+            return 127, "", "git 用不了"
+        if not repo:
+            return 128, "", "fatal: not a git repository (or any of the parent directories): .git"
+        if args[:2] == ["rev-parse", "--show-toplevel"]:
+            return 0, str(cwd) + "\n", ""
+        if args[:2] == ["cat-file", "-t"]:
+            name = args[2].replace("refs/tags/", "")
+            row = table.get(name)
+            return (0, row["kind"] + "\n", "") if row else (1, "", f"fatal: not a valid object name: {name}")
+        if args[:2] == ["rev-parse", "--verify"]:
+            name = args[2].split("^{")[0].replace("refs/tags/", "")
+            row = table.get(name)
+            return (0, row["commit"] + "\n", "") if row else (1, "", "unknown revision")
+        if args[:1] == ["show"]:
+            spec, _, path = args[1].partition(":")
+            hits = [v for v in table.values() if v["commit"] == spec]
+            if not hits:
+                return 128, "", "fatal: bad object"
+            if path != "Cargo.toml":
+                return 128, "", f"fatal: path '{path}' does not exist in '{spec[:7]}'"
+            return 0, f'[workspace]\nversion = "{hits[0]["cargo"]}"\n', ""
+        if args[:1] == ["merge-base"]:
+            hits = [v for v in table.values() if v["commit"] == args[2]]
+            ok = bool(hits) and hits[0].get("ancestor", True)
+            return (0 if ok else 1), "", ""
+        return 127, "", f"unexpected: {' '.join(args)}"
+
+    return runner
+
+
 class VersionParseTest(unittest.TestCase):
     def test_final_release(self):
         self.assertEqual(cam.parse_version("1.0.0"), (1, 0, 0, 3, 0))
@@ -229,23 +280,125 @@ class PayloadTest(unittest.TestCase):
     def test_pe_unreadable_is_note_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             root, m = make_fixture(Path(tmp) / "portio", rows=[row()])
-            got = cam.run(m, root, pe_reader=fake_pe(None))
+            got = cam.run(m, root, pe_reader=fake_pe(None),
+                          git_runner=fake_git(tags_of([row()])))
             self.assertEqual(got["code"], cam.EXIT_OK)
             self.assertTrue(any("PE 版本资源读不出来" in n for n in got["notes"]))
 
     def test_all_good(self):
         with tempfile.TemporaryDirectory() as tmp:
             root, m = make_fixture(Path(tmp) / "portio", rows=[row()])
-            got = cam.run(m, root, pe_reader=fake_pe({"FileVersion": CUR, "ProductVersion": CUR}))
+            got = cam.run(m, root, pe_reader=fake_pe({"FileVersion": CUR, "ProductVersion": CUR}),
+                          git_runner=fake_git(tags_of([row()])))
             self.assertEqual(got["code"], cam.EXIT_OK)
             self.assertEqual(got["findings"], [])
+
+
+class TagTest(unittest.TestCase):
+    """记录里那个 tag，指的到底是不是这一版的提交（RC6 补上的一组）。"""
+
+    def _ok_pe(self):
+        return fake_pe({"FileVersion": CUR, "ProductVersion": CUR})
+
+    def test_tag_points_at_a_commit_of_the_old_version(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = [row()]
+            root, m = make_fixture(Path(tmp) / "portio", rows=rows)
+            got = cam.run(m, root, pe_reader=self._ok_pe(),
+                          git_runner=fake_git(tags_of(rows, cargo={f"v{CUR}": OLD})))
+            self.assertEqual(got["code"], cam.EXIT_FAIL)
+            self.assertTrue(any("tag 打到了别的提交上" in f for f in got["findings"]))
+
+    def test_tag_not_in_repo(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = [row()]
+            root, m = make_fixture(Path(tmp) / "portio", rows=rows)
+            got = cam.run(m, root, pe_reader=self._ok_pe(), git_runner=fake_git({}))
+            self.assertEqual(got["code"], cam.EXIT_FAIL)
+            self.assertTrue(any("仓库里没有这个 tag" in f for f in got["findings"]))
+
+    def test_lightweight_tag_is_note_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = [row()]
+            root, m = make_fixture(Path(tmp) / "portio", rows=rows)
+            got = cam.run(m, root, pe_reader=self._ok_pe(),
+                          git_runner=fake_git(tags_of(rows, kind="commit")))
+            self.assertEqual(got["code"], cam.EXIT_OK)
+            self.assertTrue(any("不是附注标签" in n for n in got["notes"]))
+
+    def test_no_git_repo_is_pending_not_green(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = [row()]
+            root, m = make_fixture(Path(tmp) / "portio", rows=rows)
+            got = cam.run(m, root, pe_reader=self._ok_pe(),
+                          git_runner=fake_git(tags_of(rows), repo=False))
+            self.assertEqual(got["code"], cam.EXIT_NOTHING)
+            self.assertTrue(any("不是 git 工作区" in n for n in got["notes"]))
+
+    def test_git_unusable_is_pending_not_green(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = [row()]
+            root, m = make_fixture(Path(tmp) / "portio", rows=rows)
+            got = cam.run(m, root, pe_reader=self._ok_pe(),
+                          git_runner=fake_git(tags_of(rows), usable=False))
+            self.assertEqual(got["code"], cam.EXIT_NOTHING)
+            self.assertTrue(any("git 用不了" in n for n in got["notes"]))
+
+    def test_tag_off_the_main_line_is_note_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = [row()]
+            root, m = make_fixture(Path(tmp) / "portio", rows=rows)
+            got = cam.run(m, root, pe_reader=self._ok_pe(),
+                          git_runner=fake_git(tags_of(rows, ancestor=False)))
+            self.assertEqual(got["code"], cam.EXIT_OK)
+            self.assertTrue(any("不在 HEAD 的历史线上" in n for n in got["notes"]))
+
+    def test_commit_without_cargo_toml_is_red(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = [row()]
+            root, m = make_fixture(Path(tmp) / "portio", rows=rows)
+            tags = tags_of(rows)
+            loop = fake_git(tags)
+
+            def runner(args, cwd):
+                if args[:1] == ["show"]:
+                    return 128, "", "fatal: path 'Cargo.toml' does not exist"
+                return loop(args, cwd)
+
+            got = cam.run(m, root, pe_reader=self._ok_pe(), git_runner=runner)
+            self.assertEqual(got["code"], cam.EXIT_FAIL)
+            self.assertTrue(any("没有根 Cargo.toml" in f for f in got["findings"]))
+
+    def test_empty_tag_column_is_red(self):
+        rows = [row(source="local", tag="", build="cargo build --release")]
+        findings, notes, verified = cam.check_tags(rows, Path("."), fake_git({}))
+        self.assertTrue(any("tag 那一栏是空的" in f for f in findings))
+        self.assertEqual(verified, 0)
+
+    def test_history_row_with_a_missing_tag_is_red(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old = row(version=OLD, tag=f"v{OLD}", asset=f"Portio_{OLD}_x64-setup.exe",
+                      file=f"../Portio_{OLD}_x64-setup.exe")
+            rows = [row(), old]
+            root, m = make_fixture(Path(tmp) / "portio", rows=rows)
+            tags = tags_of(rows)
+            del tags[f"v{OLD}"]
+            got = cam.run(m, root, pe_reader=self._ok_pe(), git_runner=fake_git(tags))
+            self.assertEqual(got["code"], cam.EXIT_FAIL)
+            self.assertTrue(any("第 2 条" in f and "仓库里没有这个 tag" in f for f in got["findings"]))
+
+    def test_check_tags_counts_verified(self):
+        rows = [row()]
+        findings, notes, verified = cam.check_tags(rows, Path("."), fake_git(tags_of(rows)))
+        self.assertEqual((findings, notes, verified), ([], [], 1))
 
 
 class MainTest(unittest.TestCase):
     def test_cli_ok(self):
         with tempfile.TemporaryDirectory() as tmp:
             root, m = make_fixture(Path(tmp) / "portio", rows=[row()])
-            self.assertEqual(cam.main(["--manifest", str(m), "--root", str(root)]), cam.EXIT_OK)
+            self.assertEqual(cam.main(["--manifest", str(m), "--root", str(root)],
+                                      git_runner=fake_git(tags_of([row()]))), cam.EXIT_OK)
 
     def test_cli_pending_propagates(self):
         with tempfile.TemporaryDirectory() as tmp:

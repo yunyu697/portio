@@ -18,8 +18,14 @@ A48 核三件事：
 3. **包自己说自己是谁**：Windows exe 的 PE 版本资源里那个串（FileVersion / ProductVersion）
    必须等于当前版本——这条最要命，文件名和字节都能被改，包体内那个版本串不是随手改得动的。
    读不出来（不是 PE、或者碰上非 Windows）只留 NOTE，不当红。
+4. **记录里那个 tag 指的是这一版的提交**（RC6 补上的一组）：tag 得真在仓库里；它指向的**那次提交**
+   的根 `Cargo.toml` 里版本必须等于记录写的版本——不然「这份包是 CI 从 v1.0.10-RC5 编出来的」这句话
+   就只是我抄了一个 tag 名；tag 提交不在当前 HEAD 的历史线上（比如从别的分支发的）只留 NOTE；
+   tag 不是附注标签（没有「这一版做了什么」那段话）也只留 NOTE。
+   git 用不了、或者这个目录不是 git 工作区，这一组**没得核**，整份报未验，不拿「没查到问题」冒充核过。
 
-退出码：0 全对得上 / 1 对不上 / 4 这一版还没交过包（没有记录，或者那一份不在盘上，没得核）。
+退出码：0 全对得上 / 1 对不上 / 4 这一版还没交过包、或者那几组里有一组没得核
+（没有记录、那一份不在盘上、tag 那一组核不了）。
 
 用法：
     python scripts/check_artifact_manifest.py
@@ -33,6 +39,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 from datetime import date
 from pathlib import Path
@@ -184,6 +191,80 @@ def check_set(rows: list[dict], current: str) -> list[str]:
     return findings
 
 
+def default_git(args: list[str], cwd: Path) -> tuple[int, str, str]:
+    """跑一条 git 命令（只读）。git 不在、或者跑不起来时返回 127。"""
+    try:
+        proc = subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True,
+                              timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
+        return 127, "", str(e)
+    return proc.returncode, proc.stdout, proc.stderr
+
+
+def check_tags(rows: list[dict], root: Path, git_runner=None) -> tuple[list[str], list[str], int]:
+    """记录里那个 tag，指的到底是不是这一版的提交。
+
+    只读四条命令：`rev-parse --show-toplevel`（是不是 git 工作区）、`cat-file -t`（附注标签还是
+    轻量标签）、`rev-parse --verify <tag>^{commit}`（指向哪个提交）、`show <提交>:Cargo.toml`
+    （那次提交里的版本）、`merge-base --is-ancestor`（在不在 HEAD 的历史线上）。
+
+    返回（判红那几条，NOTE，真核过几条）。核过 0 条表示这一组没得核，调用方该报未验。
+    """
+    runner = git_runner or default_git
+    findings: list[str] = []
+    notes: list[str] = []
+    verified = 0
+
+    rc, _out, err = runner(["rev-parse", "--show-toplevel"], root)
+    if rc != 0:
+        first = err.strip().splitlines()[0] if err.strip() else "没有 .git"
+        return [], [f"{root.name} 不是 git 工作区，或者这台机器上 git 用不了（{first}）："
+                    "记录里那个 tag 指的是哪次提交，这一组没核"], 0
+
+    for i, row in enumerate(rows, 1):
+        tag = str(row.get("tag") or "").strip()
+        where = f"第 {i} 条（{row.get('version')} / {row.get('platform')}）"
+        if not tag:
+            findings.append(f"{where} tag 那一栏是空的：这份包是从哪个提交编出来的，说不清")
+            continue
+
+        rc, out, _err = runner(["cat-file", "-t", f"refs/tags/{tag}"], root)
+        if rc != 0 or not out.strip():
+            findings.append(f"{where} 记着 tag `{tag}`，可仓库里没有这个 tag——"
+                            "这份包是从哪个提交编出来的，现在没处可核")
+            continue
+        kind = out.strip()
+        if kind != "tag":
+            notes.append(f"`{tag}` 是{kind}（不是附注标签），它没有「这一版做了什么」那段话；"
+                         "指向仍可核")
+
+        rc, out, _err = runner(["rev-parse", "--verify", f"refs/tags/{tag}^{{commit}}"], root)
+        commit = out.strip()
+        if rc != 0 or not commit:
+            findings.append(f"{where} 的 tag `{tag}` 解析不出它指向哪个提交")
+            continue
+
+        rc, out, _err = runner(["show", f"{commit}:Cargo.toml"], root)
+        if rc != 0:
+            findings.append(f"{where} 的 tag `{tag}` 指向 {commit[:7]}，可那次提交里没有根 "
+                            "Cargo.toml——版本核不了，tag 可能打在了别的项目上")
+            continue
+        m = re.search(r'^version\s*=\s*"(.*?)"', out, re.MULTILINE)
+        tagged = m.group(1).strip() if m else ""
+        if tagged != str(row["version"]).strip():
+            findings.append(f"{where} 说这份包是 {row['version']}，可 tag `{tag}` 指的提交"
+                            f"（{commit[:7]}）里版本写着 `{tagged or '（没读到）'}`："
+                            "tag 打到了别的提交上，或者记录写错了版本")
+            continue
+
+        rc, _out, _err = runner(["merge-base", "--is-ancestor", commit, "HEAD"], root)
+        if rc == 1:
+            notes.append(f"`{tag}` 指向的 {commit[:7]} 不在 HEAD 的历史线上（可能是从别的分支发的版）")
+        verified += 1
+
+    return findings, notes, verified
+
+
 def resolve_file(row: dict, root: Path = ROOT) -> Path:
     """记录里的路径按「仓库目录」解：交付文件都在仓库外，`../x.exe` 这种写法不夹带本机用户名。"""
     p = Path(str(row["file"]))
@@ -282,12 +363,13 @@ def check_payload(row: dict, path: Path, current: str, pe_reader=pe_versions) ->
     return findings, notes, True
 
 
-def run(manifest: Path = MANIFEST, root: Path = ROOT, pe_reader=pe_versions) -> dict:
+def run(manifest: Path = MANIFEST, root: Path = ROOT, pe_reader=pe_versions,
+        git_runner=None) -> dict:
     """整套判据。返回 {code, findings, notes, stats, current}。"""
     current = current_version(root)
     findings: list[str] = []
     notes: list[str] = []
-    stats = {"records": 0, "checked": 0, "history": 0, "present": False}
+    stats = {"records": 0, "checked": 0, "history": 0, "present": False, "tags": 0}
 
     data, bad = load_manifest(manifest)
     if data is None:
@@ -302,6 +384,10 @@ def run(manifest: Path = MANIFEST, root: Path = ROOT, pe_reader=pe_versions) -> 
     for i, row in enumerate(rows, 1):
         findings += check_entry(i, row, current)
     findings += check_set(rows, current)
+
+    tag_findings, tag_notes, stats["tags"] = check_tags(rows, root, git_runner)
+    findings += tag_findings
+    notes += tag_notes
 
     mine = [r for r in rows if str(r["version"]).strip() == current
             and str(r["platform"]).strip() == "windows-x64"]
@@ -334,17 +420,23 @@ def run(manifest: Path = MANIFEST, root: Path = ROOT, pe_reader=pe_versions) -> 
         p = resolve_file(r, root)
         if not p.is_file():
             notes.append(f"历史那条 {r['version']} / {r['platform']} 的那份不在盘上，只核了记录本身")
-    return {"code": EXIT_FAIL if findings else EXIT_OK,
-            "findings": findings, "notes": notes, "stats": stats, "current": current}
+    if findings:
+        code = EXIT_FAIL
+    elif stats["tags"]:
+        code = EXIT_OK
+    else:
+        notes.append("记录里那个 tag 指的是哪次提交，这一组没得核（所以不报绿）")
+        code = EXIT_NOTHING
+    return {"code": code, "findings": findings, "notes": notes, "stats": stats, "current": current}
 
 
-def main(argv: list[str]) -> int:
+def main(argv: list[str], git_runner=None) -> int:
     ap = argparse.ArgumentParser(description="交付物溯源（rc-checklist A48）")
     ap.add_argument("--manifest", default=str(MANIFEST), help="记录文件，默认 docs/artifacts.json")
     ap.add_argument("--root", default=str(ROOT), help="仓库目录（记录里的相对路径按它解），默认本仓库")
     args = ap.parse_args(argv)
 
-    result = run(Path(args.manifest), Path(args.root))
+    result = run(Path(args.manifest), Path(args.root), git_runner=git_runner)
     for msg in result["findings"]:
         print(f"FAIL {msg}")
     for msg in result["notes"]:
@@ -360,11 +452,13 @@ def main(argv: list[str]) -> int:
     if result["code"] == EXIT_OK and row:
         print(f"OK {cur} 那一份（{row['asset']}，{row['bytes']} 字节，sha256 "
               f"{str(row['sha256'])[:12]}…）跟盘上那份对得上，包体内的版本串也是 {cur}；"
+              f"记录里那 {s['tags']} 个 tag 也都真指在写着这一版的那次提交上；"
               f"另有 {s['history']} 条历史记录（历史那几份不在盘上时只核记录本身）")
     elif result["code"] == EXIT_FAIL:
         print(f"FAIL {cur}：记录跟盘上那份对不上，先照上面那几条核清，别把不是这一版的包交出去")
     else:
-        print(f"未验 这一版（{cur}）还没有可核的那一份——没有记录，或者记录里那份不在盘上")
+        print(f"未验 这一版（{cur}）还没有可核的那一份——没有记录，或者记录里那份不在盘上，"
+              "或者 tag 那一组没得核")
     return result["code"]
 
 
