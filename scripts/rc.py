@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / 未验。
 
-对应 docs/rc-checklist.md §1 的 A1–A46。以前这些步骤散在日志里，每轮都要手打一遍命令，
+对应 docs/rc-checklist.md §1 的 A1–A47。以前这些步骤散在日志里，每轮都要手打一遍命令，
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
 
 用法：
@@ -78,6 +78,13 @@ A45 钉住六件事：`## [Unreleased]` 排在最前；每个版本标题都带 
 那道门禁被点名；计划表里写「会跑」的，分发处就得有对应分支。
 「这一版」取「版本号严格小于当前版本的那个最大的 `v*` tag」到工作区（含未提交改动），所以提交前、
 提交后、打完 tag 再跑都对得上；本地没有更早的 tag（浅克隆）报未验，不拿「没查到问题」冒充「核过了」。
+**可要是盘上那份产物本身就是空壳呢**：2026-11-21 A1 报 `E0463: can't find crate for portio_ssh`，
+代码一个字没坏——上一轮 rustc 的 LLVM 被内存顶崩时在 `deps` 里留下一个 0 字节的 `.rmeta`，
+而 `.fingerprint` 里那格的 `invoked.timestamp` 还在，cargo 认为「编过了」，于是永远不重编。
+它长得像代码问题，其实是产物问题，比一次 OOM 难查得多。A47 排在 A1 **前面**（顺序有意为之：
+排在编译之后就没用了），三条判据：`deps` 里 0 字节的 `.rmeta` / `.rlib` / `.o`；其中指纹还挂着的那几份
+判红并给出 `cargo clean -p <包>`；还挂着超过一小时的 rustc（被打断没退干净的孤儿，白占提交额度）。
+一个 target 目录都没有时报未验。
 环境变量可覆盖探测结果：PORTIO_CHROME、PORTIO_NODE、PORTIO_CARGO、PORTIO_7Z、PORTIO_GIT。
 """
 
@@ -2743,6 +2750,8 @@ def main(argv: list[str]) -> int:
     args = ap.parse_args(argv)
 
     plan = [
+        # A47 有意排在 A1 前头：它是开跑前的产物体检，等编译炸完再看这一格就没意义了
+        ("A47", "check_stale_artifacts.py（deps 里 0 字节的空壳产物 / 指纹还挂着的假新鲜 / 超龄 rustc）", True),
         ("A1", "cargo test --workspace", not args.fast),
         ("A2", "node --check ui/app.js", True),
         ("A3", "check_design_tokens.py（无硬编码色值）", True),
@@ -2835,7 +2844,10 @@ def main(argv: list[str]) -> int:
             print(f"[{LABEL[SKIP]}] {code}  {label}  ← --fast")
             continue
         t0 = time.time()
-        if code == "A1":
+        if code == "A47":
+            # 开跑前的产物体检：0 字节的空壳 / 假新鲜指纹 / 超龄 rustc（纯 Python，不编译）
+            status, detail = a_script("check_stale_artifacts.py", "产物空壳与假新鲜", skip_exit=4)
+        elif code == "A1":
             status, detail = a1_cargo_test()
         elif code == "A2":
             status, detail = a2_node_syntax(node)
