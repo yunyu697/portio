@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / 未验。
 
-对应 docs/rc-checklist.md §1 的 A1–A44。以前这些步骤散在日志里，每轮都要手打一遍命令，
+对应 docs/rc-checklist.md §1 的 A1–A45。以前这些步骤散在日志里，每轮都要手打一遍命令，
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
 
 用法：
@@ -63,6 +63,13 @@ profile，收尾一句 `shutil.rmtree(prof, ignore_errors=True)`——库文件�
 目录、1.3 GB。A44 钉住四件事：建之前先核目标盘余量（不够就拦、并说清差多少）、建了就登记、
 收的时候重试几次（真删不掉判 False 并点名、整跑按失败算）、跑前只清**自己前缀且够旧的**残留
 （刚建那份可能是另一个 rc.py 正在用的，别人的目录与同名文件一律不碰）。
+**可我把「这一版改了什么」写走形了**：GitHub Release 的正文只有一句「这一版改了什么，看仓库里的
+CHANGELOG.md」，所以那一段就是用户读到的东西。1.0.10-RC1 那一节被写成「每一行之间夹一个空行、
+续行再缩进两格」——渲染出来是七截互不相连的碎段，一个条目读成七个段落，而且没人看得出来是排版坏了。
+A45 钉住六件事：`## [Unreleased]` 排在最前；每个版本标题都带 `YYYY-MM-DD`、版本串能解析；
+**当前版本必须有自己那一节、排在最前、且不是空的**（先写更新内容再打包）；当前那节里不许连着两个空行、
+不许空行后面跟缩进续行、行尾不许留空白；每节都得有白名单里的 `### ` 子标题。
+历史小节只查「有没有子标题」这类硬伤，不重排 —— 已经发出去的十几段没有回头改的必要。
 环境变量可覆盖探测结果：PORTIO_CHROME、PORTIO_NODE、PORTIO_CARGO、PORTIO_7Z。
 """
 
@@ -2752,6 +2759,7 @@ def main(argv: list[str]) -> int:
         ("A26", "#panes-test = PANES-SELFTEST-OK（终端开局格数：只管打开应用时第一个标签、改设置不动眼前、第二标签仍一格、认不出的值回单屏且不回写）", True),
         ("A27", "#layout-test = LAYOUT-SELFTEST-OK（面板宽度两层：拖拽落记忆层、用默认按三档落宽度且分栏回 50/50 抽屉回一行、记忆层一个字不改，认不出的值各回各的默认且不回写）", True),
         ("A28", "check_site.py（说明页每一项设置与每个档位都跟设置面板对上）", True),
+    ("A45", "check_changelog.py（每个版本的更新内容能直接贴到 Release）", True),
         ("A29", "#transfer-test = TRANSFER-SELFTEST-OK（空态随第一行消失、计数跟实际行数、43% 与完成/排队文案、行不出抽屉）", True),
         ("A30", "#net-fail-test = NET-FAIL-SELFTEST-OK（后端出错也要有话说：列目录失败留话、传输失败落红条而不是永远排队、错因翻成人话）", True),
         ("A31", "发布截图是本版本那一套（docs/shots/manifest.json 的版本串与当前一致、十张图逐张对得上字节数）", True),
@@ -2883,6 +2891,9 @@ def main(argv: list[str]) -> int:
         elif code == "A28":
             # 纯 Python 对表，不开浏览器
             status, detail = a_script("check_site.py", "说明页与代码对表")
+        elif code == "A45":
+            # 更新内容那一段得是能直接贴到 Release 的形态（纯 Python，不开浏览器）
+            status, detail = a_script("check_changelog.py", "更新内容格式")
         elif code == "A29":
             # 塞三条演示传输（一条在跑、一条完成、一条排队），量空态是否消失与计数、文案、几何
             status, detail = a_page(chrome, profile, "#transfer-test", "TRANSFER-SELFTEST-OK", "1180,690", 8000)
