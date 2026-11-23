@@ -4460,3 +4460,72 @@ A37 只搬了「不动设置」的七条。剩下九条（主题 / 界面字号 
 - 真实 SSH / PTY / tmux 全屏 / 真 SFTP：仍无测试服务器与凭据。
 - 「安装器装到机器上那份能不能跑」全程未验；mac / linux 包只到「CI 构建通过」。
 - dmg / deb / AppImage 还没有各自的交付记录（A48 只钉 Windows 那一份）。
+
+
+## 2026-11-23 ｜ v1.0.10-RC7 ｜ 清单首部那串数字，是我一个字一个字打进去的（A49）
+
+**背景**：上一轮（11-21）做到一半本机掉线——无头 Chrome 两次 90s 超时之后整台机器的命令通道塌了一小时，
+代码与文档改动留在工作区没提交。这一轮机器缓过来（C 盘回到 23.8 GB），先 `git status` 核对工作区原样，
+再把 RC7 这一格收口。
+
+**做了什么**
+
+- `scripts/rc.py` 加 `--record PATH`：整跑收尾把逐项状态 / 耗时 / 理由落成一份机器读的成绩单
+  `docs/rc-last-run.json`，`summary`（total / pass / fail / pending / seconds）**从 items 数出来**，
+  不是另写一遍数字；只跑几项（带了编号选择）时 `--record` 当场拒写、退 2——免得拿一份「就跑了一项」
+  的纸冒充整跑。逐项计时进 `timings`，收尾退出码被临时目录残留翻转后，成绩单跟着翻。
+- 新门禁 **A49**（`scripts/check_rc_record.py`）拿成绩单去对清单首部，五条判据：
+  ① 纸面自洽：状态只许 PASS / FAIL / SKIP，三项之和等于总项数，退出码只许 0 / 1 / 3 且必须由逐项
+  状态推得出来（有失败退 1、没失败有未验退 3、都没有退 0）；② 版本只许当前这一版或紧挨着的上一版
+  （满 10 进 patch 回 1），不许写将来；`when` 得可解析且带时区；③ 编号真在 `rc.py` 计划表里、不重复；
+  ④ 清单首部的项数 / 通过 / 失败 / 未验 / 耗时 / 退出码与成绩单一字不差，首部版本串也得等于成绩单版本；
+  ⑤ 每条未验都在首部点到名；首部说「跳过」的项，成绩单里不能记着跑过（记成 SKIP 且理由含跳过算对得上）。
+  退出码 0 / 1 / 4（无成绩单或首部那段找不到报 4，硬伤优先于未验）。
+- 单测 `scripts/test_check_rc_record.py` **36 条**（版本解析 / 形状 / 版本闸 / 编号 / 首部 / 成绩单
+  六个量级），逐条把纸面改坏看它翻红。
+- 版本进位 `1.0.10-RC7`（六处写入 / 七处一致）；CHANGELOG 加 `[1.0.10-RC7]` 一节；发布说明、清单首部
+  与 §7 表、press-kit 下载表回填；十张物料重出到 RC7（1.58 MiB）。
+
+**验证证据**
+
+- `python -m unittest scripts.test_check_rc_record` → **36 条 OK**；`unittest discover -s scripts`
+  全量 **576 条通过**（按平台跳 1 条）。
+- 本机编译这轮跑通了：A1 `cargo test --workspace` **102 passed / 0 failed**；A32 `cargo fmt --all --check`
+  干净、`cargo clippy --workspace --all-targets -- -D warnings` 零警告。
+- 整跑 49 项：**39 通过 / 1 失败 / 9 未验，371.9s，退出码 1**。唯一失败是 A49 自身——落成绩单那一下
+  清单首部还抄着 RC6 那串数字，对不上被它自己拦下；首部按成绩单改写后 `check_rc_record.py` 退 0。
+- A47 起手就抓到 `D:\portio-target\debug` 里旧崩溃留下的 7 份 0 字节 `.rmeta` 空壳（指纹还挂着假新鲜），
+  按它给的 `cargo clean -p portio-app / -p portio-core / -p portio-ssh` 清掉 1451 份文件 / 2.5 GiB，
+  复跑 debug / release 两档都干净。
+- 发版：tag `v1.0.10-RC7` 已推（指向 `f734e3f`）；CI `45135299872` 五 job 全 success；Release
+  `45135326656` 四 job 全 success。四资产：exe **3384947** / dmg **9531677** / deb **4978076** /
+  AppImage **83167736** B。
+- 包下来之后 A48 退 0：`Portio_1.0.10-RC7_x64-setup.exe` 3384947 字节、sha256 `a29e4671bb02…`、
+  PE 里 FileVersion / ProductVersion 都是 1.0.10-RC7；记录里四个 tag（RC7 / RC6 / RC5 / RC4）都真指在
+  写着各自那一版的提交上。交付：`new-chat\Portio_1.0.10-RC7_x64-setup.exe`（Release 原样下载），
+  旧 RC6 本地包已删。
+
+**踩到的坑**
+
+1. 上一轮的塌方原因与 RC6 那轮同源：提交内存紧到 git / python / pwsh 都起不来，这一轮 C 盘腾出空间后
+   本机编译才第一次在整跑里跑通。自动推进撞上命令通道掉线，先等机器缓过来，别在同一处反复重试。
+2. A49 是自指门禁：整跑时它读的是上一份成绩单（或还没有成绩单），所以第一跑它自己一定红 / 未验；
+   首部必须在整跑之后按成绩单同步改，忘了改下一轮就红——这条写进了 CHANGELOG Known limitations。
+3. `gh` 要在仓库目录下跑才认得到 base repo；下载到仓库外目录时 `--dir` 给绝对路径。git 不在 PATH 时
+   A48 的 tag 组整组退 4（未验），跑 A48 前先把 `C:\Program Files\Git\cmd` 拼进 PATH。
+
+**下一步**
+
+- 1.0.10 段第 8 格。候选：① 交付记录从「只有 Windows 那一份」扩到 dmg / deb / AppImage（各记一条、
+  拿 Release 上的字节核）；② A48 再走一步：核「记录里那份包里的 portio-app.exe，跟 tag 那次提交的
+  `Cargo.toml` 声明对不对得上」；③ A47 补「增量缓存与源文件时间对不上、`.d` 写坏」两类。
+- 等拍板的没变：C 盘空间 / 提交内存仍是头一条；开源许可证、历史版本补 tag、发包形态等用户表态。
+
+**未验**
+
+- A11 / A34：本版安装包没在本地构建，包拆不开、包里那份跟构建产物逐字节对不上。
+- A36 / A38 / A39 / A40 / A41 / A43：手上那份 release exe 界面还是 1.0.10-RC3，不是本版构建，
+  真 webview / 一次性 profile / 真后端那几条这轮没核到。
+- 真实 SSH 登录 / PTY 交互 / tmux 全屏 / 真 SFTP 上传下载：仍无测试服务器与凭据，只有协议层与本地回环。
+- 「安装器装到机器上那份能不能跑」全程未验；mac / linux 包只到「CI 构建通过」，未真机装过。
+- dmg / deb / AppImage 还没有各自的交付记录（A48 目前只钉 Windows 那一份）。
