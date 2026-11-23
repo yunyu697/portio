@@ -857,9 +857,9 @@ def own_processes(enum=None) -> list[dict]:
     """列出本应用自己留下的进程（主进程 + 自家 webview2 全套）。
 
     enum 注入后单测可以喂假列表；不传 enum 就是空列表（单测环境不真扫机器）。
+    真实机器扫描由调用站点传入 `_win32_own_processes`，这里不按平台短路——
+    否则注入的假列表在非 win32 上会被整段丢掉。
     """
-    if sys.platform != "win32":
-        return []
     if enum is None:
         return []
     return enum()
