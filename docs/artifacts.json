@@ -2,6 +2,28 @@
   "note": "每一版交付出去的各平台安装包都记一条：哪来的、哪个平台、多大、sha256 多少、包体内写的哪个版本。scripts/check_artifact_manifest.py（A48）拿它逐项对——记录写错了、盘上那份换成了别的版本、Release 上挂着的大小对不上，都当场判红。本机盘上没有的 dmg / deb / AppImage，字节与 sha256 这轮只能核到 Release 资产大小那一层。路径按仓库目录解（交付文件都在仓库外）。",
   "artifacts": [
     {
+      "version": "1.0.10-RC9",
+      "platform": "windows-x64",
+      "source": "ci",
+      "tag": "v1.0.10-RC9",
+      "asset": "Portio_1.0.10-RC9_x64-setup.exe",
+      "file": "../Portio_1.0.10-RC9_x64-setup.exe",
+      "bytes": 3387642,
+      "sha256": "1b1619653a15cf3c88c351847f187dc45753e1d9d9f56a0baa22f4f1e2aa78b3",
+      "delivered": "2026-11-23"
+    },
+    {
+      "version": "1.0.10-RC9",
+      "platform": "macos-universal",
+      "source": "ci",
+      "tag": "v1.0.10-RC9",
+      "asset": "Portio_1.0.10-RC9_universal.dmg",
+      "file": "../Portio_1.0.10-RC9_universal.dmg",
+      "bytes": 9531886,
+      "sha256": "4750827fc74824feaac57b61bb4bbd09d30bf56252dbaff9c65f100880663eb2",
+      "delivered": "2026-11-23"
+    },
+    {
       "version": "1.0.10-RC8",
       "platform": "windows-x64",
       "source": "ci",

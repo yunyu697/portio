@@ -4653,3 +4653,17 @@ WebView2 `0x800700AA 请求的资源在使用中` panic。本轮先复现排查�
 - A48：RC9 还没有交付记录（包未发版）。
 - A36/A37 抖动根因未定性；真实 SSH 登录 / PTY / tmux 全屏 / 真 SFTP 上传下载仍无测试服务器与
   凭据，只有协议层与本地回环；mac / linux 包只到 CI 构建通过，未真机装过。
+
+### 2026-11-23 补记：RC9 发版
+
+- 首推 tag 后 main CI 红：`test_rc_reap` 四条在 Linux 上翻红——`own_processes` 按平台把
+  注入枚举整段短路，本机 Windows 复现不出。修为先认 enum、不传才返回空；`test_rc_reap`
+  16 条、全量 598 条通过。
+- 旧 Release 运行（旧提交）已取消，三份残留资产从 Release 清掉；RC9 tag 移到修复后提交
+  `c0a269a` 重推。
+- CI `45161123378` 五 job 全 success；Release `45161270461` gate / macos-universal /
+  windows-x64 success，linux-x64 岗位长时间挂起，deb / AppImage 未出资产，下一轮复核。
+- 本机下载 RC9 exe 3387642 B，sha256 `1b161965…`，PE 两个版本串都是 1.0.10-RC9；
+  `artifacts.json` 记 windows + dmg 两条；A48 退 0（盘上核过 1 份、Release 大小对上 12 条、
+  12 个 tag 都真指对应提交）。
+- 未验更新：A11 / A34 仍未本地打包；linux deb / AppImage 待 CI 出资产后补记录与 sha。

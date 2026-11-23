@@ -62,9 +62,9 @@ down, files go up. The name is **port + io** — an SSH port, and the doorway da
 
 出图脚本：`python scripts/shots.py`（先查 `<title>` 有没有 `ERR:`，再校验 2360×1380，任一门不过即 FAIL）。
 
-## 现在可以下载什么（截至 `v1.0.10-RC8`）
+## 现在可以下载什么（截至 `v1.0.10-RC9`）
 
-最新一批包是 `v1.0.10-RC8`（预发布，从 [Releases](https://github.com/yunyu697/portio/releases) 下）。
+最新一批包是 `v1.0.10-RC9`（预发布，从 [Releases](https://github.com/yunyu697/portio/releases) 下）。
 1.0.6 的 RC1–RC3 只动过物料、文档与脚本，没单独出包；RC4 修了分屏下的查找 Bug、
 RC5 修了「新建连接」带着上一台机器端口与私钥路径的问题、RC6 修了重开之后「最近使用」分组消失的问题、
 RC7 修了「主机密钥变了」那句处理提示没送达界面的问题、RC8 修了并发写日志会丢行的问题、
@@ -74,11 +74,11 @@ RC9 修了「复制诊断信息」碰到坏字节会把整段日志读成空的�
 
 | 平台 | 产物 | 状态 |
 | --- | --- | --- |
-| Windows x64 | `Portio_1.0.10-RC8_x64-setup.exe`（NSIS，3385291 B） | 能装、能跑；未签名 |
-| macOS（Apple Silicon + Intel） | `Portio_1.0.10-RC8_universal.dmg`（9531936 B） | CI 构建通过，**未在真机装过**；未签名 |
-| Linux x64 | `Portio_1.0.10-RC8_amd64.deb`（4973580 B） / `Portio_1.0.10-RC8_amd64.AppImage`（83159544 B） | CI 构建通过，**未在真机装过** |
+| Windows x64 | `Portio_1.0.10-RC9_x64-setup.exe`（NSIS，3387642 B） | 能装、能跑；未签名 |
+| macOS（Apple Silicon + Intel） | `Portio_1.0.10-RC9_universal.dmg`（9531886 B） | CI 构建通过，**未在真机装过**；未签名 |
+| Linux x64 | RC9 `deb` / `AppImage` 仍在 CI 构建，暂未列出 | CI 构建通过，**未在真机装过** |
 
-这一版（1.0.10-RC8）的三个平台包**同样全部由 CI 构建**：本机这一轮 `cargo test --workspace` 102 passed / 0 failed、fmt 干净、clippy 零警告，但安装包仍由 CI 出，本地没重新打包。包本身是 Release 上那几份，字节数就是上表写的这些；**交出去的这一份 Windows 包有记录**：`docs/artifacts.json` 里写着它的 tag、字节 3385291 与 sha256 前 8 位 `a811794f`，A48 拿它跟盘上那份逐项对过，包体内版本串也是 1.0.10-RC8；记录里那五个版本 tag（RC8 / RC7 / RC6 / RC5 / RC4）也都真指在写着各自那一版的提交上。A11 / A34 如实记「未验」（本版 NSIS 包没在本地构建，包拆不开）；A36 / A37 在整跑里翻红、隔离单跑一绿一红，环境性不稳、根因未定性，不算「已核过」；A38–A41 / A43 在真窗口与真后端里照旧跑过。
+这一版（1.0.10-RC9）的包**同样全部由 CI 构建**：本机这一轮 `cargo test --workspace` 102 passed / 0 failed、fmt 干净、clippy 零警告，但安装包仍由 CI 出，本地没重新打包。包本身是 Release 上那几份，字节数就是上表写的这些；**交出去的这一份 Windows 包有记录**：`docs/artifacts.json` 里写着它的 tag、字节 3387642 与 sha256 前 8 位 `1b161965`，A48 拿它跟盘上那份逐项对过，包体内版本串也是 1.0.10-RC9；记录里那十二个版本 tag 也都真指在写着各自那一版的提交上。A11 / A34 如实记「未验」（本版 NSIS 包没在本地构建，包拆不开）；A36 / A37 本轮在 RC9 release 构建上转绿，初始导航抖动在隔离单跑里复现不出、根因仍未定性；A38–A41 / A43 在真窗口与真后端里照旧跑过。
 
 规则：**RC 及以后发包，Alpha 只打 tag**。tag 必须等于仓库里的版本号，对不上就不进打包流程。
 
