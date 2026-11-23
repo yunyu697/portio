@@ -4600,3 +4600,56 @@ macOS dmg、Linux deb、AppImage 发了就发了，盘上没有、纸上也没�
   字节与 sha256 只核到 Release 大小那一层。
 - 真实 SSH 登录 / PTY 交互 / tmux 全屏 / 真 SFTP 上传下载：仍无测试服务器与凭据，只有协议层与本地回环。
 - 「安装器装到机器上那份能不能跑」全程未验；mac / linux 包只到「CI 构建通过」，未真机装过。
+
+## 2026-11-23 ｜ v1.0.10-RC9 ｜ 真窗口探针残留回收 + 早退归因；A36/A37 抖动仍未定性
+
+**背景**：RC8 整跑 A36（版本串空）/ A37（码 101）翻红，隔离单跑结果不稳；抓到过一次
+WebView2 `0x800700AA 请求的资源在使用中` panic。本轮先复现排查，再把能落地的加固落进探针。
+
+**排查记录**
+- 本地连发 3 轮 A36 探针、4 轮 A33→A36 链条：全绿，收尾后自家进程枚举为空，无新 panic；
+  实机查活进程命令行：自家 webview2 带 `--webview-exe-name=portio-app.exe` 与
+  `--user-data-dir=…io.portio.desktop\EBWebView`，别家（clash-verge / GameViewer / SearchHost）
+  命令行对不上，不可误杀。
+- 隔离环境复现不出抖动；根因仍未最终定性（候选：EBWebView 被上一个实例短暂占用、串行探针
+  资源争用、WebView2 冷启动慢）。定性前 A36/A37 继续如实跟踪，不降门禁标准。
+
+**做了什么**
+- `scripts/rc.py`：新增自家残留进程枚举（命令行认主进程名 + webview 的 io.portio.desktop
+  用户目录 / webview-exe-name 标记；enum 可注入，单测不真扫机器）；`reap_own_processes`
+  拉起前收残留、等树退净，没收净的 PID 写进结论；`app_log_tail` / `classify_panic` 从日志
+  尾部认 `0x800700AA` 占用 / Rust panic，翻成人话接进 A33/A36/A37 早退结论。
+- 新增 `scripts/test_rc_reap.py` 16 条：解析 / 回收与超时存活 / 归因分类 / 日志尾部 /
+  三条探针接线 / 别家 webview2 不误伤；`test_rc_webview.py` 旧有线断言跟新签名同步。
+- A47 抓到 21 份 0 字节空壳 rmeta（含假新鲜指纹），按脚本自己的判定清掉产物与挂着的指纹，
+  复跑 A47 退 0。
+- 十张物料重出到 RC9（1.58 MiB，manifest 1.0.10-RC9）；release 二进制重建到 RC9。
+
+**验证证据**
+- `unittest discover -s scripts` 全量 **598 条通过**（按平台跳 1 条）。
+- `cargo check --workspace --all-targets` 干净；A1 `cargo test --workspace` 102 passed / 0 failed；
+  A32 fmt 干净 clippy 零警告。
+- 实机复验 A33 / A36 / A37 对 RC9 release 全 PASS：A36 版本 1.0.10-RC9、DOM 94620、xterm 1；
+  A37 七条自检跑过、偏好一字没动；收尾无残留。
+- 整跑 49 项：**45 通过 / 1 失败 / 3 未验，242.8s，退出码 1**。失败仅 A49 自指（首部抄着
+  RC8 那串，回填后 `check_rc_record.py` 退 0）；未验 A11 / A34（本版包没本地构建）、A48
+  （RC9 还没有交付记录）。check_versions 七处一致；check_changelog 98 节；facts / site /
+  tokens / scale 均退 0。
+
+**踩到的坑**
+1. release 二进制嵌的是打包那一刻的界面：版本进位后不重建 exe，A36/A37 会按「这份 exe 界面
+   是 RC8、仓库是 RC9」报未验；本轮 `cargo build --release -p portio-app` 重建后才对上。
+2. 0 字节 rmeta 有两种：指纹还挂着的判红，指纹没了的只留 NOTE；清的时候两类一起按脚本判定
+   清，别只删判红那几份。
+
+**下一步**
+- 1.0.10 段第 10 格。候选：① RC9 发包（tag + Release CI 四资产），回填 artifacts.json 与
+  press-kit RC9 记录；② 继续定性 A36/A37 抖动（再看整跑时段 EBWebView 锁与探针时序）；
+  ③ A48 补「包里那份 exe 与 tag 提交的 Cargo.toml 版本对应」。
+- 等拍板的没变：C 盘空间 / 内存、开源许可证、签名证书 / 更新端点 / 崩溃上报。
+
+**未验**
+- A11 / A34：RC9 NSIS 包没在本地构建，包拆不开。
+- A48：RC9 还没有交付记录（包未发版）。
+- A36/A37 抖动根因未定性；真实 SSH 登录 / PTY / tmux 全屏 / 真 SFTP 上传下载仍无测试服务器与
+  凭据，只有协议层与本地回环；mac / linux 包只到 CI 构建通过，未真机装过。
