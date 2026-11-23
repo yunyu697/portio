@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """一条命令跑完 Portio 的自动化回归项，逐项打印 PASS / FAIL / 未验。
 
-对应 docs/rc-checklist.md §1 的 A1–A48。以前这些步骤散在日志里，每轮都要手打一遍命令，
+对应 docs/rc-checklist.md §1 的 A1–A49。以前这些步骤散在日志里，每轮都要手打一遍命令，
 容易漏项也难对照；这里固定成一个入口，输出可以原样贴进清单的「回归记录」表。
 
 用法：
@@ -97,6 +97,12 @@ PE 版本资源里那个串（FileVersion / ProductVersion）得是当前版本�
 「这份包是从 v1.0.10-RC6 编出来的」——tag 打到了哪次提交、那次提交里版本写着什么，都得去问仓库：
 tag 得真在；它指向的那次提交里根 `Cargo.toml` 的版本必须等于记录写的版本（不是附注标签、或者那次提交
 不在 HEAD 线上只留 NOTE）；git 用不了就报未验，不报绿。
+**再往下一格（RC7）：成绩单。** 每一轮整跑最后那行「34 通过 / 0 失败 / 12 未验，124.8s，退出码 3」以前
+只活在屏幕上，抄进 `docs/rc-checklist.md` 首部的那一串是我一个字一个字打进去的——打错一个数字，
+读的人没有任何办法发现；下一轮再打一遍，错的就被对的盖过来。现在 `--record` 会让这一跑自己落一份
+`docs/rc-last-run.json`（逐项状态 / 耗时 / 理由，汇总是从逐项数出来的），A49 拿它去对清单首部：
+纸面自洽、版本只许当前这一版或紧挨着的上一版（不许记将来、也不许攒旧）、编号真在计划表且不重复、
+首部那串数字与成绩单一字不差、未验的每一条都在首部点到名。
 环境变量可覆盖探测结果：PORTIO_CHROME、PORTIO_NODE、PORTIO_CARGO、PORTIO_7Z、PORTIO_GIT。
 """
 
@@ -118,6 +124,7 @@ import tempfile
 import time
 import urllib.request
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -2753,10 +2760,51 @@ def summarize(results: list[tuple[str, str, str, str]], elapsed: float) -> tuple
     return EXIT_OK, [summary]
 
 
+def write_record(path: Path, results: list[tuple[str, str, str, str]], timings: dict[str, float],
+                 exit_code: int, version: str, elapsed: float) -> Path:
+    """把这一轮的成绩单落成 JSON（A49 拿它去对清单首部那串数字）。
+
+    以前整跑最后那行「34 通过 / 0 失败 / 12 未验，124.8s，退出码 3」只活在屏幕上，
+    抄进 `docs/rc-checklist.md` 首部的那一串是我一个字一个字打进去的——打错一个数字，
+    读的人没有任何办法发现。成绩单落盘之后，那串数字才有出处可对。
+    summary 不是另写一遍数字，是**从 items 数出来的**：两处对不上就是记错了。
+    """
+    counts = {s: sum(1 for r in results if r[2] == s) for s in (PASS, FAIL, SKIP)}
+    record = {
+        "note": ("这一轮整跑的成绩单。逐项状态 / 耗时 / 理由都在 items 里，summary 是从 items 数出来的；"
+                 "docs/rc-checklist.md 首部那串数字要对得上它（门禁 A49）。"),
+        "version": version,
+        "when": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "exit": exit_code,
+        "summary": {
+            "total": len(results),
+            "pass": counts[PASS],
+            "fail": counts[FAIL],
+            "pending": counts[SKIP],
+            "seconds": round(elapsed, 1),
+        },
+        "items": [
+            {
+                "code": code,
+                "status": status,
+                "seconds": round(timings.get(code, 0.0), 1),
+                "detail": (detail or "").strip(),
+            }
+            for code, _label, status, detail in results
+        ],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="Portio 自动化回归（rc-checklist §1）")
     ap.add_argument("--fast", action="store_true", help="跳过 A1 的 cargo test")
     ap.add_argument("--list", action="store_true", help="只列出会跑的项")
+    ap.add_argument("--record", metavar="PATH",
+                    help="把这一轮的成绩单落成 JSON（逐项状态 / 耗时 / 理由 + 汇总），"
+                         "清单首部的数字以后要对得上它；只跑几项时不写")
     ap.add_argument("items", nargs="*", metavar="A<n>",
                     help="只跑这几项，如 A11 或 A10,A11；不写就全跑")
     args = ap.parse_args(argv)
@@ -2811,6 +2859,7 @@ def main(argv: list[str]) -> int:
         ("A44", "一次性 profile 自己建自己删（盘不够先拦、并说清差多少；删不掉要判 False 并点名登记，不许再一声不响；跑前只清自己前缀且够旧的残留：刚建的那份、别人前缀的目录、同前缀的文件都不许动）", True),
         ("A45", "check_changelog.py（每个版本的更新内容能直接贴到 Release：`## [Unreleased]` 在最前、版本标题带日期且能解析、当前版本必须有自己那一节且排最前、那节里不许连续空行 / 不许空行切断续行 / 行尾不留空白、每节都得有白名单子标题；历史小节只查硬伤、不重排）", True),
         ("A46", "check_changelog_facts.py（这一版写的话对得上这一版真改的东西：点到的路径要存在；说改了代码文件就得真在改动集里；提到的门禁编号要在计划表里；新加的门禁要写进更新内容；新增脚本要点名或它上场的门禁被点名；计划表每一项都得有分发分支）", True),
+        ("A49", "整跑成绩单与清单首部对表（docs/rc-last-run.json 自洽、版本只许当前或紧挨着的上一版、编号真在计划表且不重复、首部那串数字与它一字不差、未验的每一条都点到名）", True),
     ]
     if args.list:
         for code, label, on in plan:
@@ -2823,6 +2872,12 @@ def main(argv: list[str]) -> int:
         print(f"不认识的编号：{'、'.join(unknown)}（`--list` 里能看到所有能跑的项）")
         return 2
     plan = chosen
+
+    if args.record and wanted:
+        # 只跑几项还落一份「成绩单」，等于给「整跑过了」那句话递了个假凭据：
+        # 清单首部写的是全量整跑，成绩单也得是全量整跑那一份
+        print(f"只跑了 {len(plan)} 项，不是整跑：这一份不当成绩单（`--record` 只跟全量一起用）")
+        return EXIT_BAD_ID
 
     node = find_node()
     chrome = find_chrome()
@@ -2850,9 +2905,11 @@ def main(argv: list[str]) -> int:
     print("-" * 72)
 
     results: list[tuple[str, str, str, str]] = []
+    timings: dict[str, float] = {}
     started = time.time()
     for code, label, on in plan:
         if not on:
+            timings[code] = 0.0
             results.append((code, label, SKIP, "本轮用 --fast 跳过"))
             print(f"[{LABEL[SKIP]}] {code}  {label}  ← --fast")
             continue
@@ -2935,6 +2992,9 @@ def main(argv: list[str]) -> int:
         elif code == "A46":
             # 形状对还不够：写的话得对得上这一版真改的东西（纯 Python，读 git 的改动集）
             status, detail = a_script("check_changelog_facts.py", "更新内容对得上改动", skip_exit=4)
+        elif code == "A49":
+            # 清单首部那串数字得是这一跑真跑出来的那份成绩单（纯 Python，读 docs/rc-last-run.json）
+            status, detail = a_script("check_rc_record.py", "整跑成绩单对表", skip_exit=4)
         elif code == "A29":
             # 塞三条演示传输（一条在跑、一条完成、一条排队），量空态是否消失与计数、文案、几何
             status, detail = a_page(chrome, profile, "#transfer-test", "TRANSFER-SELFTEST-OK", "1180,690", 8000)
@@ -2986,8 +3046,10 @@ def main(argv: list[str]) -> int:
         elif code == "A44":
             # 一次性 profile 自己建自己删：盘不够先拦、删不掉要点名、陈旧清理只认自己的且够旧
             status, detail = a44_profile_lifecycle()
+        seconds = time.time() - t0
+        timings[code] = seconds
         results.append((code, label, status, detail))
-        print(f"[{LABEL[status]}] {code}  {label}  ({time.time() - t0:.1f}s)  {detail}")
+        print(f"[{LABEL[status]}] {code}  {label}  ({seconds:.1f}s)  {detail}")
 
     # 上一项多半刚跑完无头 Chrome，它的收尾进程还会短暂占着这个目录（实测 3 秒内松手），
     # 所以先歇一下再收：这不是「删不掉」，只是还没松手
@@ -2997,7 +3059,8 @@ def main(argv: list[str]) -> int:
     # （只认本轮建的，不把另一轮正在跑的那份算成自己的残留）
     left = [p for p in CREATED_PROFILES if p.exists()]
 
-    code, lines = summarize(results, time.time() - started)
+    elapsed = time.time() - started
+    code, lines = summarize(results, elapsed)
     print("-" * 72)
     for line in lines:
         print(line)
@@ -3010,6 +3073,12 @@ def main(argv: list[str]) -> int:
             # 盘上留下东西就不算全绿：这一条没有对应编号，但不能让「绿」盖过去
             code = EXIT_FAIL
             print("这一轮自己的临时目录没清干净，按失败算（先看上面那份路径为什么删不掉）")
+    if args.record:
+        # 成绩单写在最后一步：上面那些收尾如果翻转了退出码，纸面上也得跟着翻
+        out = write_record(Path(args.record), results, timings, code, ver, elapsed)
+        counts = {s: sum(1 for r in results if r[2] == s) for s in (PASS, FAIL, SKIP)}
+        print(f"成绩单：{out}（{len(results)} 项 / {counts[PASS]} 通过 / {counts[FAIL]} 失败 / "
+              f"{counts[SKIP]} 未验，退出码 {code}）")
     return code
 
 
