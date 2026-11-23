@@ -4667,3 +4667,34 @@ WebView2 `0x800700AA 请求的资源在使用中` panic。本轮先复现排查�
   `artifacts.json` 记 windows + dmg 两条；A48 退 0（盘上核过 1 份、Release 大小对上 12 条、
   12 个 tag 都真指对应提交）。
 - 未验更新：A11 / A34 仍未本地打包；linux deb / AppImage 待 CI 出资产后补记录与 sha。
+
+## 2026-11-23 ｜ v1.0.10-RC9 ｜ 补记：RC9 Linux deb / AppImage 资产补齐记录
+
+**背景**：上一轮 RC9 发版时 Release `45161270461` 的 linux-x64 岗位卡在 `apt` 步骤挂起 39 分钟，
+deb / AppImage 一直没出资产，记录与文档都挂着「CI 构建中」。
+
+**做了什么**
+- 先取消挂起的运行，再 `gh run rerun --job` 单独重跑 linux 岗位；重跑 success，四资产出齐。
+- `docs/artifacts.json` 补 RC9 `linux-deb`（4973074 B / sha256 `43e291a7…`）与
+  `linux-appimage`（83155448 B / sha256 `5482f394…`）两条；deb 下载到本机逐字节核哈希，
+  AppImage 83 MB 本机未下载，字节与 sha256 只核到 Release 摘要层（记录留存，不填假哈希）。
+- press-kit / release-notes / rc-checklist §7 把「linux 构建中」改成四资产齐，补重跑经过与复核证据。
+
+**验证证据**
+- A48 `check_artifact_manifest.py` 退 0：RC9 四条记录、盘上核过 exe + deb 两份、
+  Release 大小对上 14 条、14 个 tag 都真指写着对应版本的那次提交。
+- deb 本机 4973074 B、sha256 `43e291a75bcb…` 与 Release 摘要一致；AppImage 83155448 B、
+  摘要 `5482f394…`（未逐字节复核）。
+- `check_versions` / `check_changelog` / `check_changelog_facts` / `check_site` /
+  `check_rc_record` 均退 0；main CI `45168807822` 五 job 全 success。
+
+**未验**
+- AppImage 未本机下载逐字节核；mac / linux 包未真机装过；A11 / A34 本版 NSIS 包没在本地构建。
+- A36 / A37 初始导航抖动根因仍未定性；真实 SSH 登录 / PTY / tmux 全屏 / 真 SFTP 上传下载
+  仍无测试服务器与凭据，只有协议层与本地回环。
+
+**下一步**
+- 下一轮整跑复核：A48 记录已补应转绿；A11 / A34 仍会因本机没打 RC9 NSIS 包而 SKIP；
+  整跑后按新成绩单回填清单首部与 §7（A49 自指门禁）。
+- 1.0.10 段下一格：继续定性 A36 / A37 抖动，或挑下一个真 Bug 单元进 RC10；
+  版本不进位：本轮是 RC9 发版收尾补记，纯记录与文档，按物料轮先例不单独推 RC tag。
