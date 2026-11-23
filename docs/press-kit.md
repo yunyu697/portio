@@ -76,9 +76,9 @@ RC9 修了「复制诊断信息」碰到坏字节会把整段日志读成空的�
 | --- | --- | --- |
 | Windows x64 | `Portio_1.0.10-RC9_x64-setup.exe`（NSIS，3387642 B） | 能装、能跑；未签名 |
 | macOS（Apple Silicon + Intel） | `Portio_1.0.10-RC9_universal.dmg`（9531886 B） | CI 构建通过，**未在真机装过**；未签名 |
-| Linux x64 | RC9 `deb` / `AppImage` 仍在 CI 构建，暂未列出 | CI 构建通过，**未在真机装过** |
+| Linux x64 | `Portio_1.0.10-RC9_amd64.deb`（4973074 B）/ `Portio_1.0.10-RC9_amd64.AppImage`（83155448 B） | CI 构建通过，**未在真机装过** |
 
-这一版（1.0.10-RC9）的包**同样全部由 CI 构建**：本机这一轮 `cargo test --workspace` 102 passed / 0 failed、fmt 干净、clippy 零警告，但安装包仍由 CI 出，本地没重新打包。包本身是 Release 上那几份，字节数就是上表写的这些；**交出去的这一份 Windows 包有记录**：`docs/artifacts.json` 里写着它的 tag、字节 3387642 与 sha256 前 8 位 `1b161965`，A48 拿它跟盘上那份逐项对过，包体内版本串也是 1.0.10-RC9；记录里那十二个版本 tag 也都真指在写着各自那一版的提交上。A11 / A34 如实记「未验」（本版 NSIS 包没在本地构建，包拆不开）；A36 / A37 本轮在 RC9 release 构建上转绿，初始导航抖动在隔离单跑里复现不出、根因仍未定性；A38–A41 / A43 在真窗口与真后端里照旧跑过。
+这一版（1.0.10-RC9）的包**同样全部由 CI 构建**：本机这一轮 `cargo test --workspace` 102 passed / 0 failed、fmt 干净、clippy 零警告，但安装包仍由 CI 出，本地没重新打包。包本身是 Release 上那几份，字节数就是上表写的这些；**交出去的这一份 Windows 包有记录**：`docs/artifacts.json` 里写着它的 tag、字节 3387642 与 sha256 前 8 位 `1b161965`，A48 拿它跟盘上那份逐项对过，包体内版本串也是 1.0.10-RC9；记录里那十四个版本 tag 也都真指在写着各自那一版的提交上。A11 / A34 如实记「未验」（本版 NSIS 包没在本地构建，包拆不开）；A36 / A37 本轮在 RC9 release 构建上转绿，初始导航抖动在隔离单跑里复现不出、根因仍未定性；A38–A41 / A43 在真窗口与真后端里照旧跑过。
 
 规则：**RC 及以后发包，Alpha 只打 tag**。tag 必须等于仓库里的版本号，对不上就不进打包流程。
 

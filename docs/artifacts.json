@@ -24,6 +24,28 @@
       "delivered": "2026-11-23"
     },
     {
+      "version": "1.0.10-RC9",
+      "platform": "linux-deb",
+      "source": "ci",
+      "tag": "v1.0.10-RC9",
+      "asset": "Portio_1.0.10-RC9_amd64.deb",
+      "file": "../Portio_1.0.10-RC9_amd64.deb",
+      "bytes": 4973074,
+      "sha256": "43e291a75bcb4e710b569a1ba31fca2746d9864bb9052c783e6d14410f0a89e7",
+      "delivered": "2026-11-23"
+    },
+    {
+      "version": "1.0.10-RC9",
+      "platform": "linux-appimage",
+      "source": "ci",
+      "tag": "v1.0.10-RC9",
+      "asset": "Portio_1.0.10-RC9_amd64.AppImage",
+      "file": "../Portio_1.0.10-RC9_amd64.AppImage",
+      "bytes": 83155448,
+      "sha256": "5482f394cef83cc98679c4eb972f4ececbf51e5b5f4c38496d66eec3f60a5d76",
+      "delivered": "2026-11-23"
+    },
+    {
       "version": "1.0.10-RC8",
       "platform": "windows-x64",
       "source": "ci",
