@@ -819,6 +819,96 @@ def kill_tree(pid: int) -> None:
         pass
 
 
+# ---------- 自家残留进程回收（RC9） ---------------------------------------
+
+# WebView2 子进程有时被重挂到系统进程名下，taskkill /T 跟不到；上一个探针没退净的
+# 浏览器进程会占着 EBWebView 目录，下一个探针一拉起就撞 0x800700AA（实测 A37 码 101）。
+# 这里按命令行再扫一遍只属于本应用的进程：主进程名 + webview 的 user-data-dir /
+# webview-exe-name 两处标记；别家（clash-verge / GameViewer / SearchHost）的 webview2
+# 命令行对不上，一律不碰。
+
+def _parse_own_proc_lines(text: str) -> list[dict]:
+    out: list[dict] = []
+    for ln in (text or "").splitlines():
+        parts = ln.split("|", 2)
+        if len(parts) >= 2 and parts[0].strip().isdigit():
+            out.append({"pid": int(parts[0]), "name": parts[1].strip(),
+                        "cmd": parts[2] if len(parts) > 2 else ""})
+    return out
+
+
+def _win32_own_processes() -> list[dict]:
+    ps = (
+        "Get-CimInstance Win32_Process -Filter "
+        "\"Name='portio-app.exe' OR Name='msedgewebview2.exe'\" | "
+        "ForEach-Object { $cl=$_.CommandLine; if ($_.Name -eq 'portio-app.exe' -or "
+        "$cl -match 'io\\.portio\\.desktop|webview-exe-name=portio-app') { "
+        "$_.ProcessId.ToString() + '|' + $_.Name + '|' + $cl } }"
+    )
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                           capture_output=True, text=True, timeout=15)
+    except Exception:  # noqa: BLE001 - 枚举不到就按「没有残留」走，别盖掉真正结论
+        return []
+    return _parse_own_proc_lines(r.stdout)
+
+
+def own_processes(enum=None) -> list[dict]:
+    """列出本应用自己留下的进程（主进程 + 自家 webview2 全套）。
+
+    enum 注入后单测可以喂假列表；不传 enum 就是空列表（单测环境不真扫机器）。
+    """
+    if sys.platform != "win32":
+        return []
+    if enum is None:
+        return []
+    return enum()
+
+
+def reap_own_processes(kill=kill_tree, enum=None, wait: float = 2.0,
+                       sleep=time.sleep, clock=time.time) -> list[int]:
+    """收掉自家残留并等它们真退；回没收净的 PID（空 = 退净了）。"""
+    pids = [p["pid"] for p in own_processes(enum)]
+    for pid in pids:
+        kill(pid)
+    deadline = clock() + wait
+    while True:
+        alive = [p["pid"] for p in own_processes(enum)]
+        if not alive:
+            return []
+        if clock() >= deadline:
+            return alive
+        sleep(0.2)
+
+
+def app_log_path(identifier: str | None = None, env: dict | None = None) -> Path | None:
+    base = (env if env is not None else os.environ).get("LOCALAPPDATA")
+    if not base:
+        return None
+    return Path(base) / (identifier or APP_IDENTIFIER) / "logs" / "portio.log"
+
+
+def app_log_tail(lines: int = 20, identifier: str | None = None,
+                 env: dict | None = None) -> str:
+    p = app_log_path(identifier, env)
+    if p is None or not p.exists():
+        return ""
+    try:
+        return "\n".join(
+            p.read_text(encoding="utf-8", errors="replace").splitlines()[-lines:])
+    except OSError:
+        return ""
+
+
+def classify_panic(tail_text: str) -> str:
+    """早退到底怎么炸的：从日志尾部认 WebView2 占用 / Rust panic，翻成人话。"""
+    if "0x800700AA" in tail_text:
+        return "WebView2 用户目录被占用（0x800700AA，上一个实例可能还没退净）"
+    if "panicked" in tail_text:
+        return "Rust 侧 panic（原因见 logs/portio.log）"
+    return ""
+
+
 def launch_verdict(titles: list[str], alive: bool, waited: float) -> tuple[str, str]:
     """exe 拉起来之后看三件事：进程还在吗、有没有窗口、标题对不对（纯函数，好测）。"""
     if not alive:
@@ -836,8 +926,9 @@ def launch_verdict(titles: list[str], alive: bool, waited: float) -> tuple[str, 
 
 def probe_launch(exe: Path, wait_window: float = LAUNCH_WAIT, hold: float = LAUNCH_HOLD,
                  window_fn=top_windows, popen=subprocess.Popen,
-                 kill=kill_tree) -> tuple[str, str]:
+                 kill=kill_tree, enum=None) -> tuple[str, str]:
     """把 exe 真拉起来、等窗口、再盯一会儿、然后收干净。"""
+    reap_own_processes(kill=kill, enum=enum)
     started = time.time()
     proc = popen([str(exe)], cwd=str(exe.parent),
                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -859,6 +950,7 @@ def probe_launch(exe: Path, wait_window: float = LAUNCH_WAIT, hold: float = LAUN
     finally:
         if proc.poll() is None:
             kill(proc.pid)
+        reap_own_processes(kill=kill, enum=enum)
 
 
 def a33_launch() -> tuple[str, str]:
@@ -867,7 +959,7 @@ def a33_launch() -> tuple[str, str]:
     exe, kind = find_app_exe(app_exe_dirs())
     if exe is None:
         return SKIP, "还没构建 portio-app.exe（先 npm run build 或 tauri build）"
-    status, detail = probe_launch(exe)
+    status, detail = probe_launch(exe, enum=_win32_own_processes)
     return status, f"{detail}（{kind_label(kind)}）"
 
 
@@ -1172,9 +1264,13 @@ def webview_verdict(sig: dict | None, version: str, waited: float,
 
 
 def probe_webview(exe: Path, version: str, wait: float = WEBVIEW_WAIT, port: int | None = None,
-                  popen=subprocess.Popen, kill=kill_tree) -> tuple[str, str]:
+                  popen=subprocess.Popen, kill=kill_tree, enum=None) -> tuple[str, str]:
     """把 exe 拉起来、等 webview 导航到界面、进它肚子里读 DOM、再收干净。"""
     port = port or free_port()
+    leftover = reap_own_processes(kill=kill, enum=enum)
+    note = ""
+    if leftover:
+        note = f"；拉起前还有 {len(leftover)} 个自家进程没退净（{leftover[:3]}），已先收掉"
     env = dict(os.environ)
     # 只给这一个子进程开调试口（进程级环境变量，不改机器上的任何设置）
     env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = f"--remote-debugging-port={port}"
@@ -1186,7 +1282,11 @@ def probe_webview(exe: Path, version: str, wait: float = WEBVIEW_WAIT, port: int
         seen: list[str] = []
         while time.time() - started < wait:
             if proc.poll() is not None:
-                return FAIL, f"{time.time() - started:.0f}s 内进程自己退了（码 {proc.returncode}）"
+                reason = classify_panic(app_log_tail())
+                msg = f"{time.time() - started:.0f}s 内进程自己退了（码 {proc.returncode}）"
+                if reason:
+                    msg += f"；{reason}"
+                return FAIL, msg + note
             targets = cdp_targets(port)
             if targets:
                 seen = [t.get("url") or "" for t in targets]
@@ -1198,7 +1298,8 @@ def probe_webview(exe: Path, version: str, wait: float = WEBVIEW_WAIT, port: int
         waited = time.time() - started
         if not page:
             why = f"调试口里的页面一直是 {seen[-1] or '空的'}" if seen else "调试口一直没开"
-            return webview_verdict(None, version, waited, why)
+            status, detail = webview_verdict(None, version, waited, why)
+            return status, detail + note
         try:
             sig: dict = {}
             deadline = time.time() + WEBVIEW_READY_WAIT
@@ -1216,12 +1317,14 @@ def probe_webview(exe: Path, version: str, wait: float = WEBVIEW_WAIT, port: int
                 if time.time() > deadline:
                     break
                 time.sleep(0.3)
-            return webview_verdict(sig, version, time.time() - started)
+            status, detail = webview_verdict(sig, version, time.time() - started)
+            return status, detail + note
         except Exception as e:  # noqa: BLE001 - 连不上就把原因报出来，不许当通过
-            return FAIL, f"进了界面但读不到 DOM：{e}"
+            return FAIL, f"进了界面但读不到 DOM：{e}" + note
     finally:
         if proc.poll() is None:
             kill(proc.pid)
+        reap_own_processes(kill=kill, enum=enum)
 
 
 def a36_webview() -> tuple[str, str]:
@@ -1231,7 +1334,7 @@ def a36_webview() -> tuple[str, str]:
     exe, kind = find_app_exe(app_exe_dirs())
     if exe is None:
         return SKIP, "还没构建 portio-app.exe（先 npm run build 或 tauri build）"
-    status, detail = probe_webview(exe, current_version())
+    status, detail = probe_webview(exe, current_version(), enum=_win32_own_processes)
     return status, f"{detail}（{kind_label(kind)}）"
 
 
@@ -1349,11 +1452,15 @@ def run_selftest(ws_url: str, hook: str, expect: str, wait: float = SELFTEST_WAI
 
 
 def probe_selftests(exe: Path, version: str, wait: float = WEBVIEW_WAIT, port: int | None = None,
-                    popen=subprocess.Popen, kill=kill_tree,
+                    popen=subprocess.Popen, kill=kill_tree, enum=None,
                     hooks=SELFTESTS, runner=run_selftest,
                     value=cdp_value) -> tuple[str, str]:
     """拉起 exe，在真 webview 里把这几条自检跑一遍，再把偏好原样写回去、收干净。"""
     port = port or free_port()
+    leftover = reap_own_processes(kill=kill, enum=enum)
+    note = ""
+    if leftover:
+        note = f"；拉起前还有 {len(leftover)} 个自家进程没退净（{leftover[:3]}），已先收掉"
     env = dict(os.environ)
     # 同 A36：调试口只给这一个子进程开，机器上的设置一个字不动
     env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = f"--remote-debugging-port={port}"
@@ -1365,7 +1472,11 @@ def probe_selftests(exe: Path, version: str, wait: float = WEBVIEW_WAIT, port: i
         seen: list[str] = []
         while time.time() - started < wait:
             if proc.poll() is not None:
-                return FAIL, f"{time.time() - started:.0f}s 内进程自己退了（码 {proc.returncode}）"
+                reason = classify_panic(app_log_tail())
+                msg = f"{time.time() - started:.0f}s 内进程自己退了（码 {proc.returncode}）"
+                if reason:
+                    msg += f"；{reason}"
+                return FAIL, msg + note
             targets = cdp_targets(port)
             if targets:
                 seen = [t.get("url") or "" for t in targets]
@@ -1376,7 +1487,8 @@ def probe_selftests(exe: Path, version: str, wait: float = WEBVIEW_WAIT, port: i
             time.sleep(0.5)
         if not page:
             why = f"调试口里的页面一直是 {seen[-1] or '空的'}" if seen else "调试口一直没开"
-            return FAIL, f"{time.time() - started:.0f}s 内没进到界面（{why}）——自检没跑过，等于没核"
+            return FAIL, (f"{time.time() - started:.0f}s 内没进到界面（{why}）"
+                          f"——自检没跑过，等于没核" + note)
         ws = page["webSocketDebuggerUrl"]
         deadline = time.time() + WEBVIEW_READY_WAIT
         while time.time() < deadline and value(ws, "document.readyState") != "complete":
@@ -1396,12 +1508,14 @@ def probe_selftests(exe: Path, version: str, wait: float = WEBVIEW_WAIT, port: i
             # 自检把偏好挪了：原样写回去，再确认一次真的回去了
             value(ws, localstorage_restore_expr(before))
             restored = settings_same(value(ws, WEBVIEW_BACKUP_EXPR) or "{}", before)
-        return selftest_verdict(rows, restored)
+        status, detail = selftest_verdict(rows, restored)
+        return status, detail + note
     except Exception as e:  # noqa: BLE001 - 连不上就把原因报出来，不许当通过
-        return FAIL, f"进了界面但自检没跑成：{e}"
+        return FAIL, f"进了界面但自检没跑成：{e}" + note
     finally:
         if proc.poll() is None:
             kill(proc.pid)
+        reap_own_processes(kill=kill, enum=enum)
 
 
 def a37_selftests() -> tuple[str, str]:
@@ -1411,7 +1525,7 @@ def a37_selftests() -> tuple[str, str]:
     exe, kind = find_app_exe(app_exe_dirs())
     if exe is None:
         return SKIP, "还没构建 portio-app.exe（先 npm run build 或 tauri build）"
-    status, detail = probe_selftests(exe, current_version())
+    status, detail = probe_selftests(exe, current_version(), enum=_win32_own_processes)
     return status, f"{detail}（{kind_label(kind)}）"
 
 

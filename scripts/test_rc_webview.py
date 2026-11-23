@@ -118,7 +118,7 @@ class WiredTest(unittest.TestCase):
         self.assertIn("port = port or free_port()", self.src)
 
     def test_compares_against_repo_version(self):
-        self.assertIn("probe_webview(exe, current_version())", self.src)
+        self.assertRegex(self.src, r"probe_webview\(exe, current_version\(\)")
 
     def test_expr_reads_the_signals_the_verdict_uses(self):
         for key in ("title", "ver", "bodyLen", "ready", "tabs", "hasScan", "xterm"):
