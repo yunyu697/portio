@@ -4816,8 +4816,18 @@ A36 读到空版本串时，失败结论也只说"span.ver 空着"，分不清�
   构建通过，未真机装过。
 - 分屏重连的 Channel 修复只走了代码路径与无头/真窗口探针，没有真服务器可做端到端重连。
 
+**发包结果（2026-11-24）**
+- Release `v1.1.0-RC1` 已发布（预发布）：Windows NSIS 3,393,638 B、macOS universal dmg
+  9,530,309 B、Linux deb 4,981,238 B、Linux AppImage 83,159,544 B；Release CI 四 job 全绿
+  （macOS 首跑被 runner 调度取消，`gh run rerun --failed` 重跑后过）。
+- A48 交付记录回填三条（exe / dmg / deb）：盘上逐字节与 sha256 对得上，包体内版本串
+  1.1.0-RC1；Release 大小对上 17 条记录、17 个 tag 都真指对应提交。AppImage 83 MB 本机
+  两次下载卡在 GitHub 下载 CDN（HEAD 16 秒 0 字节），取不到 sha256，按 RC8 先例不入记录、
+  不填假哈希；大小以 Release 清单为准。
+- 整跑复核：49 项 → 46 通过 / 1 失败（A49 自指：落成绩单时清单首部还是上一跑数字，回填后
+  A49 复跑退 0）/ 2 未验（A11 / A34）；A1 `cargo test --workspace` 102 passed / 0 failed、
+  A32 fmt 干净 clippy 零警告、A35 600 条脚本单测全过。
+
 **下一步**
-- 整跑复核 1.1.0-RC1（A11 / A34 仍会因本机没打本版 NSIS 包而 SKIP；A48 要等发包后才有
-  交付记录可核）；转绿后再走 Release CI 四资产流程、打 tag。
 - 继续沿 EBWebView 占用 / 探针时序两条假设排查 A36/A37；若用户能提供一台测试 SSH 服务器
   与凭据，优先把端到端登录 / PTY / SFTP 补成可验项。
