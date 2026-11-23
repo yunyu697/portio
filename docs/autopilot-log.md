@@ -4529,3 +4529,74 @@ A37 只搬了「不动设置」的七条。剩下九条（主题 / 界面字号 
 - 真实 SSH 登录 / PTY 交互 / tmux 全屏 / 真 SFTP 上传下载：仍无测试服务器与凭据，只有协议层与本地回环。
 - 「安装器装到机器上那份能不能跑」全程未验；mac / linux 包只到「CI 构建通过」，未真机装过。
 - dmg / deb / AppImage 还没有各自的交付记录（A48 目前只钉 Windows 那一份）。
+
+
+## 2026-11-23 ｜ v1.0.10-RC8 ｜ 交付记录扩到四平台，Release 资产大小对得上（A48）
+
+**背景**：RC5 起 A48 把「交出去的包有据可核」做成门禁，可记录里一直只有 Windows x64 一份；
+macOS dmg、Linux deb、AppImage 发了就发了，盘上没有、纸上也没有。非 Windows 包不在本机盘上，
+字节与 sha256 没法逐字节核，这一轮先把记录层补全、再加一道只读的 Release 资产大小核对。
+
+**做了什么**
+
+- `scripts/check_artifact_manifest.py`：平台白名单四条 `windows-x64 / macos-universal /
+  linux-deb / linux-appimage`，不在白名单判红；`default_gh` 只读跑
+  `gh release view <tag> --json assets`；新增 `check_release` 组——记录里的文件名得真挂在该 tag
+  的 Release 上、大小一字不差，缺失资产 / 大小不符判红，gh 用不了整组退未验不报绿；
+  `run()` 的盘上核对从「只认 windows-x64」放宽到当前版本全部平台，盘上有几份核几份，
+  缺文件留 NOTE；stats 加 `release` 计数，`main()` 透传 `gh_runner`。
+- 单测 `scripts/test_check_artifact_manifest.py` 38 → **44 条**：平台白名单、Release 大小对上 /
+  资产缺失红 / 大小不符红 / gh 不可用未验 / 四平台混合记录全绿，配 `assets_for(rows)` 与
+  `fake_gh(assets, usable=)` 夹具。
+- `docs/artifacts.json` 记 RC8 exe / dmg / deb 三条 + RC7 四条 + RC6 / RC5 / RC4 各一条；
+  RC8 AppImage 两轮下载都卡在 0 字节，sha256 未取得，暂未入记录（schema 要求 64 位十六进制）。
+- 版本进位 `1.0.10-RC8`（七处一致）；CHANGELOG 加 `[1.0.10-RC8]` 一节；发布说明、清单首部
+  与 §7 表、press-kit 下载表回填；十张物料重出到 RC8（1.64 MiB）。
+
+**验证证据**
+
+- `unittest discover -s scripts` 全量 **582 条通过**（按平台跳 1 条）。
+- A1 `cargo test --workspace` **102 passed / 0 failed**；A32 fmt 干净、clippy 零警告。
+- 整跑 49 项：**44 通过 / 3 失败 / 2 未验，727.9s，退出码 1**。
+  - 未验：A11 / A34（本版 NSIS 包没在本地构建，包拆不开）。
+  - 失败：A36 真 webview 初始导航没进到界面（版本串为空）；A37 整跑进程 2s 退、码 101；
+    A49 自指（落成绩单时首部还抄 RC7 那串，首部按成绩单改写后 `check_rc_record.py` 退 0）。
+- 发版：tag `v1.0.10-RC8` 已推（指向 `609b79d`）；CI `45142414609` 五 job 全 success；
+  Release `45142437089` 四 job 全 success。四资产：exe **3385291** / dmg **9531936** /
+  deb **4973580** / AppImage **83159544** B。
+- A48 退 0：RC8 exe 盘上核过（3385291 字节、sha256 `a811794f023b…`、包体内版本串 1.0.10-RC8）；
+  Release 大小对得上记录；记录里各版本 tag 都真指在写着各自那一版的提交上。
+
+**A36 / A37 排查记录（环境性不稳，未定性）**
+
+- A37 隔离单跑转绿：7 条自检在真窗口跑过、跑前存下的偏好一字没动写回；整跑里的码 101
+  与再单跑时的「偏好被自检挪动」细节不一致，不像同一处坏点。
+- A36 隔离单跑曾 PASS 一次（标题 Portio、版本 RC8、DOM 93642 字节、xterm 1），复跑又红；
+  手动复现时调试口一直只有 `about:blank`，初始导航没发起。应用日志抓到过一次 WebView2
+  `0x800700AA 请求的资源在使用中` panic；现存 msedgewebview2 进程归属 clash-verge / GameViewer /
+  SearchHost，没有 Portio 持有者，当前也无 portio-app 存活。候选方向：WebView2 用户目录占用 /
+  缓存旧页面 / 串行探针资源争用，下一轮接着查；在定性之前这两条如实记失败，不降门禁标准。
+
+**踩到的坑**
+
+1. `gh release download` 必须在仓库目录下跑（它要拿 base repo）；给仓库外 `--dir` 绝对路径。
+2. 漏设 `CARGO_TARGET_DIR` 时 A33 / A36 会误判「还没构建 portio-app.exe」报未验；跑整跑前
+   TEMP / TMP 指 D 盘、CARGO_TARGET_DIR 指 `D:\portio-target`、PATH 拼 cargo bin。
+3. AppImage 83 MB 本轮两次下载都卡在 0 字节（dmg / deb 正常）；记录层先不记它，等网络通畅再补
+   sha256，不许填一个没拿到的哈希。
+
+**下一步**
+
+- 1.0.10 段第 9 格。候选：① 接着定性 A36 / A37 的 WebView2 初始导航不稳（EBWebView 目录锁 /
+  探针时序）；② A48 再走一步：核「记录里那份包里的 portio-app.exe，跟 tag 那次提交的
+  `Cargo.toml` 声明对不对得上」；③ A47 补「增量缓存与源文件时间对不上、`.d` 写坏」两类。
+- 等拍板的没变：C 盘空间 / 提交内存仍是头一条；开源许可证、历史版本补 tag、发包形态等用户表态。
+
+**未验**
+
+- A11 / A34：本版安装包没在本地构建，包拆不开、包里那份跟构建产物逐字节对不上。
+- A36 / A37：整跑翻红、隔离结果不稳，根因未定性，不算「已核过」。
+- RC8 AppImage：大小已对 Release，sha256 未取得、未入记录；dmg / deb 不在本机盘上，
+  字节与 sha256 只核到 Release 大小那一层。
+- 真实 SSH 登录 / PTY 交互 / tmux 全屏 / 真 SFTP 上传下载：仍无测试服务器与凭据，只有协议层与本地回环。
+- 「安装器装到机器上那份能不能跑」全程未验；mac / linux 包只到「CI 构建通过」，未真机装过。
