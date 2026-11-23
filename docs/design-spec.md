@@ -37,6 +37,7 @@
 | `--line-strong` | `#333e4d` | `#bcc9d5` | 结构分界：区域之间、标题条下沿、状态栏上沿 |
 | `--text` / `--text-2` / `--text-3` | `#dfe5ec` / `#8b96a5` / `#5e6875` | `#1a222c` / `#5a6673` / `#8b96a5` | 主 / 次 / 提示 |
 | `--accent` | `#2fb39a` | `#12897a` | 唯一强调色（可换：六套预置，见下） |
+| `--accent-soft` / `--accent-line` / `--accent-ring` | `color-mix` 由主色派生：13% 混 `--surface` / 36% 混 `--line` / 20% 混 transparent | 同左（随主色与表面色自适应） | 选中 / 按压 / 聚焦浅底、主色描边、焦点光环；派生自 `--accent`，换预置时自动跟着走，不另写每套值 |
 | `--acc-*`（teal/azure/violet/amber/rose/lime） | 见 tokens | 见 tokens | 六套预置的色片与主色同源：`html[data-accent="<名字>"]` 里 `--accent`、`--on-accent`、`--mark-accent`、`--term-cursor` 四个令牌一起换；深浅各一档 |
 | `--info` / `--warn` / `--danger` | `#6fa8dc` / `#c99a4e` / `#d2655f` | 同左 | 状态语义 |
 | `--on-accent` / `--on-danger` | `#04100e` / `#ffffff` | `#ffffff` / `#ffffff` | 铺在强调 / 危险色上的文字 |
@@ -49,7 +50,7 @@
 
 规则：
 - 强调色一屏最多三处（主按钮、当前标签、拖拽中的把手）。第四处算滥用。
-- **强调色可换，但只换「跟着主色走的那四个令牌」**：`--accent`、`--on-accent`、`--mark-accent`、`--term-cursor`。
+- **强调色可换，但只换「跟着主色走的那四个令牌」**：`--accent`、`--on-accent`、`--mark-accent`、`--term-cursor`。`--accent-soft/line/ring` 是 `--accent` 的 `color-mix` 派生，不占预置名额，换主色时自动跟随。
   ANSI 八色**不跟着换**——红绿黄蓝是终端语义（`git diff`、`ls` 上色），跟着主色走会让人分不清"这是成功还是我选了蓝色"。
   每套预置必须同时给深浅两档，且 `--on-accent` 不许与 `--accent` 同色（否则压在主色上的字直接看不见）。
 - 深浅两套**同结构同名**：新增令牌必须同时给两套值，缺一套视为未完成。
@@ -130,8 +131,8 @@
 | --- | --- | --- |
 | 默认 | 底 `--surface-2/3`，文字 `--text-2` | 全部 |
 | hover | 底提亮一档或加 `--line-soft`，文字 `--text` | 按钮、行、标签、图标按钮、把手的渐变 |
-| active / 选中 | 底 `--surface-3`，左/下 2px `--accent` 或文字 `--accent` | 标签、会话行、分段控件当前项 |
-| focus | 1px `--accent` 内描边（不画系统虚线框），键盘 Tab 可达 | 输入、按钮、列表行 |
+| active / 选中 | 底 `--accent-soft`，左/下 2px `--accent` 或文字 `--accent` | 标签、会话行、分段控件当前项、文件行选中、工具钮按压 |
+| focus | 1px `--accent` 描边 + 3px `--accent-ring` 光环，聚焦浅底 `--accent-soft`（不画系统虚线框），键盘 Tab 可达 | 输入、下拉、按钮、勾选框、列表行 |
 | disabled | 文字 `--text-3`，不响应，不画阴影 | 按钮、输入 |
 | 拖拽中 | 见 §5 把手，光标 `col-resize` / `row-resize` | 把手、文件拖入 |
 | 加载 / 进行中 | 文案省略号或进度条（`--r-hair` + `--accent`），不画转圈插画 | 目录读取、传输 |
@@ -166,15 +167,15 @@
 | 21 | 进度条 | 控件 | 高 3、底 `--surface-3`、`--r-hair`、填充 `--accent` |
 | 22 | 状态栏 | 骨架 | 高 `--statusbar`、内边距 12、gap 16；上沿 1px `--line-strong`；状态点 8 `--r-full`；左状态右时钟 11 `--mono` |
 | 23 | toast | 浮层 | 底 `--surface-3`、`--r-8`、1px `--line`、`--shadow-1`、内边距 `8 12`、12 号；240ms 上移淡入、2.6s 消失；同时最多一条 |
-| 24 | 模态（连接 / 分组 / 设置 / 快捷键） | 浮层 | 遮罩 `--overlay`；卡 `--r-12`、1px `--line`、`--shadow-3`；宽 420 / 360 / 420 / 480；头部 padding 12 16、下沿 `--line`；底部按钮右贴、gap 8。**卡高不超视口**（`max-height: calc(100vh - 32px)`，`display:flex` 竖排）：头部与底部固定，**只有正文滚动**（`overflow:auto`，`min-height:0`）——内容变长（如设置里新增区块）时不许把「完成」按钮挤出视口，也不许让卡顶到窗口外 |
-| 25 | 表单字段 | 控件 | 标签 11 `--text-3`、与输入间距 4；输入高 `--ctl-3`、`--r-4`、内边距 0 12、`--mono` 12；错误态 1px `--danger`；`[hidden]` 必须真的隐藏（优先于 grid/flex） |
-| 26 | 分段控件 | 控件 | 高 `--ctl`、`--r-6`、1px `--line`；当前项底 `--surface-3` + 文字 `--text`；项内边距 0 12 |
+| 24 | 模态（连接 / 分组 / 设置 / 快捷键） | 浮层 | 遮罩 `--overlay`；卡 `--r-12`、1px `--line`、`--shadow-3`；宽 420 / 360 / 420 / 480，`max-width: calc(100vw - 32px)`（窄窗不裁两侧）；头部 padding 12 16、下沿 `--line`；底部按钮右贴、gap 8。**卡高不超视口**（`max-height: calc(100vh - 32px)`，`display:flex` 竖排）：头部与底部固定，**只有正文滚动**（`overflow:auto`，`min-height:0`）——内容变长（如设置里新增区块）时不许把「完成」按钮挤出视口，也不许让卡顶到窗口外 |
+| 25 | 表单字段 | 控件 | 标签 11 `--text-3`、与输入间距 4；输入高 `--ctl-3`、`--r-6`、内边距 0 12、`--mono` 12；默认底 `--surface-2`、1px `--line`；hover 边框 `--line-strong`、底 `--surface-3`；focus 边框 `--accent`、底 `--accent-soft`、3px `--accent-ring` 光环；错误态 1px `--danger`；主机 / 端口同行 `minmax(0,3fr) minmax(0,1.3fr)`；`[hidden]` 必须真的隐藏（优先于 grid/flex） |
+| 26 | 分段控件 | 控件 | 高 `--ctl`、`--r-6`、1px `--line`；当前项底 `--accent-soft` + 文字 `--text`；项内边距 0 12 |
 | 27 | 滑块 | 控件 | 轨道 4 `--surface-3`、`--r-full`；拇指 12 圆 `--accent`；数值 `--mono` `--text-2` |
 | 28 | 键位表 | 列表 | 组标题内边距 `12 16 4`；行内边距 `8 16`、gap 12、列 `168 / 1fr`；`kbd` `--r-6`、1px `--line`、`padding:1px 4px`、`--mono` 11。一个动作有多种习惯键位时，写成**一个主键位 + 说明里的「也可 …」**（如「Ctrl+V 粘贴（也可 Ctrl+Shift+V、Shift+Insert）」），不许把同一动作拆成三行；键位表里的表述必须与真实行为一致（如「有选中时复制、没选中时中断」） |
 | 29 | 滚动条 | 控件 | 轨道透明、宽 6、拇指 `--surface-3` `--r-full`、hover `--text-3` |
 | 30 | 把手 | 交互 | 见 §5：位置由布局算；静止 1px、hover 渐变 2px、拖拽 3px + 外发光 |
 | 31 | 窗口控制按钮 | 控件 | 宽 44、高满标题栏；hover `--surface-2`；关闭 hover `--danger` + `--on-danger` |
-| 32 | 记住口令勾选行 | 控件 | 跟在密码输入下方、同一列；行高 `--ctl`、gap `--sp-2`、12 号 `--text-3`；勾选框 12×12（`--sp-3`）、`--r-4`、1px `--line-strong`、底 `--surface-2`；`hover` 边框转 `--accent`；选中底 `--accent` + 对勾 `--on-accent`（自绘，不用系统原生勾选框——原生在深色下是亮白方块） |
+| 32 | 记住口令勾选行 | 控件 | 跟在密码输入下方、同一列；行高 `--ctl`、gap `--sp-2`、12 号 `--text-3`；勾选框 12×12（`--sp-3`）、`--r-4`、1px `--line-strong`、底 `--surface-2`；`hover` 边框转 `--accent-line`；选中底 `--accent` + 对勾 `--on-accent`（自绘，不用系统原生勾选框——原生在深色下是亮白方块） |
 | 33 | 已知主机行 | 列表 | 单行一个 `host:port`：行高 `--ctl`、`padding` 左 `--sp-3` 右 `--sp-2`、gap `--sp-3`、`--r-6`、1px `--line` 边框、底 `--surface-2`、列 `minmax(0,1fr) / auto / auto`；主机名 `--text` 单行省略、端口 `--mono` `--text-3`；指纹 `--mono` `--fs-11` `--text-3` （中段省略、全文进 `title`）；删除按钮无边框、`--fs-11` `--text-3`，hover `--danger` + `--surface-3`；空态是 `--line` 虚线框 + `--fs-12` `--text-3` 居中（删除只删本地记录，下次连接重新走首次信任，不降低校验标准） |
 | 34 | 终端搜索条（Ctrl+F） | 浮层 | 贴终端面板右上（`top` / `right` = `--sp-2`）、高 `--ctl`、底 `--surface-3`、1px `--line`、`--r-6`、`--shadow-1`、内边距 `0 --sp-1 0 --sp-2`、gap `--sp-1`；输入透明底、`--mono` `--fs-12`、宽 132、placeholder `--text-3`、无系统 outline；计数 `--mono` `--fs-11` `--text-3`，无命中转 `--danger`；图标钮 `--ctl` 见方、16 号内联 SVG 描边 1.5、hover `--accent` + `--line-soft`、active `--surface-2`；聚焦用 `:focus-within` 把整条边框转 `--accent`；进出 240ms 上移 4px 淡入（`--dur-2` / `--ease-out`），Esc 关闭并把焦点交还终端；`prefers-reduced-motion` 下无动画 |
 | 35 | 会话栏动作行 | 骨架 | 主按钮与导入下拉同处一行：`display:flex` + `flex-wrap`、gap `--sp-2`、外边距 `12 12 0`；两块 `flex-basis: 112`（内容宽 ≥ 232 时同排，主按钮按 2:1 取宽），**不足则整行换行、各占满一行**；子项统一 `--ctl-2` 高、垂直居中、左缘对齐；换行不改外边距，两块始终等于面板内宽 |

@@ -25,7 +25,7 @@
   .tab{display:flex;align-items:center;gap:8px;height:calc(var(--titlebar) - 6px);padding:0 12px;
        background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-8) var(--r-8) 0 0;
        border-bottom:0;color:var(--text-2);font-size:var(--fs-12);max-width:220px;min-width:0}
-  .tab.active{background:var(--bg);color:var(--text)}
+  .tab.active{background:var(--bg);color:var(--text);box-shadow:inset 0 2px 0 var(--accent)}
   .tab .dot{width:6px;height:6px;border-radius:50%;background:var(--text-3);flex:none}
   .tab .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .tab .x{opacity:.6;padding:0 2px}
@@ -132,7 +132,7 @@
              transition:color var(--dur) var(--ease),background var(--dur) var(--ease)}
   .pane-tbtn:hover{color:var(--accent);background:var(--line-soft)}
   /* 有开关状态的那颗（文件面板折叠）：按下去之后图标常亮强调色，别让人猜现在是什么状态 */
-  .pane-tbtn[aria-pressed="true"]{color:var(--accent);background:var(--line-soft)}
+  .pane-tbtn[aria-pressed="true"]{color:var(--accent);background:var(--accent-soft)}
   .pane-tbtn svg{display:block;width:16px;height:16px;stroke:currentColor;stroke-width:1.5;fill:none;
                  stroke-linecap:round;stroke-linejoin:round}
   .pane-body{flex:1;overflow:auto;padding:12px;font-family:var(--mono);font-size:var(--fs-12);
@@ -199,7 +199,7 @@
   .find-n.bad{color:var(--danger)}
   .find-btn{appearance:none;display:grid;place-items:center;flex:none;width:var(--ctl);height:var(--ctl);
     border:0;background:transparent;color:var(--text-2);border-radius:var(--r-4);cursor:pointer}
-  .find-btn:hover{color:var(--accent);background:var(--line-soft)}
+  .find-btn:hover{color:var(--accent);background:var(--accent-soft)}
   .find-btn:active{background:var(--surface-2)}
   .find-btn svg{display:block;width:16px;height:16px;stroke:currentColor;stroke-width:1.5;
     fill:none;stroke-linecap:round;stroke-linejoin:round}
@@ -237,7 +237,7 @@
   html[data-perm="hide"] .fp-row.has-perm{grid-template-columns:16px minmax(0,1fr) 64px 80px}
   html[data-perm="hide"] .fp-row .pm{display:none}
   .fp-row:hover{background:var(--surface-2)}
-  .fp-row.sel{background:var(--surface-3);box-shadow:inset 2px 0 0 var(--accent)}
+  .fp-row.sel{background:var(--accent-soft);box-shadow:inset 2px 0 0 var(--accent)}
   .fp-row .ico{color:var(--text-3);font-size:var(--fs-11);text-align:center}
   .fp-row.dir .ico{color:var(--info)}
   .fp-row .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -262,7 +262,7 @@
   .modal{position:fixed;inset:0;display:none;place-items:center;background:var(--overlay);z-index:80}
   .modal.open{display:grid}
   /* 卡高不超视口：头部/底部钉住，只有正文滚（内容多了不能把「完成」挤出窗口，也不能顶到窗口外） */
-  .sheet{width:420px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-12);
+  .sheet{width:420px;max-width:calc(100vw - 32px);background:var(--surface);border:1px solid var(--line);border-radius:var(--r-12);
          box-shadow:var(--shadow-3);overflow:hidden;
          display:flex;flex-direction:column;max-height:calc(100vh - 32px)}
   .sheet header{display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);
@@ -273,32 +273,40 @@
   .field{display:grid;gap:4px}
   /* [hidden] 必须压过 .field 的 display:grid，否则私钥模式下密码框还留在面板上 */
   .field[hidden]{display:none}
-  .field label{font-size:var(--fs-11);color:var(--text-3)}  .field input,.field select{background:var(--surface-2);border:1px solid var(--line);color:var(--text);
-          border-radius:var(--r-4);padding:0 12px;font-family:var(--mono);font-size:var(--fs-12);
-          outline:none;height:var(--ctl-3)}
+  .field label{font-size:var(--fs-11);color:var(--text-3)}
+  .field input,.field select{background:var(--surface-2);border:1px solid var(--line);color:var(--text);
+          border-radius:var(--r-6);padding:0 12px;font-family:var(--mono);font-size:var(--fs-12);
+          outline:none;height:var(--ctl-3);transition:border-color var(--dur) var(--ease),
+          background var(--dur) var(--ease),box-shadow var(--dur) var(--ease)}
+  .field input:hover,.field select:hover{border-color:var(--line-strong);background:var(--surface-3)}
+  .field input:focus,.field select:focus{border-color:var(--accent);background:var(--accent-soft);
+          box-shadow:0 0 0 3px var(--accent-ring)}
   /* 记住口令：勾选框跟着输入走一行，高 --ctl，说明文字 12 号 --text-3 */
   .field .remember{display:flex;align-items:center;gap:var(--sp-2);height:var(--ctl);
           font-family:var(--ui);font-size:var(--fs-12);color:var(--text-3);cursor:pointer}
   .field .remember input{appearance:none;flex:none;width:var(--sp-3);height:var(--sp-3);
           position:relative;padding:0;margin:0;border:1px solid var(--line-strong);
           border-radius:var(--r-4);background:var(--surface-2);cursor:pointer}
-  .field .remember input:hover{border-color:var(--accent)}
+  .field .remember input:hover{border-color:var(--accent-line)}
   .field .remember input:checked{background:var(--accent);border-color:var(--accent)}
+  .field .remember input:focus-visible{box-shadow:0 0 0 3px var(--accent-ring)}
   .field .remember input:checked::after{content:"";position:absolute;left:3px;top:1px;
           width:var(--sp-1);height:var(--sp-2);border:solid var(--on-accent);
           border-width:0 1px 1px 0;transform:rotate(45deg)}
   .field .remember:hover{color:var(--text-2)}
-  .field input:focus,.field select:focus{border-color:var(--accent)}
-  .row{display:grid;grid-template-columns:1fr 96px;gap:12px}
+  .row{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,1.3fr);gap:12px}
   .sheet footer{display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;
                 border-top:1px solid var(--line);background:var(--surface-2)}
   /* 按钮内文字一律几何居中：用 flex 居中，不靠上下 padding 凑基线。
      之前是等距 padding 配 line-height:normal，行盒比内容区高，字被顶下去一档。 */
   .btn{display:inline-flex;align-items:center;justify-content:center;
        background:var(--surface-3);border:1px solid var(--line);color:var(--text-2);
-       padding:0 12px;min-height:var(--ctl-2);line-height:1.2;
-       border-radius:var(--r-4);cursor:pointer;font-size:var(--fs-12)}
-  .btn:hover{color:var(--text)}
+       padding:0 12px;min-height:var(--ctl-3);line-height:1.2;
+       border-radius:var(--r-6);cursor:pointer;font-size:var(--fs-12);
+       transition:background var(--dur) var(--ease),color var(--dur) var(--ease),
+       border-color var(--dur) var(--ease),box-shadow var(--dur) var(--ease)}
+  .btn:hover{color:var(--text);background:var(--surface-3);border-color:var(--line-strong)}
+  .btn:focus-visible{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
   .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
   .btn.primary:hover{filter:brightness(1.06)}
   .btn:disabled{opacity:.55;cursor:default}
@@ -443,7 +451,7 @@
     padding:8px 12px;cursor:pointer}
   .seg button + button{border-left:1px solid var(--line)}
   .seg button:hover{color:var(--text)}
-  .seg button.on{background:var(--surface-3);color:var(--text)}
+  .seg button.on{background:var(--accent-soft);color:var(--text)}
   .set input[type=range]{width:100%;accent-color:var(--accent);background:transparent}
   .toast{position:fixed;right:16px;bottom:calc(var(--statusbar) + 16px);display:flex;flex-direction:column;
          gap:8px;z-index:99;pointer-events:none}

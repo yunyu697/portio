@@ -5,6 +5,12 @@
   --text:#dfe5ec; --text-2:#8b96a5; --text-3:#5e6875;
   --accent:#2fb39a; --info:#6fa8dc; --warn:#c99a4e; --danger:#d2655f;
   --term-bg:#090c10;
+  /* 主色派生：跟着主色走的浅底 / 描边 / 焦点环。
+     从 --accent 与当前主题的表面色混出来，换强调色时这三套一起换；
+     终端 ANSI 红绿黄蓝仍是语义色，不跟主色走（见文末终端配色段）。 */
+  --accent-soft:color-mix(in srgb, var(--accent) 13%, var(--surface));
+  --accent-line:color-mix(in srgb, var(--accent) 36%, var(--line));
+  --accent-ring:color-mix(in srgb, var(--accent) 20%, transparent);
   /* 圆角尺度：组件一律引用这五个档，别再写裸 px——
      --r-4 控件、--r-6 输入与标签、--r-8 面板、--r-12 浮层。 */
   --r-1:4px; --r-2:8px; --r-3:12px;
