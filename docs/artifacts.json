@@ -1,5 +1,5 @@
 {
-  "note": "每一版交付出去的那份安装包都记一条：哪来的、多大、sha256 多少、包体内写的哪个版本。scripts/check_artifact_manifest.py（A48）拿它跟盘上那份逐项对——记录写错了、盘上那份换成了别的版本，都当场判红。路径按仓库目录解（交付文件都在仓库外）。",
+  "note": "每一版交付出去的各平台安装包都记一条：哪来的、哪个平台、多大、sha256 多少、包体内写的哪个版本。scripts/check_artifact_manifest.py（A48）拿它逐项对——记录写错了、盘上那份换成了别的版本、Release 上挂着的大小对不上，都当场判红。本机盘上没有的 dmg / deb / AppImage，字节与 sha256 这轮只能核到 Release 资产大小那一层。路径按仓库目录解（交付文件都在仓库外）。",
   "artifacts": [
     {
       "version": "1.0.10-RC7",
@@ -10,6 +10,39 @@
       "file": "../Portio_1.0.10-RC7_x64-setup.exe",
       "bytes": 3384947,
       "sha256": "a29e4671bb02ed982a87fe2eb1df9d2bd64579d577c34b8d10987e2099bf5edb",
+      "delivered": "2026-11-23"
+    },
+    {
+      "version": "1.0.10-RC7",
+      "platform": "macos-universal",
+      "source": "ci",
+      "tag": "v1.0.10-RC7",
+      "asset": "Portio_1.0.10-RC7_universal.dmg",
+      "file": "../Portio_1.0.10-RC7_universal.dmg",
+      "bytes": 9531677,
+      "sha256": "fb3531b9a932c83003012e6a2dff244b0f7c5676d4e458c6a535774e1db16d19",
+      "delivered": "2026-11-23"
+    },
+    {
+      "version": "1.0.10-RC7",
+      "platform": "linux-deb",
+      "source": "ci",
+      "tag": "v1.0.10-RC7",
+      "asset": "Portio_1.0.10-RC7_amd64.deb",
+      "file": "../Portio_1.0.10-RC7_amd64.deb",
+      "bytes": 4978076,
+      "sha256": "208bfd2b806addcf89fb2499dcd237c77f270060c98cb265702cdad832ceec5f",
+      "delivered": "2026-11-23"
+    },
+    {
+      "version": "1.0.10-RC7",
+      "platform": "linux-appimage",
+      "source": "ci",
+      "tag": "v1.0.10-RC7",
+      "asset": "Portio_1.0.10-RC7_amd64.AppImage",
+      "file": "../Portio_1.0.10-RC7_amd64.AppImage",
+      "bytes": 83167736,
+      "sha256": "66c39b656ce90c3c23d324b2308810aabab01f0d3dee7c5861295b27d4084256",
       "delivered": "2026-11-23"
     },
     {

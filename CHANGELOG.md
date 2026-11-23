@@ -11,6 +11,27 @@
 > 只写用户能感知的变化；内部重构放 `### Changed`，未验证的能力写进 `### Known limitations`。
 > 口吻：站在用这个软件的人这一侧说话（"我把 X 改成 Y"），不写成第三方播报。
 
+## [1.0.10-RC8] - 2026-11-23
+
+### Added
+
+- **交付记录从只钉 Windows 一份，扩到四个平台各记一条。** 以前 `docs/artifacts.json` 里只有
+  x64 安装包一条；macOS universal dmg、Linux deb、Linux AppImage 交出去了却没留凭据。现在每一版
+  四个平台各记一条：来源、tag、平台、文件名、字节、sha256、交付日期，同一版同一平台只留一条。
+- **A48 再加一组 Release 资产大小核对。** 非 Windows 的包不在本机盘上，字节与 sha256 没法逐字节核；
+  退一步拿 `gh release view --json assets` 对大小——记录里那个文件名得真挂在这一版 tag 的 Release 上、
+  大小一字不差，对不上就判红。平台只认 `windows-x64` / `macos-universal` / `linux-deb` /
+  `linux-appimage` 四条；gh 用不了这一组报未验，不报绿。
+
+### Known limitations
+
+- dmg / deb / AppImage 不在本机盘上，这一轮只核到 Release 资产大小那一层；它们的 sha256 是上一版
+  记录下来的，没在这台机器上逐字节复核（AppImage 83 MB 这轮下载卡住，没拉下来）。
+- Release 大小核对依赖 gh 能连上 api.github.com；连不上时这一组留 NOTE 报未验，不拿「没查到问题」
+  冒充核过。
+- 这一版安装包仍由 CI 三平台构建，本地没重新打包；Windows 那份从 Release 上原样下载，「装出来能不能跑」
+  仍未验。
+
 ## [1.0.10-RC7] - 2026-11-21
 
 ### Added

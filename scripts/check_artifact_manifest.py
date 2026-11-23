@@ -23,9 +23,12 @@ A48 核三件事：
    就只是我抄了一个 tag 名；tag 提交不在当前 HEAD 的历史线上（比如从别的分支发的）只留 NOTE；
    tag 不是附注标签（没有「这一版做了什么」那段话）也只留 NOTE。
    git 用不了、或者这个目录不是 git 工作区，这一组**没得核**，整份报未验，不拿「没查到问题」冒充核过。
+5. **Release 上挂着的那份跟记录写的大小对得上**（RC8 补上的一组）：非 Windows 的包不在本机盘上，
+   字节与 sha256 这轮没法逐字节核；退一步拿 Release 资产清单对大小——记录里那个文件名得真挂在这一版
+   tag 的 Release 上、大小一字不差。gh 用不了这一组**没得核**，整份报未验。
 
 退出码：0 全对得上 / 1 对不上 / 4 这一版还没交过包、或者那几组里有一组没得核
-（没有记录、那一份不在盘上、tag 那一组核不了）。
+（没有记录、那一份不在盘上、tag 或 Release 那一组核不了）。
 
 用法：
     python scripts/check_artifact_manifest.py
@@ -55,6 +58,7 @@ EXIT_NOTHING = 4
 VERSION_RE = re.compile(r"^(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)"
                         r"(?:-(?P<stage>Alpha|RC)(?P<n>\d+))?$")
 SOURCES = ("ci", "local")
+PLATFORMS = ("windows-x64", "macos-universal", "linux-deb", "linux-appimage")
 REQUIRED = ("version", "platform", "source", "asset", "file", "bytes", "sha256", "delivered")
 # 预发布位只到 10：满 10 进 patch 再回 1，写 11 或 0 都是笔误
 STAGE_MAX = 10
@@ -135,6 +139,10 @@ def check_entry(idx: int, row: dict, current: str) -> list[str]:
         n = stage_number(ver)
         if n > STAGE_MAX:
             findings.append(f"{where} 预发布位写着 {n}，可它只到 {STAGE_MAX}（满 10 进 patch 再回 1）")
+
+    platform = str(row.get("platform") or "").strip()
+    if platform not in PLATFORMS:
+        findings.append(f"{where} 平台写着 `{platform}`，只认 {' / '.join(PLATFORMS)}")
 
     source = str(row["source"]).strip()
     if source not in SOURCES:
@@ -265,6 +273,69 @@ def check_tags(rows: list[dict], root: Path, git_runner=None) -> tuple[list[str]
     return findings, notes, verified
 
 
+def default_gh(args: list[str], cwd: Path) -> tuple[int, str, str]:
+    """跑一条 gh 只读命令。gh 不在、或者跑不起来时返回 127。"""
+    try:
+        proc = subprocess.run(["gh", *args], cwd=str(cwd), capture_output=True, text=True,
+                              timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
+        return 127, "", str(e)
+    return proc.returncode, proc.stdout, proc.stderr
+
+
+def check_release(rows: list[dict], root: Path, gh_runner=None) -> tuple[list[str], list[str], int]:
+    """记录里那份包，Release 上挂着的大小跟记录对不对得上。
+
+    只读一条命令：`gh release view <tag> --json assets`（资产名与大小）。本机盘上没有的
+    dmg / deb / AppImage，字节与 sha256 没法逐字节核，先核到这一层。
+    返回（判红那几条，NOTE，真核过几条）。核过 0 条表示这一组没得核，调用方该报未验。
+    """
+    runner = gh_runner or default_gh
+    findings: list[str] = []
+    notes: list[str] = []
+    verified = 0
+
+    by_tag: dict[str, dict[str, int]] = {}
+    tags = sorted({str(r.get("tag") or "").strip() for r in rows if str(r.get("tag") or "").strip()})
+    gh_ok = True
+    for tag in tags:
+        rc, out, err = runner(["release", "view", tag, "--json", "assets"], root)
+        if rc != 0:
+            first = err.strip().splitlines()[0] if err.strip() else "gh 用不了"
+            notes.append(f"Release `{tag}` 取不到资产清单（{first}）：这一组没核")
+            gh_ok = False
+            continue
+        try:
+            data = json.loads(out)
+            by_tag[tag] = {str(a.get("name")): int(a.get("size", -1))
+                           for a in data.get("assets", [])}
+        except (json.JSONDecodeError, ValueError, TypeError):
+            notes.append(f"Release `{tag}` 的资产清单读不成 JSON：这一组没核")
+            gh_ok = False
+
+    if not gh_ok and not by_tag:
+        return findings, notes, 0
+
+    for i, row in enumerate(rows, 1):
+        tag = str(row.get("tag") or "").strip()
+        where = f"第 {i} 条（{row.get('version')} / {row.get('platform')}）"
+        assets = by_tag.get(tag)
+        if assets is None:
+            continue
+        asset = str(row["asset"]).strip()
+        size = assets.get(asset)
+        if size is None:
+            findings.append(f"{where} 记着 `{asset}`，可 Release `{tag}` 上没有这个文件——"
+                            "这份包是从哪个 Release 交出去的，说不清")
+            continue
+        if size != row["bytes"]:
+            findings.append(f"{where} 记录写着 {row['bytes']} 字节，Release `{tag}` 上那份是 "
+                            f"{size} 字节：记录跟 Release 不是同一份")
+            continue
+        verified += 1
+    return findings, notes, verified
+
+
 def resolve_file(row: dict, root: Path = ROOT) -> Path:
     """记录里的路径按「仓库目录」解：交付文件都在仓库外，`../x.exe` 这种写法不夹带本机用户名。"""
     p = Path(str(row["file"]))
@@ -364,12 +435,12 @@ def check_payload(row: dict, path: Path, current: str, pe_reader=pe_versions) ->
 
 
 def run(manifest: Path = MANIFEST, root: Path = ROOT, pe_reader=pe_versions,
-        git_runner=None) -> dict:
+        git_runner=None, gh_runner=None) -> dict:
     """整套判据。返回 {code, findings, notes, stats, current}。"""
     current = current_version(root)
     findings: list[str] = []
     notes: list[str] = []
-    stats = {"records": 0, "checked": 0, "history": 0, "present": False, "tags": 0}
+    stats = {"records": 0, "checked": 0, "history": 0, "present": False, "tags": 0, "release": 0}
 
     data, bad = load_manifest(manifest)
     if data is None:
@@ -389,54 +460,58 @@ def run(manifest: Path = MANIFEST, root: Path = ROOT, pe_reader=pe_versions,
     findings += tag_findings
     notes += tag_notes
 
-    mine = [r for r in rows if str(r["version"]).strip() == current
-            and str(r["platform"]).strip() == "windows-x64"]
-    stats["checked"] = len(mine)
+    rel_findings, rel_notes, stats["release"] = check_release(rows, root, gh_runner)
+    findings += rel_findings
+    notes += rel_notes
+
+    mine = [r for r in rows if str(r["version"]).strip() == current]
+    stats["history"] = len(rows) - len(mine)
 
     if not mine:
         note = (f"这一版（{current}）还没有交付记录——包还没下来、或者下来忘了记；"
-                "先把这一版那份包记进 records，再核字节与 sha256")
+                "先把这一版那几条包记进 records，再核字节与 sha256")
         return {"code": EXIT_FAIL if findings else EXIT_NOTHING,
                 "findings": findings, "notes": notes + [note], "stats": stats, "current": current}
 
-    row = mine[0]
-    path = resolve_file(row, root)
-    payload_findings, payload_notes, present = check_payload(row, path, current, pe_reader)
-    findings += payload_findings
-    notes += payload_notes
-    stats["present"] = present
-    stats["history"] = len(rows) - len(mine)
-
-    if not present:
-        if not findings:
-            notes.append(f"{path} 不在盘上（交付文件放在仓库外，换台机器就找不着）："
+    for row in mine:
+        path = resolve_file(row, root)
+        payload_findings, payload_notes, present = check_payload(row, path, current, pe_reader)
+        findings += payload_findings
+        notes += payload_notes
+        if present:
+            stats["checked"] += 1
+        elif not findings:
+            notes.append(f"{path.name} 不在盘上（交付文件放在仓库外，换台机器就找不着）："
                          "字节与 sha256 这轮没得核，只核了记录本身")
-        return {"code": EXIT_FAIL if findings else EXIT_NOTHING,
-                "findings": findings, "notes": notes, "stats": stats, "current": current}
+    stats["present"] = stats["checked"] > 0
 
     for r in rows:
-        if r is row:
+        if r in mine:
             continue
         p = resolve_file(r, root)
         if not p.is_file():
             notes.append(f"历史那条 {r['version']} / {r['platform']} 的那份不在盘上，只核了记录本身")
+
     if findings:
         code = EXIT_FAIL
-    elif stats["tags"]:
+    elif stats["tags"] and stats["release"]:
         code = EXIT_OK
     else:
-        notes.append("记录里那个 tag 指的是哪次提交，这一组没得核（所以不报绿）")
+        if not stats["tags"]:
+            notes.append("记录里那个 tag 指的是哪次提交，这一组没得核（所以不报绿）")
+        if not stats["release"]:
+            notes.append("Release 上挂着的那份大小对不对得上，这一组没得核（所以不报绿）")
         code = EXIT_NOTHING
     return {"code": code, "findings": findings, "notes": notes, "stats": stats, "current": current}
 
 
-def main(argv: list[str], git_runner=None) -> int:
+def main(argv: list[str], git_runner=None, gh_runner=None) -> int:
     ap = argparse.ArgumentParser(description="交付物溯源（rc-checklist A48）")
     ap.add_argument("--manifest", default=str(MANIFEST), help="记录文件，默认 docs/artifacts.json")
     ap.add_argument("--root", default=str(ROOT), help="仓库目录（记录里的相对路径按它解），默认本仓库")
     args = ap.parse_args(argv)
 
-    result = run(Path(args.manifest), Path(args.root), git_runner=git_runner)
+    result = run(Path(args.manifest), Path(args.root), git_runner=git_runner, gh_runner=gh_runner)
     for msg in result["findings"]:
         print(f"FAIL {msg}")
     for msg in result["notes"]:
@@ -449,16 +524,21 @@ def main(argv: list[str], git_runner=None) -> int:
             if str(r["version"]).strip() == cur and str(r["platform"]).strip() == "windows-x64":
                 row = r
                 break
-    if result["code"] == EXIT_OK and row:
-        print(f"OK {cur} 那一份（{row['asset']}，{row['bytes']} 字节，sha256 "
-              f"{str(row['sha256'])[:12]}…）跟盘上那份对得上，包体内的版本串也是 {cur}；"
-              f"记录里那 {s['tags']} 个 tag 也都真指在写着这一版的那次提交上；"
-              f"另有 {s['history']} 条历史记录（历史那几份不在盘上时只核记录本身）")
+    if result["code"] == EXIT_OK:
+        if row:
+            head = (f"OK {cur} 那 {s['records'] - s['history']} 条记录里，盘上核过 "
+                    f"{s['checked']} 份（{row['asset']}，{row['bytes']} 字节，sha256 "
+                    f"{str(row['sha256'])[:12]}…），包体内版本串也是 {cur}；")
+        else:
+            head = f"OK {cur} 那 {s['records'] - s['history']} 条记录（本机盘上都没有那份包）；"
+        print(f"{head}Release 大小对得上 {s['release']} 条；记录里那 {s['tags']} 个 tag "
+              f"也都真指在写着这一版的那次提交上；另有 {s['history']} 条历史记录"
+              "（历史那几份不在盘上时只核记录本身）")
     elif result["code"] == EXIT_FAIL:
         print(f"FAIL {cur}：记录跟盘上那份对不上，先照上面那几条核清，别把不是这一版的包交出去")
     else:
         print(f"未验 这一版（{cur}）还没有可核的那一份——没有记录，或者记录里那份不在盘上，"
-              "或者 tag 那一组没得核")
+              "或者 tag / Release 那一组没得核")
     return result["code"]
 
 

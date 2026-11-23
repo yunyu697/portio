@@ -128,6 +128,29 @@ def fake_git(tags: dict[str, dict] | None = None, *, repo: bool = True, usable: 
     return runner
 
 
+def assets_for(rows: list[dict]) -> dict[str, list[dict]]:
+    """按记录搭一张「tag → Release 资产清单」的表，大小跟记录写的一致。"""
+    table: dict[str, list[dict]] = {}
+    for r in rows:
+        table.setdefault(str(r["tag"]), []).append({"name": r["asset"], "size": r["bytes"]})
+    return table
+
+
+def fake_gh(assets: dict[str, list[dict]] | None = None, *, usable: bool = True):
+    """假 gh：只看命令行回答，不碰真 Release。usable=False 表示 gh 用不了。"""
+    table = assets or {}
+
+    def runner(args: list[str], cwd):
+        if not usable:
+            return 127, "", "gh 用不了"
+        tag = args[2]
+        if tag not in table:
+            return 1, "", "release not found"
+        return 0, json.dumps({"assets": table[tag]}), ""
+
+    return runner
+
+
 class VersionParseTest(unittest.TestCase):
     def test_final_release(self):
         self.assertEqual(cam.parse_version("1.0.0"), (1, 0, 0, 3, 0))
@@ -211,6 +234,10 @@ class EntryTest(unittest.TestCase):
         findings = cam.check_entry(1, row(file=f"../other_{CUR}_x64-setup.exe"), CUR)
         self.assertTrue(any("不是同一个名字" in f for f in findings))
 
+    def test_platform_whitelist(self):
+        findings = cam.check_entry(1, row(platform="ios"), CUR)
+        self.assertTrue(any("平台" in f for f in findings))
+
     def test_bad_sha_and_date(self):
         findings = cam.check_entry(1, row(sha256="ff08", delivered="2026/11/21"), CUR)
         self.assertTrue(any("sha256" in f for f in findings))
@@ -279,17 +306,21 @@ class PayloadTest(unittest.TestCase):
 
     def test_pe_unreadable_is_note_only(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root, m = make_fixture(Path(tmp) / "portio", rows=[row()])
+            rows = [row()]
+            root, m = make_fixture(Path(tmp) / "portio", rows=rows)
             got = cam.run(m, root, pe_reader=fake_pe(None),
-                          git_runner=fake_git(tags_of([row()])))
+                          git_runner=fake_git(tags_of(rows)),
+                          gh_runner=fake_gh(assets_for(rows)))
             self.assertEqual(got["code"], cam.EXIT_OK)
             self.assertTrue(any("PE 版本资源读不出来" in n for n in got["notes"]))
 
     def test_all_good(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root, m = make_fixture(Path(tmp) / "portio", rows=[row()])
+            rows = [row()]
+            root, m = make_fixture(Path(tmp) / "portio", rows=rows)
             got = cam.run(m, root, pe_reader=fake_pe({"FileVersion": CUR, "ProductVersion": CUR}),
-                          git_runner=fake_git(tags_of([row()])))
+                          git_runner=fake_git(tags_of(rows)),
+                          gh_runner=fake_gh(assets_for(rows)))
             self.assertEqual(got["code"], cam.EXIT_OK)
             self.assertEqual(got["findings"], [])
 
@@ -322,7 +353,8 @@ class TagTest(unittest.TestCase):
             rows = [row()]
             root, m = make_fixture(Path(tmp) / "portio", rows=rows)
             got = cam.run(m, root, pe_reader=self._ok_pe(),
-                          git_runner=fake_git(tags_of(rows, kind="commit")))
+                          git_runner=fake_git(tags_of(rows, kind="commit")),
+                          gh_runner=fake_gh(assets_for(rows)))
             self.assertEqual(got["code"], cam.EXIT_OK)
             self.assertTrue(any("不是附注标签" in n for n in got["notes"]))
 
@@ -349,7 +381,8 @@ class TagTest(unittest.TestCase):
             rows = [row()]
             root, m = make_fixture(Path(tmp) / "portio", rows=rows)
             got = cam.run(m, root, pe_reader=self._ok_pe(),
-                          git_runner=fake_git(tags_of(rows, ancestor=False)))
+                          git_runner=fake_git(tags_of(rows, ancestor=False)),
+                          gh_runner=fake_gh(assets_for(rows)))
             self.assertEqual(got["code"], cam.EXIT_OK)
             self.assertTrue(any("不在 HEAD 的历史线上" in n for n in got["notes"]))
 
@@ -393,12 +426,86 @@ class TagTest(unittest.TestCase):
         self.assertEqual((findings, notes, verified), ([], [], 1))
 
 
+class ReleaseTest(unittest.TestCase):
+    """Release 上挂着的那份大小，跟记录写的对不对得上（RC8 补上的一组）。"""
+
+    def _row(self, **kw):
+        return row(**kw)
+
+    def test_release_size_match_is_ok(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = [self._row()]
+            root, m = make_fixture(Path(tmp) / "portio", rows=rows)
+            got = cam.run(m, root, pe_reader=fake_pe({"FileVersion": CUR, "ProductVersion": CUR}),
+                          git_runner=fake_git(tags_of(rows)),
+                          gh_runner=fake_gh(assets_for(rows)))
+            self.assertEqual(got["code"], cam.EXIT_OK)
+            self.assertEqual(got["stats"]["release"], 1)
+
+    def test_release_asset_missing_is_red(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = [self._row()]
+            root, m = make_fixture(Path(tmp) / "portio", rows=rows, payload=None)
+            got = cam.run(m, root, git_runner=fake_git(tags_of(rows)),
+                          gh_runner=fake_gh({f"v{CUR}": []}))
+            self.assertEqual(got["code"], cam.EXIT_FAIL)
+            self.assertTrue(any("上没有这个文件" in f for f in got["findings"]))
+
+    def test_release_size_mismatch_is_red(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = [self._row()]
+            root, m = make_fixture(Path(tmp) / "portio", rows=rows, payload=None)
+            bad = {f"v{CUR}": [{"name": rows[0]["asset"], "size": rows[0]["bytes"] + 1}]}
+            got = cam.run(m, root, git_runner=fake_git(tags_of(rows)),
+                          gh_runner=fake_gh(bad))
+            self.assertEqual(got["code"], cam.EXIT_FAIL)
+            self.assertTrue(any("不是同一份" in f for f in got["findings"]))
+
+    def test_gh_unusable_is_pending_not_green(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = [self._row()]
+            root, m = make_fixture(Path(tmp) / "portio", rows=rows)
+            got = cam.run(m, root, pe_reader=fake_pe({"FileVersion": CUR, "ProductVersion": CUR}),
+                          git_runner=fake_git(tags_of(rows)), gh_runner=fake_gh(usable=False))
+            self.assertEqual(got["code"], cam.EXIT_NOTHING)
+            self.assertTrue(any("Release" in n and "没核" in n for n in got["notes"]))
+
+    def test_multi_platform_manifest(self):
+        """Windows 那份在盘上，dmg / deb / AppImage 只在 Release 上：四条记录都对得上才绿。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            exe = self._row()
+            dmg = self._row(platform="macos-universal",
+                            asset=f"Portio_{CUR}_universal.dmg",
+                            file=f"../Portio_{CUR}_universal.dmg")
+            deb = self._row(platform="linux-deb", asset=f"Portio_{CUR}_amd64.deb",
+                            file=f"../Portio_{CUR}_amd64.deb")
+            app = self._row(platform="linux-appimage", asset=f"Portio_{CUR}_amd64.AppImage",
+                             file=f"../Portio_{CUR}_amd64.AppImage")
+            rows = [exe, dmg, deb, app]
+            root, m = make_fixture(Path(tmp) / "portio", rows=rows, payload=None)
+            # exe 那份真落在盘上，其余三份不在
+            exe_path = root.parent / exe["asset"]
+            exe_path.parent.mkdir(parents=True, exist_ok=True)
+            exe_path.write_bytes(b"EXE" + exe["asset"].encode("utf-8"))
+            exe["bytes"] = exe_path.stat().st_size
+            exe["sha256"] = cam.sha256_of(exe_path)
+            m.write_text(json.dumps({"artifacts": rows}, ensure_ascii=False), encoding="utf-8")
+            got = cam.run(m, root, pe_reader=fake_pe({"FileVersion": CUR, "ProductVersion": CUR}),
+                          git_runner=fake_git(tags_of(rows)),
+                          gh_runner=fake_gh(assets_for(rows)))
+            self.assertEqual(got["code"], cam.EXIT_OK)
+            self.assertEqual(got["stats"]["checked"], 1)
+            self.assertEqual(got["stats"]["release"], 4)
+
+
 class MainTest(unittest.TestCase):
     def test_cli_ok(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root, m = make_fixture(Path(tmp) / "portio", rows=[row()])
+            rows = [row()]
+            root, m = make_fixture(Path(tmp) / "portio", rows=rows)
             self.assertEqual(cam.main(["--manifest", str(m), "--root", str(root)],
-                                      git_runner=fake_git(tags_of([row()]))), cam.EXIT_OK)
+                                      git_runner=fake_git(tags_of(rows)),
+                                      gh_runner=fake_gh(assets_for(rows))), cam.EXIT_OK)
 
     def test_cli_pending_propagates(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -97,6 +97,9 @@ PE 版本资源里那个串（FileVersion / ProductVersion）得是当前版本�
 「这份包是从 v1.0.10-RC6 编出来的」——tag 打到了哪次提交、那次提交里版本写着什么，都得去问仓库：
 tag 得真在；它指向的那次提交里根 `Cargo.toml` 的版本必须等于记录写的版本（不是附注标签、或者那次提交
 不在 HEAD 线上只留 NOTE）；git 用不了就报未验，不报绿。
+**又补一格（RC8）：Release 资产大小。** 记录以前只钉 Windows 那一份，dmg / deb / AppImage 不在本机
+盘上，字节与 sha256 没法逐字节核；退一步拿 `gh release view --json assets` 对大小——记录里那个文件名
+得真挂在这一版 tag 的 Release 上、大小一字不差。平台白名单四条；gh 用不了这一组报未验，不报绿。
 **再往下一格（RC7）：成绩单。** 每一轮整跑最后那行「34 通过 / 0 失败 / 12 未验，124.8s，退出码 3」以前
 只活在屏幕上，抄进 `docs/rc-checklist.md` 首部的那一串是我一个字一个字打进去的——打错一个数字，
 读的人没有任何办法发现；下一轮再打一遍，错的就被对的盖过来。现在 `--record` 会让这一跑自己落一份
@@ -2846,7 +2849,7 @@ def main(argv: list[str]) -> int:
         ("A32", "cargo fmt --check + cargo clippy -D warnings（本地的绿要等于 CI 的绿）", True),
         ("A33", "portio-app.exe 真的起得来（拉起这份 exe 等窗口、核标题带 Portio、再确认没当场退出，用完收干净）", True),
         ("A34", "包里那份就是核的那份（拆开安装包、拿里面的 portio-app.exe 跟构建产物逐字节对，只放过打包器写的标记）", True),
-        ("A48", "交出去的那份就是核的那份（docs/artifacts.json 里这一版那份包：记录自洽、盘上那份字节与 sha256 对得上、包体内版本串是这一版、记录里那个 tag 也真指在写着这一版的提交上）", True),
+        ("A48", "交出去的那份就是核的那份（docs/artifacts.json 里这一版那几条：记录自洽、盘上那份字节与 sha256 对得上、包体内版本串是这一版、记录里那个 tag 也真指在写着这一版的提交上、Release 上挂着的大小一字不差）", True),
         ("A35", "回归脚本自己那批单测（scripts/test_*.py 全跑，口径跟 CI 的 discover 一致；一条都没跑到也算红）", True),
         ("A36", "窗口起来了，界面也真画出来了（走 WebView2 调试口进真 webview：加载完没、版本串是不是这一版、app.js 跑完没、终端对象在不在、DOM 有没有肉）", True),
         ("A37", "那几条自检在真窗口里也跑得动（真后端 + 真偏好里跑 split/clip/fold/ctx/find/find-pane/transfer 七条；跑前存下偏好、跑完一字不差写回去）", True),
