@@ -4773,3 +4773,51 @@ A36 读到空版本串时，失败结论也只说"span.ver 空着"，分不清�
 - 1.0.10 段下一格：整跑复核 RC10（A11 / A34 仍会因本机没打本版 NSIS 包而 SKIP；
   A48 要等 RC10 发包后才有交付记录可核）；或继续沿 EBWebView 占用 / 探针时序两条假设排查。
 - RC10 尚未打 tag / 发包；下一轮若整跑转绿，再走 Release CI 四资产流程。
+
+## 2026-11-23 ｜ v1.1.0-RC1 ｜ 修分屏重连 Channel 空值；统一两侧把手折叠手势；清理本地冗余
+
+**背景**：用户反馈三条产品问题——最基本的 SSH 连不上、新建连接界面乱、会话面板双击分隔线
+折叠而文件面板靠按钮折叠，操作逻辑不统一；另要求磁盘占用降下来、以后删除不走回收站、清掉
+项目不再需要的文件。
+
+**做了什么**
+- SSH 链路逐段排查：前端 `ssh_connect` 调用 → Rust 命令注册 → `ssh/client.rs` →
+  `sftp.rs` → `known_hosts.rs`，命令注册与参数一一核对。对真实服务器 github.com:22 跑
+  现成 `smoke` 示例：TCP / KEX / 主机密钥校验通过，传输层没坏。定位到一处真实缺陷：分屏
+  格子重连（`openCellChannel`）把握手回调 Channel 传成 `null`，Tauri 的 Channel 参数按
+  通道 ID 反序列化，`null` 会让整条命令在参数校验阶段被拒，这一格必然连不上；改成给一个
+  留空回调的真 Channel，主路径与分屏路径走同一条链路。
+- 折叠手势统一：`gutter-split` 双击把手从「重置到 50% 比例」改成收起文件面板，与会话栏
+  `gutter-v` 同一套——双击收起、折叠后单击贴边把手还原；标题栏按钮与 `Ctrl+Alt+F` 保留。
+  `docs/design-spec.md` #37 入口清单同步加「双击右缘把手收起」。
+- 磁盘清理（一律不可逆删除，不经回收站）：仓库根与 ui 下 219 个 `_` 开头临时截图 / 脚本 /
+  核验页（37.1 MB，gitignored 未跟踪）、两个 0 字节 `.bak`、仓库内旧 `target/`（125.8 MB，
+  构建目录已重定向到 D 盘）；`D:\portio-target\debug` 开发/测试产物（6.45 GB，可重建）；
+  new-chat 根目录被 RC9 取代的 RC8 安装包与未被引用的图标预览图。
+- 进位：RC 计数做满 10，按版本规则进 patch 再回 RC1 → `1.1.0-RC1`；release 二进制重建；
+  十张物料重出到 1.1.0-RC1（manifest 10 张全过）。
+
+**验证证据**
+- `cargo check --workspace --all-targets` 干净；`cargo fmt --all --check` 退 0；
+  `cargo clippy --workspace --all-targets -- -D warnings` 零警告。
+- `cargo test --workspace`：core 47 + 3、ssh 21 + 1，全过；脚本单测
+  `unittest discover -s scripts` **600 条通过**（跳 1）。
+- 无头自检：`connect-entry-test` / `fold-test` / `split-test` 三条标题全 OK，无 ERR；
+  设计令牌、尺度、说明页、版本门禁均退 0；changelog 100 个小节、facts 对得上改动集。
+- 真窗口：A37 七条自检在 release 构建跑过、偏好一字没动；A36 首跑撞已知冷启动抖动
+  （DOM 0 字节），单跑复核 PASS——版本 1.1.0-RC1、DOM 92574 字节、xterm 1；收尾无残留。
+- 连接弹窗无头截图复核：主机/端口/用户名/认证方式/密码/记住口令/底部按钮排版对齐，
+  当前构建里界面是整齐的。
+
+**未验**
+- 真实 SSH 登录、PTY 交互、resize、tmux / vim 全屏、真 SFTP 上传下载仍缺测试服务器与凭据，
+  只有协议层单测 + 对真实服务器握手验证；端到端登录会话未验。
+- A36 / A37 初始导航抖动根因仍未定性（首跑 DOM 0 字节即此现象）；mac / linux 包只到 CI
+  构建通过，未真机装过。
+- 分屏重连的 Channel 修复只走了代码路径与无头/真窗口探针，没有真服务器可做端到端重连。
+
+**下一步**
+- 整跑复核 1.1.0-RC1（A11 / A34 仍会因本机没打本版 NSIS 包而 SKIP；A48 要等发包后才有
+  交付记录可核）；转绿后再走 Release CI 四资产流程、打 tag。
+- 继续沿 EBWebView 占用 / 探针时序两条假设排查 A36/A37；若用户能提供一台测试 SSH 服务器
+  与凭据，优先把端到端登录 / PTY / SFTP 补成可验项。

@@ -879,7 +879,8 @@ function applyBootFiles() {
 
 document.getElementById("files-fold").addEventListener("click", () => applyFilesFold(!filesFolded));
 
-// 折叠态：单击右缘把手把文件面板拉回来；展开态：双击把手回到 50%（拖拽不会误触发 dblclick）
+// 折叠态：单击右缘把手把文件面板拉回来；展开态：双击把手把文件面板收起来
+// （与会话栏把手同一套手势，不再双击回 50% 比例）
 document.getElementById("gutter-split").addEventListener("click", () => {
   if (filesFolded) applyFilesFold(false);
 });
@@ -908,13 +909,12 @@ document.getElementById("drawer-head").addEventListener("click", () => {
   }
 });
 
-// 侧栏把手双击 = 收起/展开会话栏（Ctrl+Alt+B 同效）
+// 两条把手同一套手势：双击把手收起这一侧；收起后单击贴边把手还原（Ctrl+Alt+B / Ctrl+Alt+F 同效）
 document.getElementById("gutter-v").addEventListener("dblclick", () => {
   if (!sidebarFolded) applyFold(true);
 });
 document.getElementById("gutter-split").addEventListener("dblclick", () => {
-  if (filesFolded) applyFilesFold(false);
-  else applySplit(0.5);
+  if (!filesFolded) applyFilesFold(true);
 });
 
 // ---------- 快捷键 ----------
@@ -1556,6 +1556,11 @@ async function openCellChannel(tab, cell) {
     }
   }
   try {
+    // 握手回调用的 Channel 必须真给一个：Tauri 按通道 ID 反序列化参数，
+    // 传 null 会让整条命令在参数校验阶段就被拒，这一格必然连不上。
+    // 分屏格子不显示指纹提示，回调留空操作即可。
+    const handoff = new window.__TAURI__.core.Channel();
+    handoff.onmessage = () => {};
     const id = await bridge.invoke("ssh_connect", {
       host: spec.host,
       port: Number(spec.port ?? 22) || 22,
@@ -1564,7 +1569,7 @@ async function openCellChannel(tab, cell) {
       keyfile: spec.auth === "key" ? String(spec.keyfile ?? "") : null,
       cols: cell.term.cols,
       rows: cell.term.rows,
-      onHandshake: null,
+      onHandshake: handoff,
     });
     cell.sid = id;
     cell.term.write(`\r\n\x1b[2m—— 新的一格：${spec.user}@${spec.host}:${spec.port} ——\x1b[0m\r\n`);
