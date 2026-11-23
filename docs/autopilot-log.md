@@ -4698,3 +4698,37 @@ deb / AppImage 一直没出资产，记录与文档都挂着「CI 构建中」�
   整跑后按新成绩单回填清单首部与 §7（A49 自指门禁）。
 - 1.0.10 段下一格：继续定性 A36 / A37 抖动，或挑下一个真 Bug 单元进 RC10；
   版本不进位：本轮是 RC9 发版收尾补记，纯记录与文档，按物料轮先例不单独推 RC tag。
+
+## 2026-11-23 ｜ v1.0.10-RC9 ｜ 整跑复核：清掉残留空壳产物，回填清单首部与 §7
+
+**背景**：上一轮把 RC9 四平台交付记录补齐后，按计划整跑复核一次，确认 A48 转绿、
+A11 / A34 仍因本机没打本版 NSIS 包而未验，并把清单首部那串数字跟新成绩单一字不差对齐。
+
+**做了什么**
+- 首轮整跑 `rc.py --record`：A47 抓到 5 份 0 字节 rmeta 还挂着假新鲜指纹
+  （portio-app 三个 hash、portio-core、session 各一，都在 `D:\portio-target\debug\deps`）；
+  按门禁点名 `cargo clean -p portio-ssh / portio-app / portio-core` 清掉（约 3.7 GiB），
+  复扫 A47 OK，没有空壳产物或假新鲜指纹、没有超龄 rustc。
+- 二次整跑落成绩单：46 通过 / 1 失败 / 2 未验，414.1s，退出码 1。
+  A48 四条 RC9 记录转绿（盘上核 2 份、Release 大小对上 14 条、14 个 tag 真指对应提交）；
+  A11 / A34 仍未验；唯一失败是 A49 自指（首部还抄着上一跑的数字）。
+- 回填 `docs/rc-checklist.md` 首部段与 §7 RC9 行：46 通过 / 1 失败 / 2 未验、414.1s、
+  未验点名 A11 / A34，A47 / A48 的本轮证据写进去。
+
+**验证证据**
+- A49 `check_rc_record.py` 退 0：清单首部那串数字与成绩单一字不差。
+- A48 `check_artifact_manifest.py` 退 0；`check_versions` / `check_site` /
+  `check_changelog`（98 节）/ `check_changelog_facts` 均退 0。
+- A1 `cargo test --workspace` 102 passed / 0 failed；A32 fmt 干净、clippy 零警告；
+  A35 598 条脚本单测全过；A36 读到版本 1.0.10-RC9、DOM 94620 字节、xterm 1 个；
+  A37 七条自检在真窗口跑过、偏好一字没动。
+
+**未验**
+- A11 / A34：本机没构建 RC9 NSIS 包，包拆不开；dmg / AppImage 不在盘上，只核记录层。
+- A36 / A37 初始导航抖动根因仍未定性（隔离环境复现不出），继续如实跟踪。
+- 真实 SSH 登录 / PTY / resize / tmux 全屏 / 真 SFTP 上传下载仍无测试服务器与凭据；
+  mac / linux 包只到 CI 构建通过，未真机装过。
+
+**下一步**
+- 1.0.10 段下一格：继续定性 A36 / A37，或挑下一个真 Bug 单元进 RC10。
+- 版本不进位：本轮纯门禁复核与记录回填，产品代码一字未动，按物料轮先例不单独推 RC tag。
