@@ -4732,3 +4732,44 @@ A11 / A34 仍因本机没打本版 NSIS 包而未验，并把清单首部那串�
 **下一步**
 - 1.0.10 段下一格：继续定性 A36 / A37，或挑下一个真 Bug 单元进 RC10。
 - 版本不进位：本轮纯门禁复核与记录回填，产品代码一字未动，按物料轮先例不单独推 RC tag。
+
+## 2026-11-23 ｜ v1.0.10-RC10 ｜ 建窗失败错误链落日志；A36 空版本串带上现场信号
+
+**背景**：A36 / A37 初始导航抖动在隔离单跑里仍复现不出来，根因未定性。复盘探针早退归因时
+发现一处证据缺口：setup 里 `.build()` 建窗 / WebView2 失败时，Tauri 错误只往上抛，探针把
+stderr 丢进 DEVNULL，应用日志尾巴只剩一句"启动失败"，真正的占用 HRESULT / 根因链跟着丢了；
+A36 读到空版本串时，失败结论也只说"span.ver 空着"，分不清是旧骨架还是 app.js 中途炸了。
+
+**做了什么**
+- `crates/app/src/lib.rs`：新增 `error_chain()` 沿 `source()` 链把顶层消息到根因拼成一行；
+  建窗失败先把整条链写进 `logs/portio.log` 的 `setup` 行（error 级），再照常把错误往上抛，
+  行为不变、只是留证。
+- `scripts/rc.py`：`classify_panic` 认到 setup 建窗失败这一类，翻成人话写进早退结论；
+  `webview_verdict` 空版本串的 FAIL 结论带上 readyState / 标题 / DOM 字节 / xterm 数 /
+  findScan 类型这批现场信号。
+- 单测：`test_rc_reap.py` 加 setup 失败归因一条；`test_rc_webview.py` 加空版本串现场信号一条。
+- 进位 `set_version.py 1.0.10-RC10`，release 二进制重建到 RC10；十张物料重出到 RC10
+  （manifest 1.0.10-RC10，10 张全过）。
+
+**验证证据**
+- `cargo check --workspace --all-targets` 干净；`cargo fmt --all --check` 退 0；
+  `cargo clippy --workspace --all-targets -- -D warnings` 零警告。
+- `cargo test --workspace` 102 passed / 0 failed（30 + 47 + 3 + 21 + 1）。
+- 脚本单测 `unittest discover -s scripts` **600 条通过**（按平台跳 1 条）；
+  reap + webview 两份 36 条全 OK。
+- 文档门禁：`check_changelog` 99 个小节、`check_changelog_facts` 对得上 RC10 改动集
+  （对照 v1.0.10-RC9：17 个文件、新增 0 脚本、49 项门禁都有分发处）；`check_site` /
+  `check_design_tokens` / `check_ui_scale` 均退 0；`check_versions` 七处一致。
+- 真窗口复验：A36 在 RC10 release 构建上 PASS——版本 1.0.10-RC10、DOM 94621 字节、xterm 1；
+  A37 七条自检真窗口跑过、偏好一字没动；收尾无残留、一次性 profile 一份没留下。
+
+**未验**
+- 建窗 / WebView2 失败这条日志链只在代码路径与单测上核过：本机复现不出占用现场，
+  真实 `0x800700AA` 那一类没在真机上再撞一次确认日志落盘。
+- A36 / A37 抖动根因仍未定性；真实 SSH 登录 / PTY / resize / tmux 全屏 / 真 SFTP 上传下载
+  仍无测试服务器与凭据；mac / linux 包只到 CI 构建通过，未真机装过。
+
+**下一步**
+- 1.0.10 段下一格：整跑复核 RC10（A11 / A34 仍会因本机没打本版 NSIS 包而 SKIP；
+  A48 要等 RC10 发包后才有交付记录可核）；或继续沿 EBWebView 占用 / 探针时序两条假设排查。
+- RC10 尚未打 tag / 发包；下一轮若整跑转绿，再走 Release CI 四资产流程。

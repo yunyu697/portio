@@ -71,6 +71,14 @@ class VerdictTest(unittest.TestCase):
         self.assertEqual(status, rc.FAIL)
         self.assertIn("span.ver", detail)
 
+    def test_empty_version_carries_site_signals(self):
+        # 空版本串要分清是旧骨架还是 app.js 炸了：失败结论里得带上 ready / DOM / xterm 现场
+        sig = dict(GOOD, ver="", ready="complete", bodyLen=4096, xterm=0)
+        _, detail = rc.webview_verdict(sig, "1.2.3-RC1", 3.0)
+        self.assertIn("complete", detail)
+        self.assertIn("4096", detail)
+        self.assertIn("xterm 0", detail)
+
     def test_app_js_not_run_is_red(self):
         sig = dict(GOOD, hasScan="undefined")
         status, detail = rc.webview_verdict(sig, "1.2.3-RC1", 3.0)

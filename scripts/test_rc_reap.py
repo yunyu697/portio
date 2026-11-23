@@ -86,6 +86,12 @@ class ClassifyTest(unittest.TestCase):
         reason = rc.classify_panic("panicked at tauri-2.12.6/src/app.rs:1444")
         self.assertIn("panic", reason)
 
+    def test_setup_window_failure_is_named(self):
+        reason = rc.classify_panic(
+            '[ERROR] [setup] 窗口 / WebView2 创建失败：Webview2 初始化失败 → 拒绝访问')
+        self.assertIn("WebView2", reason)
+        self.assertIn("setup", reason)
+
     def test_plain_log_is_empty_reason(self):
         self.assertEqual(rc.classify_panic("[INFO] [app] Portio 启动"), "")
 

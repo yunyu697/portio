@@ -901,9 +901,11 @@ def app_log_tail(lines: int = 20, identifier: str | None = None,
 
 
 def classify_panic(tail_text: str) -> str:
-    """早退到底怎么炸的：从日志尾部认 WebView2 占用 / Rust panic，翻成人话。"""
+    """早退到底怎么炸的：从日志尾部认 WebView2 占用 / 建窗失败 / Rust panic，翻成人话。"""
     if "0x800700AA" in tail_text:
         return "WebView2 用户目录被占用（0x800700AA，上一个实例可能还没退净）"
+    if "窗口 / WebView2 创建失败" in tail_text:
+        return "窗口 / WebView2 创建失败（整条错误链见 logs/portio.log 的 setup 行）"
     if "panicked" in tail_text:
         return "Rust 侧 panic（原因见 logs/portio.log）"
     return ""
@@ -1244,7 +1246,12 @@ def webview_verdict(sig: dict | None, version: str, waited: float,
         return FAIL, f"窗口标题成了 {title!r}——前端一进去就炸了"
     ver = str(sig.get("ver") or "").strip()
     if not ver:
-        return FAIL, "界面里压根没找到标题栏那个版本串（span.ver 空着）——DOM 不是这一份"
+        # 空版本串有两种可能：导航到了旧骨架 / app.js 中途炸了。把读回来的现场信号
+        # 一并带上，下次翻红不用重跑一轮才分得清是哪一种。
+        site = (f"现场：ready={ready or '空'}、标题={title!r}、DOM {sig.get('bodyLen')} 字节、"
+                f"xterm {sig.get('xterm')} 个、findScan={sig.get('hasScan')!r}")
+        return FAIL, ("界面里压根没找到标题栏那个版本串（span.ver 空着）——DOM 不是这一份；"
+                      + site)
     if version and ver != version:
         # 不是这一版构建出来的 exe：界面在真 webview 里对不对，这轮压根没核到。
         # 按 RC6 的口径，这种要报「未验」，不能算红也不能算绿——

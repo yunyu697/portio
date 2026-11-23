@@ -1,3 +1,4 @@
+use std::error::Error;
 use tauri::utils::config::Color;
 use tauri::{Manager, Window};
 
@@ -5,6 +6,20 @@ mod credentials;
 mod diag;
 mod session_store;
 mod sessions;
+
+/// 把一条错误的整条来源链拼成一行：顶层消息 → 根因。
+///
+/// WebView2 建窗失败时，顶层 `tauri::Error` 的消息常常只是笼统的一句，
+/// 真正的 HRESULT（如 `0x800700AA` 占用）挂在 source 链上；只记顶层就把根因丢了。
+fn error_chain(err: &impl Error) -> String {
+    let mut parts = vec![err.to_string()];
+    let mut src = err.source();
+    while let Some(s) = src {
+        parts.push(s.to_string());
+        src = s.source();
+    }
+    parts.join(" → ")
+}
 
 /// 上次退出时用户看的是什么主题。前端每次换主题都会写一份，这里启动时读它决定窗口底色。
 /// 读不到就按深色（也是产品默认）。
@@ -160,7 +175,7 @@ pub fn run() {
             // Release 构建里下面那段 devtools 代码会被剥掉，win 就没人用了，
             // 所以显式放行这条"未使用"警告，免得 release 编译每次都刷一行。
             #[allow(unused_variables)]
-            let win = tauri::WebviewWindowBuilder::new(
+            let win = match tauri::WebviewWindowBuilder::new(
                 app,
                 "main",
                 tauri::WebviewUrl::App("index.html".into()),
@@ -173,7 +188,22 @@ pub fn run() {
             .background_color(theme_bg(&theme))
             .visible(false)
             .center()
-            .build()?;
+            .build()
+            {
+                Ok(w) => w,
+                Err(e) => {
+                    // 建窗 / WebView2 失败要把整条错误链落进日志：探针早退归因是靠
+                    // 日志尾巴认根因（占用 / panic）的；stderr 在探针里被丢进 DEVNULL，
+                    // 这里不记，下一次早退就只剩一个退出码，看不出撞在哪。
+                    diag::write_entry(
+                        app.handle(),
+                        "error",
+                        "setup",
+                        &format!("窗口 / WebView2 创建失败：{}", error_chain(&e)),
+                    );
+                    return Err(e.into());
+                }
+            };
             // 调试时想开 devtools 就设 PORTIO_DEVTOOLS=1，默认不自动弹，免得挡住窗口截图与演示。
             // 注意 open_devtools 只在 debug 构建里存在，所以用属性宏而不是 cfg! 宏：
             // cfg! 是运行期布尔，Release 编译时这行代码仍然要参与编译，会直接报 E0599。
