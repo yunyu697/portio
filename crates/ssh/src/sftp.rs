@@ -21,6 +21,13 @@ impl SshSession {
             .channel_open_session()
             .await
             .map_err(|e| SshError::Protocol(e.to_string()))?;
+        // RFC 4254：必须先在会话通道上请求 sftp 子系统，服务端才会拉起 sftp-server。
+        // 漏掉这一步直接发 FXP_INIT，对端不会回版本包，只会干等到请求超时，
+        // 前端再把那条 Timeout 误判成"网络不可达"。
+        channel
+            .request_subsystem(true, "sftp")
+            .await
+            .map_err(|e| SshError::Protocol(format!("请求 SFTP 子系统失败：{e}")))?;
         let session = SftpSession::new(channel.into_stream())
             .await
             .map_err(|e| SshError::Protocol(format!("打开 SFTP 失败：{e}")))?;
