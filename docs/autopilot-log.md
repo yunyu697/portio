@@ -4911,3 +4911,39 @@ A36 读到空版本串时，失败结论也只说"span.ver 空着"，分不清�
   Linux `Portio_1.1.0-RC2_amd64.AppImage` 83,155,448 B。
 - 四条 RC2 交付记录回填 `artifacts.json`；A48 对表：Release 大小对上 21 条记录、21 个 tag 都真指
   在写着对应版本的提交上。Release：https://github.com/yunyu697/portio/releases/tag/v1.1.0-RC2
+
+## 2026-11-24 · v1.1.0-RC3 · SFTP 子系统请求补齐 + 传输抽屉尾巴收口
+
+**本轮改动**
+- `fix(ssh)`：`open_sftp` 在会话通道打开后、初始化 SFTP 会话前，先按 RFC 4254 发
+  `request_subsystem("sftp")`；原先直接发 `SSH_FXP_INIT`，服务端不起 `sftp-server`、不回版本包，
+  等到请求超时，被前端误报成「网络不可达或服务端限流」的连接超时。子系统请求失败单独映射成协议报错。
+- `fix(ui)`：传输抽屉标题条删掉常驻「收起 / 展开」文案与标题条点击折叠；收放入口与会话栏、
+  文件面板对齐——双击横向把手收起、单击贴边把手还原、`Ctrl+Alt+D`、标题条右键菜单。规范
+  #38 / #47 口径同步，变更记录补 v2.15。
+- 进位 `1.1.0-RC3`：七处版本一致；CHANGELOG / release-notes / 说明页版本串同步到 RC3。
+
+**验证证据**
+- 本地：`cargo test --workspace` 102 passed / 0 failed（app 30、core 47+3、ssh 21+1）；
+  fmt 干净、clippy 零警告；脚本单测 617 条通过（跳 1）；`node --check`、设计令牌、尺度、版本、
+  changelog、changelog facts、说明页门禁全绿。
+- main CI（run 45428483576）：version rule / fmt-clippy-test / 三平台 build 全绿。
+- Release CI（run 45428525804）：gate 通过；linux-x64 3m57s、windows-x64 6m52s、
+  macos-universal 10m56s 全成功。
+
+**未验**（沿用 RC2，无变化）
+- 真实 SSH 登录、PTY 交互、resize、tmux / vim 全屏、真 SFTP 上传下载与续传仍缺测试服务器与凭据；
+  本版 SFTP 修复只在协议层单测与握手探针上验证，端到端登录会话未验；目标 Dropbear 若本身没装
+  `sftp-server`，文件面板仍会报错。
+- A36 / A37 初始导航抖动根因仍未定性；mac / linux 包只到 CI 构建通过，未真机安装。
+- 本轮未重跑 49 项整跑，`rc-last-run.json` 仍是 RC2 那份成绩单；本地只跑了单测 / fmt / clippy /
+  静态门禁。
+
+**发包结果（2026-11-24）**
+- Release `v1.1.0-RC3` 已发布（预发布、非草稿，targetCommitish `16fe290`）：
+  Windows `Portio_1.1.0-RC3_x64-setup.exe` 3,395,973 B；macOS `Portio_1.1.0-RC3_universal.dmg`
+  9,540,034 B；Linux `Portio_1.1.0-RC3_amd64.deb` 4,977,666 B；
+  Linux `Portio_1.1.0-RC3_amd64.AppImage` 83,167,736 B。
+- 四条 RC3 交付记录回填 `artifacts.json`；A48 对表：Release 大小对上 25 条记录、25 个 tag 都真指
+  在写着对应版本的提交上；本机 exe 包体字节 / sha256 / PE 版本串核对一致。
+  Release：https://github.com/yunyu697/portio/releases/tag/v1.1.0-RC3
