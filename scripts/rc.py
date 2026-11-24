@@ -2939,7 +2939,7 @@ def main(argv: list[str]) -> int:
         ("A1", "cargo test --workspace", not args.fast),
         ("A2", "node --check ui/app.js", True),
         ("A3", "check_design_tokens.py（无硬编码色值）", True),
-        ("A4", "check_ui_scale.py（尺度走令牌）", True),
+        ("A4", "check_ui_scale.py（尺度走令牌 + 圆角档位 / 状态族齐备）", True),
         ("A5", "check_versions.py（七处版本一致：清单三处 + 标题栏 + Cargo.lock 三个 crate）", True),
         ("A6", "默认页 title 无 ERR:", True),
         ("A7", "#split-test = SELFTEST-OK", True),
@@ -3048,7 +3048,7 @@ def main(argv: list[str]) -> int:
         elif code == "A3":
             status, detail = a_script("check_design_tokens.py", "无硬编码色值")
         elif code == "A4":
-            status, detail = a_script("check_ui_scale.py", "尺度走令牌")
+            status, detail = a_script("check_ui_scale.py", "尺度走令牌、档位与状态族齐备")
         elif code == "A5":
             status, detail = a_script("check_versions.py", "版本一致")
         elif code == "A6":

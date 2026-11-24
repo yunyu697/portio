@@ -122,7 +122,7 @@ function showCtx(x, y, items) {
       continue;
     }
     const row = document.createElement("div");
-    row.className = "ctx-item" + (it.disabled ? " dis" : "");
+    row.className = "ctx-item" + (it.disabled ? " dis" : "") + (it.danger ? " danger" : "");
     row.setAttribute("role", "menuitem");
     if (it.icon) {
       const ico = document.createElement("span");
@@ -903,15 +903,25 @@ document.getElementById("gutter-drawer").addEventListener("pointerdown", dragWit
   applyDrawer(px);
 }));
 
-// 抽屉：点标题栏折叠/展开，比拖拽更常用。原来 `drawerLast` 声明在下面，这里先挪上来。
-document.getElementById("drawer-head").addEventListener("click", () => {
-  const cur = parseFloat(getComputedStyle(root).getPropertyValue("--drawer")) || 172;
+// 抽屉收放：与会话栏 / 文件面板同一套手势族——点标题条、双击横向把手收起、
+// 收起后单击贴边把手还原、Ctrl+Alt+D、右键菜单。抽屉的"收起态"就是高度落到一行。
+function toggleDrawer() {
+  const cur = parseFloat(getComputedStyle(root).getPropertyValue("--drawer")) || DEFAULT_DRAWER;
   if (cur > PREF.drawer.min + 2) {
     drawerLast = cur;
     applyDrawer(PREF.drawer.min);
   } else {
     applyDrawer(Math.max(drawerLast, 120));
   }
+}
+const drawerBox = document.getElementById("drawer");
+document.getElementById("drawer-head").addEventListener("click", toggleDrawer);
+// 双击横向把手收起；收起后单击贴边把手还原（与会话栏 / 文件面板把手同构）
+document.getElementById("gutter-drawer").addEventListener("click", () => {
+  if (drawerBox.classList.contains("collapsed")) toggleDrawer();
+});
+document.getElementById("gutter-drawer").addEventListener("dblclick", () => {
+  if (!drawerBox.classList.contains("collapsed")) toggleDrawer();
 });
 
 // 两条把手同一套手势：双击把手收起这一侧；收起后单击贴边把手还原（Ctrl+Alt+B / Ctrl+Alt+F 同效）
@@ -939,6 +949,12 @@ window.addEventListener("keydown", (e) => {
     e.preventDefault();
     applyFilesFold(!filesFolded);
     toast(filesFolded ? "文件面板已收起（Ctrl+Alt+F 恢复）" : "文件面板已展开");
+  }
+  if (mod && e.key.toLowerCase() === "d") {
+    e.preventDefault();
+    const wasCollapsed = drawerBox.classList.contains("collapsed");
+    toggleDrawer();
+    toast(wasCollapsed ? "传输队列已展开" : "传输队列已收起（Ctrl+Alt+D 恢复）");
   }
   if (e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "w") {
     e.preventDefault();
@@ -2260,6 +2276,7 @@ function renderSessions() {
             { sep: true },
             {
               label: "解散这个分组",
+              danger: true,
               hint: `${g.items.length} 台`,
               run: () => {
                 for (const s of g.items) setGroups(sessionKey(s), "");
@@ -2333,7 +2350,7 @@ function renderSessions() {
         { label: "复制地址", hint: `${s.user}@${s.host}:${s.port ?? 22}`, run: () => copyText(key) },
         { label: "复制 ssh 命令", run: () => copyText(`ssh ${s.user}@${s.host} -p ${s.port ?? 22}`) },
         { sep: true },
-        { label: "从列表删除", run: () => removeSession(key) },
+        { label: "从列表删除", danger: true, run: () => removeSession(key) },
       ]);
     });
     anchor.after(row);
@@ -2835,7 +2852,7 @@ function renderList(el, items, side) {
           { sep: true },
           { label: "重命名", run: () => renameRemote(it) },
           { label: "新建文件夹", run: () => newRemoteDir() },
-          { label: "删除", hint: it.is_dir ? "目录" : "文件", run: () => removeRemote(it) },
+          { label: "删除", danger: true, hint: it.is_dir ? "目录" : "文件", run: () => removeRemote(it) },
           { sep: true },
           { label: "复制路径", run: () => copyText(it.path) },
           { label: "刷新列表", run: () => loadRemote(remotePath) },
@@ -3134,6 +3151,22 @@ if (location.hash === "#transfer-test") {
       ok(b.width > 0 && b.height > 0, `传输行 \`${key}\` 没有尺寸`);
       ok(b.right <= drawerBox.right + 0.5, `传输行 \`${key}\` 右缘越出抽屉：${b.right} > ${drawerBox.right}`);
     }
+    // ⑥ 收放手势与会话栏 / 文件面板同构：双击横向把手收起、单击贴边把手还原、Ctrl+Alt+D 切换
+    const drawerT = document.getElementById("drawer");
+    const gutterH = document.getElementById("gutter-drawer");
+    const drawerVar = () => parseFloat(getComputedStyle(root).getPropertyValue("--drawer")) || DEFAULT_DRAWER;
+    ok(!drawerT.classList.contains("collapsed"), "开场抽屉应是展开态");
+    gutterH.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    ok(drawerT.classList.contains("collapsed"), "双击横向把手应收起传输队列");
+    ok(Math.round(drawerVar()) === PREF.drawer.min, `收起后高度应落到一行高 ${PREF.drawer.min}：${drawerVar()}`);
+    gutterH.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    ok(!drawerT.classList.contains("collapsed"), "单击贴边把手应还原传输队列");
+    ok(drawerVar() >= 120, `还原后高度应回到 ≥120：${drawerVar()}`);
+    window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, altKey: true, key: "d", bubbles: true }));
+    ok(drawerT.classList.contains("collapsed"), "Ctrl+Alt+D 应收起传输队列");
+    window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, altKey: true, key: "d", bubbles: true }));
+    ok(!drawerT.classList.contains("collapsed"), "再按 Ctrl+Alt+D 应展开传输队列");
+
     seen.rows = transferRows.size;
     seen.num = document.querySelector(".drawer .num").textContent;
     seen.bar = barOf(first);
@@ -3432,8 +3465,8 @@ drawerEl.addEventListener("contextmenu", (ev) => {
   showCtx(ev.clientX, ev.clientY, [
     {
       label: collapsed ? "展开传输队列" : "收起传输队列",
-      hint: "只留一行",
-      run: () => document.getElementById("drawer-head").click(),
+      hint: "Ctrl+Alt+D",
+      run: toggleDrawer,
     },
   ]);
 });
