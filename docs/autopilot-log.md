@@ -4866,3 +4866,48 @@ A36 读到空版本串时，失败结论也只说"span.ver 空着"，分不清�
 **未验**（沿用上轮，无变化）
 - 真实 SSH 登录 / PTY / resize / 全屏 / 真 SFTP 端到端仍缺测试服务器与凭据；
   A36/A37 初始导航抖动根因未定性；mac/Linux 包未真机安装。
+
+## 2026-11-24 ｜ v1.1.0-RC2 ｜ 对照 HIG 对齐控件状态族与跨平台手势；门禁补圆角档位/状态族机器校验；四平台预发布发包
+
+**背景**：RC1 收口后，以 `docs/design-spec.md` 为唯一裁判做主动审计——先统一面板折叠手势与圆角错档，
+再对照 Apple HIG 把全局控件的按压 / 选中 / 焦点 / 破坏性等状态补齐到跨平台令牌体系，并把这些约束
+固化成可机器跑的门禁；最后进位 RC2 预发布、推 main、打 tag 走 Release CI 四平台发包。
+
+**做了什么**
+- 一致性收口：传输抽屉折叠手势与会话栏 / 文件栏统一——双击把手收起、折叠后单击贴边把手还原、
+  `Ctrl+Alt+D` 快捷键；`.sess-row` / `.sess-search` / `.toast div` 三处圆角错档归位到对应档位。
+- HIG 对齐：全局按钮 / 图标钮 / 分段 / 下拉 / 输入补齐 `:active` 按压态与 `:focus-visible` 焦点环；
+  侧栏输入补 hover / 焦点态；文件栏图标钮 hover 浅底；删除会话 / 远端文件 / 解散分组三条破坏性
+  菜单项标系统红；菜单图标列固定 16px 对齐。规范升到 v2.14：新增 §1a 跨平台适配表、§9 状态矩阵
+  拆按压 / 选中并补破坏性行。
+- 门禁补强：重写 `check_ui_scale.py`，内置圆角档位对照表（`--r-4/6/8/12` 与胶囊 / 发丝）与
+  按钮 / 输入状态族对照表，新组件不进对照表即被 lint 拦下；配套 17 条单测入 `test_check_ui_scale.py`。
+- 进位与物料：按最稳妥口径进 `1.1.0-RC2` 预发布（不转正——真实 SSH/PTY/SFTP 端到端仍未验）；
+  七处版本口径一致；CHANGELOG 落成 RC2 小节、release-notes 状态行与安装包名同步；本地
+  `tauri build --bundles nsis`（显式 nsis，默认 msi 拒绝 RC 非数字后缀）出 release exe 与 NSIS 包；
+  十张基线截图重出，manifest 盖 1.1.0-RC2 版本戳。
+
+**验证证据**
+- 最终整跑 49 项 → 48 通过 / 1 失败（A49 自指：落成绩单时清单首部还抄上一跑数字，回填后复跑退 0）
+  / 0 未验，230.5s；A1 `cargo test --workspace` 102 passed / 0 failed；A32 fmt 干净、clippy 零警告；
+  A35 脚本单测 617 条通过（跳 1）；A31 十张物料 1.60 MiB 逐张对上；A11 本地 NSIS 3,393,424 字节
+  （3.24 MiB），A34 拆包与构建产物逐字节一致；A36 真 webview 读到版本 1.1.0-RC2、DOM 99184 字节、
+  xterm 1 个；A37 七条自检在真窗口跑过、偏好一字没动；A47 清掉 7 份 debug 0 字节空壳 rmeta 与
+  7 份配对假新鲜指纹后转绿。
+- 静态门禁：node --check、设计令牌、尺度、版本、changelog、changelog facts、说明页、成绩单对表全绿。
+- main CI（run 45378902574）：version rule / fmt-clippy-test / 三平台 build 全绿；
+  Release CI（run 45378976872）：linux-x64 6m13s、windows-x64 6m31s、macos-universal 12m17s 全成功。
+
+**未验**（沿用 RC1，无变化）
+- 真实 SSH 登录、PTY 交互、resize、tmux / vim 全屏、真 SFTP 上传下载与续传仍缺测试服务器与凭据；
+  协议层单测 + 真实服务器握手验证之外，端到端登录会话未验。
+- A36 / A37 初始导航抖动根因仍未定性；mac / linux 包只到 CI 构建通过，未真机安装。
+- 本机盘上无 CI 包，四平台资产字节 / sha256 只核到交付记录 + Release 资产大小层（留 NOTE，与历史轮口径一致）。
+
+**发包结果（2026-11-24）**
+- Release `v1.1.0-RC2` 已发布（预发布、非草稿，targetCommitish `e94bd6e`）：
+  Windows `Portio_1.1.0-RC2_x64-setup.exe` 3,389,783 B；macOS `Portio_1.1.0-RC2_universal.dmg`
+  9,538,418 B；Linux `Portio_1.1.0-RC2_amd64.deb` 4,979,748 B；
+  Linux `Portio_1.1.0-RC2_amd64.AppImage` 83,155,448 B。
+- 四条 RC2 交付记录回填 `artifacts.json`；A48 对表：Release 大小对上 21 条记录、21 个 tag 都真指
+  在写着对应版本的提交上。Release：https://github.com/yunyu697/portio/releases/tag/v1.1.0-RC2
