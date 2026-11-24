@@ -4947,3 +4947,42 @@ A36 读到空版本串时，失败结论也只说"span.ver 空着"，分不清�
 - 四条 RC3 交付记录回填 `artifacts.json`；A48 对表：Release 大小对上 25 条记录、25 个 tag 都真指
   在写着对应版本的提交上；本机 exe 包体字节 / sha256 / PE 版本串核对一致。
   Release：https://github.com/yunyu697/portio/releases/tag/v1.1.0-RC3
+
+## 2026-11-25 · v1.1.0-RC4 · 调研内化与仓库文档/注释脱敏；四平台预发布发包
+
+**本轮改动**
+- 调研内化：先完成主流开源 SSH/SFTP 客户端实现对照，梳理 Portio 已复用的栈边界
+  （russh / russh-sftp / xterm.js / Tauri）与自研部分；结论只作内部参考，学习后参考、不照抄。
+- 公开仓库脱敏（A 档口径）：对照研究文档从仓库移除；终端按键、标签焦点等四处注释里的外部
+  产品类比改成中性表述；导入旧会话解析器的模块名、Tauri 命令、菜单文案与 README / 说明页 /
+  发布说明里的来源说明全部保留；git 历史未改写。
+- 进位 `1.1.0-RC4`：七处版本口径一致；CHANGELOG 加 RC4 小节（Changed：注释与仓库文档整理，
+  无行为变化；Known limitations 两条沿用 RC3）；release-notes 三处版本串同步。
+
+**验证证据**
+- 本地：`cargo test --workspace` 102 passed / 0 failed；fmt 干净、clippy 零警告；脚本单测
+  617 条通过（跳 1，本轮复跑 64.96s）；`node --check` 通过；check_versions / check_changelog /
+  check_changelog_facts / check_site / check_design_tokens / check_ui_scale 全绿。
+- main CI（run 45446004715）：version rule / fmt-clippy-test / 三平台 build 全绿；macOS 作业
+  首次结论 cancelled（空步骤记录，runner 调度抖动、非编译错误），rerun 后 success。
+- Release CI（run 45450509503）：gate 通过；linux-x64 6m25s、windows-x64 7m21s、
+  macos-universal 7m18s 全成功。
+
+**未验**（沿用 RC3，无变化）
+- 真实 SSH 登录、PTY 交互、resize、tmux / vim 全屏、真 SFTP 上传下载与续传仍缺测试服务器与
+  凭据；目标 Dropbear 若本身没装 `sftp-server`，文件面板仍会报错。
+- A36 / A37 初始导航抖动根因仍未定性；mac / linux 包只到 CI 构建通过，未真机安装。
+- 本轮未重跑 49 项整跑，`rc-last-run.json` 仍是 RC2 成绩单；A49 退 1（成绩单版本与当前版不
+  相邻），未手改成绩单数字冒充本版整跑。本地未在仓库 target 编译，A47 / 陈旧产物那组退 4
+  未验，同 RC3 口径。
+
+**发包结果（2026-11-25）**
+- Release `v1.1.0-RC4` 已发布（预发布、非草稿，targetCommitish `20db2f7`）：
+  Windows `Portio_1.1.0-RC4_x64-setup.exe` 3,393,010 B；
+  macOS `Portio_1.1.0-RC4_universal.dmg` 9,539,342 B；
+  Linux `Portio_1.1.0-RC4_amd64.deb` 4,977,960 B；
+  Linux `Portio_1.1.0-RC4_amd64.AppImage` 83,167,736 B。
+- 四条 RC4 交付记录回填 `artifacts.json`；A48 对表 exit 0：四件盘上字节 / sha256 逐一对上
+  GitHub digest，exe 包体 FileVersion / ProductVersion 均为 `1.1.0-RC4`；Release 大小对上
+  29 条记录、29 个 tag 都真指在写着对应版本的提交上。
+  Release：https://github.com/yunyu697/portio/releases/tag/v1.1.0-RC4

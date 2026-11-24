@@ -2,6 +2,50 @@
   "note": "每一版交付出去的各平台安装包都记一条：哪来的、哪个平台、多大、sha256 多少、包体内写的哪个版本。scripts/check_artifact_manifest.py（A48）拿它逐项对——记录写错了、盘上那份换成了别的版本、Release 上挂着的大小对不上，都当场判红。本机盘上没有的 dmg / deb / AppImage，字节与 sha256 这轮只能核到 Release 资产大小那一层。路径按仓库目录解（交付文件都在仓库外）。",
   "artifacts": [
     {
+      "version": "1.1.0-RC4",
+      "platform": "windows-x64",
+      "source": "ci",
+      "tag": "v1.1.0-RC4",
+      "asset": "Portio_1.1.0-RC4_x64-setup.exe",
+      "file": "../Portio_1.1.0-RC4_x64-setup.exe",
+      "bytes": 3393010,
+      "sha256": "c87a87c75db76d73f63d0db91ad8bf3b6401e863ff0bdad52c6812d149786fe0",
+      "delivered": "2026-11-25"
+    },
+    {
+      "version": "1.1.0-RC4",
+      "platform": "macos-universal",
+      "source": "ci",
+      "tag": "v1.1.0-RC4",
+      "asset": "Portio_1.1.0-RC4_universal.dmg",
+      "file": "../Portio_1.1.0-RC4_universal.dmg",
+      "bytes": 9539342,
+      "sha256": "8bed708c87a66774c4cdc813fc7e90c4d399f602359266a5e83ec8a322b08ced",
+      "delivered": "2026-11-25"
+    },
+    {
+      "version": "1.1.0-RC4",
+      "platform": "linux-deb",
+      "source": "ci",
+      "tag": "v1.1.0-RC4",
+      "asset": "Portio_1.1.0-RC4_amd64.deb",
+      "file": "../Portio_1.1.0-RC4_amd64.deb",
+      "bytes": 4977960,
+      "sha256": "0b2b8c81fc68c9a9671e54f31e8065388a096ed813616b29221c52fce757c636",
+      "delivered": "2026-11-25"
+    },
+    {
+      "version": "1.1.0-RC4",
+      "platform": "linux-appimage",
+      "source": "ci",
+      "tag": "v1.1.0-RC4",
+      "asset": "Portio_1.1.0-RC4_amd64.AppImage",
+      "file": "../Portio_1.1.0-RC4_amd64.AppImage",
+      "bytes": 83167736,
+      "sha256": "d84c03f34100d9ea3dd2c0fcbacc7a7ecc7a3cebf04ec21e2ee1955a516a1590",
+      "delivered": "2026-11-25"
+    },
+    {
       "version": "1.1.0-RC3",
       "platform": "windows-x64",
       "source": "ci",
