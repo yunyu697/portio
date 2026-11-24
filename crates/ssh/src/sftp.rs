@@ -39,7 +39,7 @@ fn err(context: &str, e: SftpError) -> SshError {
     SshError::Protocol(format!("{context}：{e}"))
 }
 
-/// 远端目录项。字段和 WinSCP 的列表列一一对应：名字、大小、修改时间，外加权限位。
+/// 远端目录项：名字、大小、修改时间，外加权限位。
 #[derive(Debug, Clone)]
 pub struct RemoteEntry {
     pub name: String,
