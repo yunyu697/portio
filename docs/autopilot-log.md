@@ -5092,3 +5092,39 @@ A36 读到空版本串时，失败结论也只说"span.ver 空着"，分不清�
   对上 GitHub digest，exe 包体 FileVersion / ProductVersion 均为 `1.1.0-RC7`；Release
   大小对上 41 条记录、41 个 tag 都真指在写着对应版本的提交上。
   Release：https://github.com/yunyu697/portio/releases/tag/v1.1.0-RC7
+
+## 2026-11-25 · v1.1.0-RC8 · 全量 49 项本地整跑复核与物料刷新；四平台预发布发包
+
+**本轮改动**
+- 无功能性源码改动：连接、传输与界面行为沿用 RC7。本轮继续把 49 项全量整跑在本机完整
+  跑一遍，刷新成绩单、清单首部与十张发布截图；进位 `1.1.0-RC8`，七处版本口径一致；
+  CHANGELOG 加 RC8 小节（Changed：整跑复核与物料刷新，无行为变化；Known limitations
+  两条沿用 RC7）；release-notes 三处版本串同步。
+
+**验证证据**
+- 本地整跑：`python scripts/rc.py --record docs/rc-last-run.json` → **49 通过 / 0 失败 /
+  0 未验，248.7s，退出码 0**。A1 `cargo test --workspace` 102 passed / 0 failed；A32
+  fmt 干净、clippy 零警告；A35 617 条脚本单测通过（跳 1）；A31 十张物料重出到
+  1.1.0-RC8（1.59 MiB）；A34 包里那份 13,700,096 字节与构建产物逐字节一致；A36 真
+  webview 读到版本 1.1.0-RC8、DOM 99,125 字节、xterm 1 个；A37 七条自检在真窗口跑过、
+  偏好一字没动；A38 九条在一次性 profile 里跑过、自己的偏好库一个字节没动；A43 坏档
+  急救在真 exe 上真跑过；A44 一份临时 profile 删不掉已点名登记（0 KB）。
+- main CI（run 45490700102）：version rule / fmt-clippy-test / 三平台 build 全绿。
+- Release CI（run 45491448703）：gate 通过；windows-x64 / linux-x64 / macos-universal
+  矩阵全成功。
+
+**未验**（沿用 RC7，无变化）
+- 真实 SSH 登录、PTY 交互、resize、tmux / vim 全屏、真 SFTP 上传下载与续传仍缺测试
+  服务器与凭据；目标 Dropbear 若本身没装 `sftp-server`，文件面板仍会报错。
+- A36 / A37 初始导航抖动根因仍未定性；mac / linux 包只到 CI 构建通过，未真机安装。
+
+**发包结果（2026-11-25）**
+- Release `v1.1.0-RC8` 已发布（预发布、非草稿，targetCommitish `f426439`）：
+  Windows `Portio_1.1.0-RC8_x64-setup.exe` 3,395,879 B；
+  macOS `Portio_1.1.0-RC8_universal.dmg` 9,539,623 B；
+  Linux `Portio_1.1.0-RC8_amd64.deb` 4,977,512 B；
+  Linux `Portio_1.1.0-RC8_amd64.AppImage` 83,163,640 B。
+- 四条 RC8 交付记录回填 `artifacts.json`；A48 对表 exit 0：四件盘上字节 / sha256 逐一
+  对上 GitHub digest，exe 包体 FileVersion / ProductVersion 均为 `1.1.0-RC8`；Release
+  大小对上 45 条记录、45 个 tag 都真指在写着对应版本的提交上。
+  Release：https://github.com/yunyu697/portio/releases/tag/v1.1.0-RC8
