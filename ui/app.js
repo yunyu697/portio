@@ -1954,6 +1954,44 @@ authSelect.addEventListener("change", () => {
   document.getElementById("field-key").hidden = !isKey;
   document.getElementById("field-password").hidden = isKey;
 });
+// 认证方式自绘下拉：真实 <select> 只作值容器（.value / change 契约不变），
+// 弹层与箭头由触发器 + 菜单项承担，底色/选中/hover 全走令牌。
+const authTrigger = document.getElementById("auth-trigger");
+const authMenu = document.getElementById("auth-menu");
+const authLabel = document.getElementById("auth-label");
+const authItems = Array.from(document.querySelectorAll("#auth-menu .dd-item"));
+const AUTH_LABEL = { password: "密码", key: "私钥文件" };
+function syncAuthUI() {
+  const v = authSelect.value;
+  authLabel.textContent = AUTH_LABEL[v] ?? v;
+  authItems.forEach((it) =>
+    it.setAttribute("aria-selected", it.dataset.value === v ? "true" : "false")
+  );
+}
+function setAuthOpen(open) {
+  authMenu.hidden = !open;
+  authTrigger.setAttribute("aria-expanded", open ? "true" : "false");
+}
+authTrigger.addEventListener("click", (e) => {
+  e.stopPropagation();
+  setAuthOpen(authMenu.hidden);
+});
+authItems.forEach((it) =>
+  it.addEventListener("click", (e) => {
+    e.stopPropagation();
+    authSelect.value = it.dataset.value;
+    authSelect.dispatchEvent(new Event("change"));
+    syncAuthUI();
+    setAuthOpen(false);
+  })
+);
+document.addEventListener("click", (e) => {
+  if (!document.getElementById("auth-dd").contains(e.target)) setAuthOpen(false);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !authMenu.hidden) setAuthOpen(false);
+});
+syncAuthUI();
 // ---------- 记住口令 ----------
 // 口令不落会话清单，走 portio-core 的加密层单独存 credentials.json；
 // 键与会话清单同一个（user@host:port）——换账号就是另一条，不会串。
@@ -1987,6 +2025,7 @@ function openConnect(prefill = null) {
     ? (prefill.user ?? "")
     : (localStorage.getItem("portio.user") ?? "");
   el("f-auth").value = auth;
+  syncAuthUI();
   el("f-key").value = prefill?.keyfile ?? "";
   el("f-password").value = "";
   el("field-key").hidden = auth !== "key";
