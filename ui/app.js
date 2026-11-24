@@ -1261,7 +1261,7 @@ setInterval(tick, 30_000);
 // ---------- 终端 ----------
 // ---------- 终端与标签 ----------
 // 每个标签一个独立 xterm 实例，各自一个 SSH 会话；切换标签只是切换可见容器，
-// 后台标签的会话仍在跑（这是 Xshell / 浏览器标签的共同习惯）。
+// 后台标签的会话仍在跑。
 const termHost = document.getElementById("term");
 const tabsBox = document.getElementById("tabs");
 var tabs = [];
@@ -1659,9 +1659,9 @@ function sendRaw(cell, data) {
 function clipboardAction(mods, hasSelection) {
   if (mods.alt) return null; // Ctrl+Alt+X 留给应用快捷键（全屏 / 折叠面板等）
   const k = String(mods.key || "").toLowerCase();
-  if (mods.ctrl && mods.shift && k === "c") return "copy"; // Xshell / PuTTY 的显式复制
+  if (mods.ctrl && mods.shift && k === "c") return "copy"; // 显式复制
   if (mods.ctrl && !mods.shift && k === "insert") return "copy";
-  // Ctrl+C：有选中才当复制（Windows Terminal 的习惯）；没选中就照常发 ^C，别让中断失效
+  // Ctrl+C：有选中才当复制；没选中就照常发 ^C，别让中断失效
   if (mods.ctrl && !mods.shift && k === "c") return hasSelection ? "copy" : null;
   if (mods.ctrl && k === "v") return "paste"; // Ctrl+V 与 Ctrl+Shift+V 都是粘贴
   if (mods.shift && !mods.ctrl && k === "insert") return "paste";
@@ -3343,12 +3343,12 @@ if (location.hash.includes("ctx-demo")) {
 if (location.hash.includes("clip-test")) {
   const cases = [
     [{ ctrl: true, shift: true, key: "C" }, false, "copy"], // Ctrl+Shift+C 无选中也走复制（随后提示没选中）
-    [{ ctrl: true, shift: false, key: "Insert" }, false, "copy"], // Ctrl+Insert（Xshell 习惯）
+    [{ ctrl: true, shift: false, key: "Insert" }, false, "copy"], // Ctrl+Insert 复制
     [{ ctrl: true, shift: false, key: "c" }, true, "copy"], // Ctrl+C 有选中 → 复制
     [{ ctrl: true, shift: false, key: "c" }, false, null], // Ctrl+C 无选中 → 照发 ^C
     [{ ctrl: true, shift: false, key: "v" }, false, "paste"], // Ctrl+V
     [{ ctrl: true, shift: true, key: "V" }, false, "paste"], // Ctrl+Shift+V
-    [{ ctrl: false, shift: true, key: "Insert" }, false, "paste"], // Shift+Insert（PuTTY 习惯）
+    [{ ctrl: false, shift: true, key: "Insert" }, false, "paste"], // Shift+Insert 粘贴
     [{ ctrl: true, shift: true, key: "d" }, false, null], // 分屏键不被剪贴板抢走
     [{ ctrl: true, shift: false, key: "w" }, false, null], // 关标签键不被抢
     [{ ctrl: true, alt: true, shift: false, key: "f" }, false, null], // Ctrl+Alt+F 留给折叠面板
