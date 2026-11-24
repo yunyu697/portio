@@ -15,6 +15,13 @@ window.addEventListener("error", (e) => {
 // withGlobalTauri 打开后 window.__TAURI__.core.invoke 可用；纯浏览器预览时降级为 null。
 const bridge = window.__TAURI__?.core ?? null;
 
+// §6 内联 SVG 图标片段：16×16 描边、currentColor、1.5 线宽、圆角端（与静态 markup 同一档）
+const ICO_CLOSE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
+const ICO_CARET = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>';
+const ICO_DIR = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4"/></svg>';
+const ICO_UP = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 12V4M5 7l3-3 3 3"/></svg>';
+const ICO_DOWN = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 4v8M5 9l3 3 3-3"/></svg>';
+
 // 截图 / 核验钩子允许带参数：写成 `#split-demo?theme=light`，先把 `?` 之后的参数摘出来，
 // 主 hash 还原成 `#split-demo`。下面各处 demo 与自检判断用的都是 location.hash，
 // 带着 `?` 会让 `location.hash === "#split-demo"` 这类精确判断全部失效。
@@ -117,6 +124,12 @@ function showCtx(x, y, items) {
     const row = document.createElement("div");
     row.className = "ctx-item" + (it.disabled ? " dis" : "");
     row.setAttribute("role", "menuitem");
+    if (it.icon) {
+      const ico = document.createElement("span");
+      ico.className = "ico";
+      ico.innerHTML = it.icon;
+      row.appendChild(ico);
+    }
     const label = document.createElement("span");
     label.textContent = it.label;
     row.appendChild(label);
@@ -1181,11 +1194,11 @@ if (location.hash === "#boot-demo" || location.hash === "#boot-demo-light") {
 // "空目录"提示，所以塞两条真行进去才看得出列怎么挪的。
 if (location.hash === "#perm-demo" || location.hash === "#perm-demo-light" || location.hash === "#perm-demo-set") {
   const fakeRemote = [
-    ["▸", "dir", "release-notes-v0.4-draft", "drwxr-xr-x", "—", "2026-11-20 09:12"],
-    ["·", "", "portio_1.0.7-RC5_x64-setup.exe", "-rw-rw-r--", "4.36 MB", "2026-11-20 09:12"],
+    ["dir", "dir", "release-notes-v0.4-draft", "drwxr-xr-x", "—", "2026-11-20 09:12"],
+    ["", "", "portio_1.0.7-RC5_x64-setup.exe", "-rw-rw-r--", "4.36 MB", "2026-11-20 09:12"],
   ];
   const fakeLocal = [
-    ["·", "", "portio-installer-notes.md", "6.2 KB", "2026-11-20 09:12"],
+    ["", "", "portio-installer-notes.md", "6.2 KB", "2026-11-20 09:12"],
   ];
   const fill = (host, rows, perm) => {
     if (!host) return;
@@ -1194,7 +1207,7 @@ if (location.hash === "#perm-demo" || location.hash === "#perm-demo-light" || lo
       const row = document.createElement("div");
       row.className = `fp-row${r[1] ? " " + r[1] : ""}${perm ? " has-perm" : ""}`;
       row.innerHTML =
-        `<span class="ico">${r[0]}</span><span class="nm">${r[2]}</span>` +
+        `<span class="ico">${r[0] === "dir" ? ICO_DIR : ""}</span><span class="nm">${r[2]}</span>` +
         (perm ? `<span class="pm">${r[3]}</span>` : "") +
         `<span class="sz">${perm ? r[4] : r[3]}</span><span class="tm">${perm ? r[5] : r[4]}</span>`;
       host.append(row);
@@ -1321,7 +1334,7 @@ function renderTabs() {
     if (tabs.length > 1) {
       const x = document.createElement("span");
       x.className = "x";
-      x.textContent = "×";
+      x.innerHTML = ICO_CLOSE;
       x.title = "关闭标签";
       x.addEventListener("click", (ev) => {
         ev.stopPropagation();
@@ -2167,7 +2180,7 @@ function toggleFold(label) {
 function caret() {
   const el = document.createElement("span");
   el.className = "caret";
-  el.textContent = "▾";
+  el.innerHTML = ICO_CARET;
   return el;
 }
 
@@ -2275,7 +2288,7 @@ function renderSessions() {
     meta.textContent = s.port && Number(s.port) !== 22 ? `:${s.port}` : s.auth === "key" ? "key" : "";
     const del = document.createElement("span");
     del.className = "del";
-    del.textContent = "×";
+    del.innerHTML = ICO_CLOSE;
     del.title = "从列表里删掉（不影响已连会话）";
     del.addEventListener("click", (ev) => {
       ev.stopPropagation();
@@ -2306,7 +2319,8 @@ function renderSessions() {
           .sort((a, b) => a.localeCompare(b, "zh"))
           .slice(0, 3)
           .map((tag) => ({
-            label: `→ ${tag}`,
+            icon: ICO_DIR,
+            label: tag,
             run: () => {
               setGroups(key, tag);
               renderSessions();
@@ -2785,7 +2799,7 @@ function renderList(el, items, side) {
     const row = document.createElement("div");
     row.className = `fp-row${it.is_dir ? " dir" : ""}${side === "remote" ? " has-perm" : ""}`;
     row.innerHTML =
-      `<span class="ico">${it.is_dir ? "▸" : "·"}</span>` +
+      `<span class="ico">${it.is_dir ? ICO_DIR : ""}</span>` +
       `<span class="nm">${escapeHtml(it.name)}</span>` +
       (side === "remote" ? `<span class="pm">${escapeHtml(it.perm || "—")}</span>` : "") +
       `<span class="sz">${it.is_dir ? "—" : fmtSize(it.size)}</span>` +
@@ -2903,7 +2917,7 @@ function transferRow(name, dir) {
   const el = document.createElement("div");
   el.className = "tr";
   el.innerHTML =
-    `<span class="ico">${dir === "up" ? "↑" : "↓"}</span>` +
+    `<span class="ico">${dir === "up" ? ICO_UP : ICO_DOWN}</span>` +
     `<span class="nm">${escapeHtml(name)}<span class="arrow">·</span></span>` +
     `<span class="meta">排队</span>`;
   const bar = document.createElement("div");
@@ -3446,7 +3460,7 @@ titlebarEl.addEventListener("contextmenu", (ev) => {
 });
 
 // #fold-test：文件面板折叠的回归门禁。量真实栅格（终端宽、文件面板宽、把手宽），结果写 <title>。
-// 折叠要求：文件面板宽度归 0、终端吃满整列、把手正好 10px 且换成 ‹ 字形。
+// 折叠要求：文件面板宽度归 0、终端吃满整列、把手正好 10px 且内联 SVG 箭头在位。
 if (location.hash.includes("fold-test")) {
   document.body.classList.add("dragging"); // 关过渡，只量终态
   const w = (sel) => document.querySelector(sel).getBoundingClientRect().width;
@@ -3460,7 +3474,9 @@ if (location.hash.includes("fold-test")) {
       files: Math.round(w(".pane.files")),
       gutter: Math.round(w("#gutter-split")),
       split: Math.round(w("#split")),
-      glyph: getComputedStyle(gv, "::after").content,
+      arrow: gv.querySelector(".rail-arrow")
+        ? getComputedStyle(gv.querySelector(".rail-arrow")).display
+        : "none",
     });
   };
   applyFilesFold(false);
@@ -3475,7 +3491,7 @@ if (location.hash.includes("fold-test")) {
     f.files === 0,
     Math.abs(f.term - (f.split - 10)) <= 1,
     f.gutter === 10,
-    f.glyph.includes("‹"),
+    f.arrow === "block",
     rows[2].cls === false && rows[2].files > 0,
   ];
   const ok = checks.every(Boolean);
@@ -4339,20 +4355,20 @@ if (location.hash === "#density-test") {
     const remoteRow = injectRow(
       document.getElementById("remote-list"),
       "fp-row has-perm",
-      '<span class="ico">▸</span><span class="nm">etc</span><span class="pm">drwxr-xr-x</span>' +
+      `<span class="ico">${ICO_DIR}</span><span class="nm">etc</span><span class="pm">drwxr-xr-x</span>` +
         '<span class="sz">—</span><span class="tm">2026-11-19 10:24</span>',
     );
     const localRow = injectRow(
       document.getElementById("local-list"),
       "fp-row",
-      '<span class="ico">·</span><span class="nm">notes.md</span><span class="sz">1.2 KB</span>' +
+      '<span class="ico"></span><span class="nm">notes.md</span><span class="sz">1.2 KB</span>' +
         '<span class="tm">2026-11-19 10:24</span>',
     );
     const trHost = document.querySelector(".drawer-body");
     const trRow = injectRow(
       trHost,
       "tr",
-      '<span class="ico">↑</span><span class="nm">bundle.zip</span>' +
+      `<span class="ico">${ICO_UP}</span><span class="nm">bundle.zip</span>` +
         '<span class="meta">42% · 1.2 MB/s</span>',
     );
 
@@ -4614,7 +4630,7 @@ if (location.hash === "#sessions-test") {
     const heads = () =>
       Array.from(document.querySelectorAll(".sidebar .sess-group")).map((h) => ({
         tag: h.dataset.group || "",
-        text: (h.textContent || "").replace(/[▾▸]/g, "").replace(/\s+/g, ""),
+        text: (h.textContent || "").replace(/\s+/g, ""),
         folded: h.classList.contains("folded"),
       }));
     const rows = () => Array.from(document.querySelectorAll(".sidebar .sess-row"));
@@ -5380,13 +5396,13 @@ if (location.hash === "#perm-test") {
     const remoteRow = injectRow(
       byId("remote-list"),
       "fp-row has-perm",
-      '<span class="ico">▸</span><span class="nm">release-notes-v0.4-draft.md</span>' +
+      `<span class="ico">${ICO_DIR}</span><span class="nm">release-notes-v0.4-draft.md</span>` +
         '<span class="pm">drwxr-xr-x</span><span class="sz">—</span><span class="tm">2026-11-20 09:12</span>',
     );
     const localRow = injectRow(
       byId("local-list"),
       "fp-row",
-      '<span class="ico">·</span><span class="nm">notes.md</span><span class="sz">6.2 KB</span>' +
+      '<span class="ico"></span><span class="nm">notes.md</span><span class="sz">6.2 KB</span>' +
         '<span class="tm">2026-11-20 09:12</span>',
     );
 
