@@ -1,32 +1,32 @@
 {
   "note": "这一轮整跑的成绩单。逐项状态 / 耗时 / 理由都在 items 里，summary 是从 items 数出来的；docs/rc-checklist.md 首部那串数字要对得上它（门禁 A49）。",
-  "version": "1.1.0-RC6",
-  "when": "2026-11-25T04:05:05+08:00",
+  "version": "1.1.0-RC7",
+  "when": "2026-11-25T04:59:53+08:00",
   "exit": 0,
   "summary": {
     "total": 49,
     "pass": 49,
     "fail": 0,
     "pending": 0,
-    "seconds": 248.0
+    "seconds": 242.6
   },
   "items": [
     {
       "code": "A47",
       "status": "PASS",
       "seconds": 1.5,
-      "detail": "OK D:\\portio-target\\debug：899 个 rmeta / 572 个 rlib / 0 个 .o，指纹 1127 份，没有一个空壳产物或假新鲜指纹；没有还挂着的 rustc"
+      "detail": "OK D:\\portio-target\\debug：904 个 rmeta / 574 个 rlib / 0 个 .o，指纹 1145 份，没有一个空壳产物或假新鲜指纹；没有还挂着的 rustc"
     },
     {
       "code": "A1",
       "status": "PASS",
-      "seconds": 9.6,
+      "seconds": 5.3,
       "detail": "102 passed, 0 failed"
     },
     {
       "code": "A2",
       "status": "PASS",
-      "seconds": 0.1,
+      "seconds": 0.2,
       "detail": "ui/app.js 语法通过"
     },
     {
@@ -38,37 +38,37 @@
     {
       "code": "A4",
       "status": "PASS",
-      "seconds": 7.7,
+      "seconds": 7.4,
       "detail": "OK 界面尺度全部走令牌与刻度（tokens.css），圆角档位与状态族齐备"
     },
     {
       "code": "A5",
       "status": "PASS",
       "seconds": 0.1,
-      "detail": "OK v1.1.0-RC6（7 处一致；最小与补丁位均在 0–10）"
+      "detail": "OK v1.1.0-RC7（7 处一致；最小与补丁位均在 0–10）"
     },
     {
       "code": "A6",
       "status": "PASS",
-      "seconds": 1.9,
+      "seconds": 1.4,
       "detail": "title = Portio"
     },
     {
       "code": "A7",
       "status": "PASS",
-      "seconds": 1.9,
+      "seconds": 1.5,
       "detail": "title = SELFTEST-OK"
     },
     {
       "code": "A8",
       "status": "PASS",
-      "seconds": 1.6,
+      "seconds": 1.5,
       "detail": "title = CLIP-SELFTEST-OK 10"
     },
     {
       "code": "A9",
       "status": "PASS",
-      "seconds": 1.6,
+      "seconds": 1.2,
       "detail": "title = FOLD-SELFTEST-OK [{\"tag\":\"open\",\"cls\":false,\"term\":360,\"files\":340,\"gutter\":9,\"split\":490,\"arrow\":\"none\"},{\"tag\":\"fold\",\"cls\":true,\"term\":480,\"files\":0,\"gutter\":10,\"split\":490,\"arrow\":\"block\"},{\"tag\":\"back\",\"cls\":false,\"term\":360,\"files\":340,\"gutter\":9,\"split\":490,\"arrow\":\"none\"}]"
     },
     {
@@ -81,24 +81,24 @@
       "code": "A11",
       "status": "PASS",
       "seconds": 0.0,
-      "detail": "Portio_1.1.0-RC6_x64-setup.exe 3392930 字节（3.24 MiB）← D:\\portio-target\\release\\bundle\\nsis"
+      "detail": "Portio_1.1.0-RC7_x64-setup.exe 3391576 字节（3.23 MiB）← D:\\portio-target\\release\\bundle\\nsis"
     },
     {
       "code": "A12",
       "status": "PASS",
-      "seconds": 1.4,
+      "seconds": 1.3,
       "detail": "title = CTX-SELFTEST-OK 9"
     },
     {
       "code": "A13",
       "status": "PASS",
-      "seconds": 3.0,
+      "seconds": 3.5,
       "detail": "1024 OK / 900 OK"
     },
     {
       "code": "A14",
       "status": "PASS",
-      "seconds": 1.3,
+      "seconds": 1.6,
       "detail": "title = THEME-SELFTEST-OK {\"dark\":{\"sun\":0,\"moon\":16,\"contrast\":{\"line/surface\":1.3,\"line/bg\":1.39,\"strong/surface\":1.64,\"text/surface\":14.04,\"text2/surface\":5.94,\"text3/surface\":3.15}},\"light\":{\"sun\":16,\"moon\":0,\"contrast\":{\"line/surface\":1.37,\"line/bg\":1.27,\"strong/surface\":1.69,\"text/surface\":16.04,\"text2/surface\":5.86,\"text3/surface\":3}},\"landmarks\":11,\"worstShift\":0}"
     },
     {
@@ -110,13 +110,13 @@
     {
       "code": "A16",
       "status": "PASS",
-      "seconds": 1.4,
+      "seconds": 1.3,
       "detail": "title = DENSITY-SELFTEST-OK {\"standard\":{\"row\":28,\"raw\":\"28px\",\"items\":{\"sessHead\":{\"h\":28,\"left\":0,\"w\":264},\"termHead\":{\"h\":28,\"left\":264,\"w\":360},\"filesHead\":{\"h\":28,\"left\":624,\"w\":340},\"remoteBar\":{\"h\":28,\"left\":624,\"w\":340},\"localBar\":{\"h\":28,\"left\":624,\"w\":340},\"remoteRow\":{\"h\":28,\"left\":624,\"w\":340},\"localRow\":{\"h\":28,\"left\":624,\"w\":340},\"drawerHead\":{\"h\":28,\"left\":264,\"w\":610},\"trRow\":{\"h\":28,\"left\":276,\"w\":586}}},\"compact\":{\"row\":24,\"raw\":\"24px\",\"items\":{\"sessHead\":{\"h\":24,\"left\":0,\"w\":264},\"termHead\":{\"h\":24,\"left\":264,\"w\":360},\"filesHead\":{\"h\":24,\"left\":624,\"w\":340},\"remoteBar\":{\"h\":24,\"left\":624,\"w\":340},\"localBar\":{\"h\":24,\"left\":624,\"w\":340},\"remoteRow\":{\"h\":24,\"left\":624,\"w\":340},\"localRow\":{\"h\":24,\"left\":624,\"w\":340},\"drawerHead\":{\"h\":24,\"left\":264,\"w\":610},\"trRow\":{\"h\":24,\"left\":276,\"w\":586}}},\"comfortable\":{\"row\":32,\"raw\":\"32px\",\"items\":{\"sessHead\":{\"h\":32,\"left\":0,\"w\":264},\"termHead\":{\"h\":32,\"left\":264,\"w\":360},\"filesHead\":{\"h\":32,\"left\":624,\"w\":340},\"remoteBar\":{\"h\":32,\"left\":624,\"w\":340},\"localBar\":{\"h\":32,\"left\":624,\"w\":340},\"remoteRow\":{\"h\":32,\"left\":624,\"w\":340},\"localRow\":{\"h\":32,\"left\":624,\"w\":340},\"drawerHead\":{\"h\":32,\"left\":264,\"w\":610},\"trRow\":{\"h\":32,\"left\":276,\"w\":586}}},\"delta\":{\"row\":4,\"wide\":4},\"compactOverflow\":0,\"actionsOverflow\":0,\"back\":{\"density\":\"standard\",\"row\":28}}"
     },
     {
       "code": "A17",
       "status": "PASS",
-      "seconds": 1.5,
+      "seconds": 1.4,
       "detail": "title = FIND-PANE-SELFTEST-OK {\"a\":{\"label\":\"1/3\",\"hits\":3},\"switch\":{\"label\":\"0/0\",\"hits\":0,\"termIsC\":true,\"aSel\":\"\"},\"c\":{\"label\":\"1/2\",\"hits\":2,\"jumps\":0},\"b\":{\"label\":\"1/1\",\"hits\":1}}"
     },
     {
@@ -128,7 +128,7 @@
     {
       "code": "A19",
       "status": "PASS",
-      "seconds": 1.4,
+      "seconds": 1.5,
       "detail": "title = SESSIONS-SELFTEST-OK {\"add\":[\"qa@stage-01:22\",\"dba@db-01.prod:2222\",\"deploy@web-01.prod:22\"],\"groups\":[{\"tag\":\"测试\",\"text\":\"测试1\",\"folded\":false},{\"tag\":\"生产\",\"text\":\"生产2\",\"folded\":false}],\"diskField\":{\"lastUsed\":5,\"lastFallback\":7}}"
     },
     {
@@ -152,38 +152,38 @@
     {
       "code": "A23",
       "status": "PASS",
-      "seconds": 1.4,
+      "seconds": 1.5,
       "detail": "title = FONT-SELFTEST-OK {\"autoFont\":\"\\\"JetBrains Mono\\\",\\\"Cascadia Mono\\\",ui-monospace,Consolas,monospace\",\"uiBefore\":13,\"uiAfter\":14,\"fontSize\":9,\"row\":{\"compact\":24,\"standard\":28,\"comfortable\":32}}"
     },
     {
       "code": "A24",
       "status": "PASS",
-      "seconds": 1.4,
+      "seconds": 1.5,
       "detail": "title = BOOT-SELFTEST-OK {\"width\":{\"remembered\":\"0px\",\"after\":\"264px\"}}"
     },
     {
       "code": "A25",
       "status": "PASS",
-      "seconds": 1.4,
+      "seconds": 1.3,
       "detail": "title = PERM-SELFTEST-OK {\"perm\":{\"pmW\":68,\"nmGain\":72,\"rowH\":28}}"
     },
     {
       "code": "A26",
       "status": "PASS",
-      "seconds": 1.5,
+      "seconds": 1.4,
       "detail": "title = PANES-SELFTEST-OK {\"cells\":[1,4,1,1]}"
     },
     {
       "code": "A27",
       "status": "PASS",
-      "seconds": 1.5,
+      "seconds": 1.2,
       "detail": "title = LAYOUT-SELFTEST-OK {\"layout\":[\"360px\",\"66.00%\",\"200px\"]}"
     },
     {
       "code": "A28",
       "status": "PASS",
       "seconds": 0.1,
-      "detail": "OK 说明页 16 项设置 / 40 个档位与代码对上，版本 v1.1.0-RC6"
+      "detail": "OK 说明页 16 项设置 / 40 个档位与代码对上，版本 v1.1.0-RC7"
     },
     {
       "code": "A29",
@@ -201,48 +201,48 @@
       "code": "A31",
       "status": "PASS",
       "seconds": 0.0,
-      "detail": "10 张全是 1.1.0-RC6 的（1.59 MiB，清单与图逐张对上）"
+      "detail": "10 张全是 1.1.0-RC7 的（1.58 MiB，清单与图逐张对上）"
     },
     {
       "code": "A32",
       "status": "PASS",
-      "seconds": 12.5,
+      "seconds": 11.9,
       "detail": "fmt 干净、clippy 零警告（与 CI 那关同口径）"
     },
     {
       "code": "A33",
       "status": "PASS",
-      "seconds": 22.6,
+      "seconds": 22.2,
       "detail": "窗口标题 'Portio'，撑过 14s 没退（release 构建）"
     },
     {
       "code": "A34",
       "status": "PASS",
       "seconds": 0.3,
-      "detail": "包里那份 13700608 字节，跟构建产物逐字节一致（只差打包器写的标记：UNK → NSS） ← Portio_1.1.0-RC6_x64-setup.exe（release 构建）"
+      "detail": "包里那份 13700608 字节，跟构建产物逐字节一致（只差打包器写的标记：UNK → NSS） ← Portio_1.1.0-RC7_x64-setup.exe（release 构建）"
     },
     {
       "code": "A48",
       "status": "PASS",
-      "seconds": 38.3,
-      "detail": "OK 1.1.0-RC6 那 4 条记录里，盘上核过 4 份（Portio_1.1.0-RC6_x64-setup.exe，3397747 字节，sha256 2854f991cd14…），包体内版本串也是 1.1.0-RC6；Release 大小对得上 37 条；记录里那 37 个 tag 也都真指在写着这一版的那次提交上；另有 33 条历史记录（历史那几份不在盘上时只核记录本身）"
+      "seconds": 41.4,
+      "detail": "OK 1.1.0-RC7 那 4 条记录里，盘上核过 4 份（Portio_1.1.0-RC7_x64-setup.exe，3396837 字节，sha256 e28dd5a75db6…），包体内版本串也是 1.1.0-RC7；Release 大小对得上 41 条；记录里那 41 个 tag 也都真指在写着这一版的那次提交上；另有 37 条历史记录（历史那几份不在盘上时只核记录本身）"
     },
     {
       "code": "A35",
       "status": "PASS",
-      "seconds": 69.0,
+      "seconds": 67.4,
       "detail": "617 条通过（按平台跳 1 条，清单里算未验的那几条）"
     },
     {
       "code": "A36",
       "status": "PASS",
-      "seconds": 9.1,
-      "detail": "界面已加载：标题 'Portio'、版本 1.1.0-RC6、DOM 98271 字节、1 个标签、xterm 1 个（release 构建）"
+      "seconds": 8.7,
+      "detail": "界面已加载：标题 'Portio'、版本 1.1.0-RC7、DOM 98487 字节、1 个标签、xterm 1 个（release 构建）"
     },
     {
       "code": "A37",
       "status": "PASS",
-      "seconds": 9.4,
+      "seconds": 9.6,
       "detail": "7 条在真窗口里跑过（split-test、clip-test、fold-test、ctx-test、find-test、find-pane-test、transfer-test）；跑前存下、跑完写回的偏好一字没动（release 构建）"
     },
     {
@@ -254,13 +254,13 @@
     {
       "code": "A39",
       "status": "PASS",
-      "seconds": 4.6,
+      "seconds": 4.3,
       "detail": "2 条在真窗口 + 真后端里跑过（sessions-test、hosts-test）；会话清单确实落了盘（sessions.json 变了），跑完按原字节收回、逐字节核对一致（release 构建）"
     },
     {
       "code": "A40",
       "status": "PASS",
-      "seconds": 3.7,
+      "seconds": 3.6,
       "detail": "2 档在真窗口里跑过（1024x620、900x620）；折叠态终端宽度按档收窄（1024 宽 834px、900 宽 710px），视口是真换过来的；我自己的偏好库一个字节没动，底色文件写回原样（release 构建）"
     },
     {
@@ -272,14 +272,14 @@
     {
       "code": "A42",
       "status": "PASS",
-      "seconds": 1.0,
+      "seconds": 1.1,
       "detail": "title = BROKEN-STORE-SELFTEST-OK {\"broken\":\"会话清单读坏了，原文件已另存为 sessions.json.broken-1763000123456，这次从空清单开始\",\"noSalvage\":\"会话清单读坏了，原文件也没能另存——先别存新会话，去应用数据目录把 sessions.json 拷出来\"}"
     },
     {
       "code": "A43",
       "status": "PASS",
-      "seconds": 12.2,
-      "detail": "坏档：真后端另存出 sessions.json.broken-1795550691932，跟种下去那份逐字节一致；原文件一个字没动；提示条原话「会话清单读坏了，原文件已另存为 sessions.json.broken-1795550691932，这次从空清单开始」；同一份坏档再拉一次没再冒新副本（报的还是 sessions.json.broken-1795550691932）；好档对照那趟一个副本都没冒；跑完按跑前状态收回、独立复量一致（release 构建）"
+      "seconds": 11.9,
+      "detail": "坏档：真后端另存出 sessions.json.broken-1795553979901，跟种下去那份逐字节一致；原文件一个字没动；提示条原话「会话清单读坏了，原文件已另存为 sessions.json.broken-1795553979901，这次从空清单开始」；同一份坏档再拉一次没再冒新副本（报的还是 sessions.json.broken-1795553979901）；好档对照那趟一个副本都没冒；跑完按跑前状态收回、独立复量一致（release 构建）"
     },
     {
       "code": "A44",
@@ -291,19 +291,19 @@
       "code": "A45",
       "status": "PASS",
       "seconds": 0.1,
-      "detail": "OK 105 个版本小节；当前 1.1.0-RC6 排在最前、排版干净"
+      "detail": "OK 106 个版本小节；当前 1.1.0-RC7 排在最前、排版干净"
     },
     {
       "code": "A46",
       "status": "PASS",
-      "seconds": 0.8,
-      "detail": "OK 「1.1.0-RC6」对得上这一版的改动（对照 v1.1.0-RC5：23 个文件有改动、新增 0 个；门禁 49 项都对得上分发处）"
+      "seconds": 0.9,
+      "detail": "OK 「1.1.0-RC7」对得上这一版的改动（对照 v1.1.0-RC6：23 个文件有改动、新增 0 个；门禁 49 项都对得上分发处）"
     },
     {
       "code": "A49",
       "status": "PASS",
       "seconds": 0.1,
-      "detail": "OK 成绩单 1.1.0-RC6：49 项 → 48 通过 / 0 失败 / 1 未验，461.0s，退出码 3；清单首部那串数字与它一字不差"
+      "detail": "OK 成绩单 1.1.0-RC7：49 项 → 48 通过 / 0 失败 / 1 未验，422.2s，退出码 3；清单首部那串数字与它一字不差"
     }
   ]
 }
