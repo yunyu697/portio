@@ -741,7 +741,7 @@ document.getElementById("btn-log-copy").addEventListener("click", async () => {
 const PREF = {
   sidebar: { key: "portio.sidebar", min: 180, max: 420 },
   split: { key: "portio.split", min: 0.32, max: 0.66 },
-  // 抽屉的最小高度就是一行标题条：收起时只剩「传输队列 0 … 展开」这一行
+  // 抽屉的最小高度就是一行标题条：收起时只剩「传输队列 0」这一行
   drawer: { key: "portio.drawer", min: 28, max: 360 },
 };
 const DEFAULT_DRAWER = 172;
@@ -779,8 +779,6 @@ function setDrawerUI(px) {
   // 收到一行高就算"收起"：正文整块隐藏，别在标题条下面留半指宽的空白
   const collapsed = h <= PREF.drawer.min + 2;
   document.getElementById("drawer").classList.toggle("collapsed", collapsed);
-  const head = document.getElementById("drawer-head");
-  if (head) head.querySelector(".right").textContent = collapsed ? "展开" : "收起";
   // 抽屉一变，终端可用高度跟着变，量一次尺寸
   requestAnimationFrame(() => fitQuietly());
 }
@@ -903,7 +901,7 @@ document.getElementById("gutter-drawer").addEventListener("pointerdown", dragWit
   applyDrawer(px);
 }));
 
-// 抽屉收放：与会话栏 / 文件面板同一套手势族——点标题条、双击横向把手收起、
+// 抽屉收放：与会话栏 / 文件面板同一套手势族——双击横向把手收起、
 // 收起后单击贴边把手还原、Ctrl+Alt+D、右键菜单。抽屉的"收起态"就是高度落到一行。
 function toggleDrawer() {
   const cur = parseFloat(getComputedStyle(root).getPropertyValue("--drawer")) || DEFAULT_DRAWER;
@@ -915,7 +913,6 @@ function toggleDrawer() {
   }
 }
 const drawerBox = document.getElementById("drawer");
-document.getElementById("drawer-head").addEventListener("click", toggleDrawer);
 // 双击横向把手收起；收起后单击贴边把手还原（与会话栏 / 文件面板把手同构）
 document.getElementById("gutter-drawer").addEventListener("click", () => {
   if (drawerBox.classList.contains("collapsed")) toggleDrawer();
@@ -3460,7 +3457,6 @@ for (const block of filesPaneEl.querySelectorAll(".fp-block")) {
 
 // 传输抽屉：右键只管这条抽屉自己的收放，不做队列操作（队列行还没做单条取消）
 drawerEl.addEventListener("contextmenu", (ev) => {
-  if (ev.target.closest(".drawer-head button")) return;
   const collapsed = drawerEl.classList.contains("collapsed");
   showCtx(ev.clientX, ev.clientY, [
     {

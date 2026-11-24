@@ -155,9 +155,8 @@
   .drawer{display:flex;flex-direction:column;background:var(--surface-2);
           min-height:0;overflow:hidden;border-radius:var(--r-8) var(--r-8) 0 0}
   .drawer-head{display:flex;align-items:center;gap:8px;height:var(--row);padding:0 12px;flex:none;
-               font-size:var(--fs-11);color:var(--text-3);cursor:pointer}
+               font-size:var(--fs-11);color:var(--text-3)}
   .drawer-head .num{font-family:var(--mono);color:var(--text-2)}
-  .drawer-head .right{margin-left:auto}
   .drawer-body{flex:1;padding:0 12px 12px;overflow:auto;font-family:var(--mono);
                font-size:var(--fs-11);color:var(--text-3)}
   /* 收起态只占一行高度：只剩标题条那一行，正文整块不占位（原来留出半个空白条） */
@@ -696,7 +695,6 @@
       <div class="drawer" id="drawer">
         <div class="drawer-head" id="drawer-head">
           <span>传输队列</span><span class="num">0</span>
-          <span class="right" id="drawer-toggle">收起</span>
         </div>
         <div class="drawer-body"><div class="drawer-empty">空。上传、下载、同步的进度都会在这里。</div></div>
       </div>
