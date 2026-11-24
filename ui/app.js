@@ -849,20 +849,14 @@ document.getElementById("gutter-v").addEventListener("click", () => {
   if (sidebarFolded) applyFold(false);
 });
 
-// 文件面板折叠：整块收掉，终端铺满，右缘留一条把手（与会话栏折叠同一套做法）
-// 入口是终端标题条上那颗常驻按钮——文件面板收起来之后它自己没了，只能靠它再打开。
+// 文件面板折叠：整块收掉，终端铺满，右缘留一条把手（与会话栏折叠同一套做法：
+// 双击把手收起、单击贴边把手还原，另留 Ctrl+Alt+F 与右键菜单入口）
 const FFOLD_KEY = "portio.filesFolded";
 let filesFolded = localStorage.getItem(FFOLD_KEY) === "1";
 // 同样拆成"只改界面"与"改界面 + 落盘"两半，启动时的强行展开/收起不许改记忆态
 function setFilesFoldUI(folded) {
   filesFolded = folded;
   splitEl.classList.toggle("files-folded", folded);
-  const btn = document.getElementById("files-fold");
-  if (btn) {
-    btn.setAttribute("aria-label", folded ? "展开文件面板" : "折叠文件面板");
-    btn.setAttribute("title", folded ? "展开文件面板（Ctrl+Alt+F）" : "折叠文件面板（Ctrl+Alt+F）");
-    btn.setAttribute("aria-pressed", folded ? "true" : "false");
-  }
   // 折叠态右缘把手的提示语要跟着变：这时候它不是"拖比例"，是"点一下拉回来"
   const gut = document.getElementById("gutter-split");
   if (gut) gut.title = folded ? "点击展开文件面板" : "拖动调整终端与文件面板比例";
@@ -876,8 +870,6 @@ function applyFilesFold(folded) {
 function applyBootFiles() {
   setFilesFoldUI(bootFold(readBoot(BOOT_FILES_KEY), localStorage.getItem(FFOLD_KEY) === "1"));
 }
-
-document.getElementById("files-fold").addEventListener("click", () => applyFilesFold(!filesFolded));
 
 // 折叠态：单击右缘把手把文件面板拉回来；展开态：双击把手把文件面板收起来
 // （与会话栏把手同一套手势，不再双击回 50% 比例）
@@ -5237,7 +5229,7 @@ if (location.hash.startsWith("#term-palette")) {
 //   ① 出厂态两个 seg 都是「记住上次」，盘里没有 boot 键；
 //   ② 三档语义：remember 用记忆态、open 恒展开、folded 恒收起（四种组合逐个核）；
 //   ③ 改「启动时」当前窗口一点不动，也不碰 FOLD / FFOLD 这两个记忆键；
-//   ④ 模拟下次启动：folded → 会话栏真收起（--sidebar 归 0）、文件面板真收掉（files-folded + aria-pressed）；
+//   ④ 模拟下次启动：folded → 会话栏真收起（--sidebar 归 0）、文件面板真收掉（files-folded + 把手提示语切换）；
 //      open → 两者都放回来；
 //   ⑤ 认不出的档位回「记住上次」且盘里不留垃圾；
 //   ⑥ seg 选中项跟着落盘的值走。
@@ -5296,7 +5288,7 @@ if (location.hash === "#boot-test") {
       expect("「总是收起」后会话栏真收起了", sideFolded(), true);
       expect("「总是收起」后 --sidebar 归 0", tok("--sidebar"), "0px");
       expect("「总是收起」后文件面板真收掉了", filesFoldedNow(), true);
-      expect("折叠钮的 aria-pressed 跟着变", byId("files-fold").getAttribute("aria-pressed"), "true");
+      expect("折叠后把手提示语换成点击展开", byId("gutter-split").title, "点击展开文件面板");
       expect("启动覆盖不改会话栏记忆态", localStorage.getItem(FOLD_KEY), sideMem);
 
       // 改成「总是展开」再模拟一次：两处都放回来
@@ -5307,7 +5299,7 @@ if (location.hash === "#boot-test") {
       applyBootFiles();
       expect("「总是展开」后会话栏回来了", sideFolded(), false);
       expect("「总是展开」后文件面板回来了", filesFoldedNow(), false);
-      expect("折叠钮的 aria-pressed 跟着回 false", byId("files-fold").getAttribute("aria-pressed"), "false");
+      expect("展开后把手提示语回到拖拽调比例", byId("gutter-split").title, "拖动调整终端与文件面板比例");
       expect("会话栏宽度回到记忆值（不是 0）", /px$/.test(tok("--sidebar")) && tok("--sidebar") !== "0px", true);
       seen.width = { remembered: memWidth, after: tok("--sidebar") };
 

@@ -126,15 +126,6 @@
              font-size:var(--fs-11);color:var(--text-3);letter-spacing:.04em}
   .pane-head .path{font-family:var(--mono);color:var(--text-2);letter-spacing:0}
   .pane-head .right{margin-left:auto;display:flex;gap:4px;align-items:center}
-  /* 标题条里的图标钮：与 .fp-btn 同一档（16 号图标、hover 转强调色），只是盒高按 --ctl */
-  .pane-tbtn{appearance:none;display:grid;place-items:center;width:var(--ctl);height:var(--ctl);
-             border:0;background:transparent;color:var(--text-3);border-radius:var(--r-4);cursor:pointer;
-             transition:color var(--dur) var(--ease),background var(--dur) var(--ease)}
-  .pane-tbtn:hover{color:var(--accent);background:var(--line-soft)}
-  /* 有开关状态的那颗（文件面板折叠）：按下去之后图标常亮强调色，别让人猜现在是什么状态 */
-  .pane-tbtn[aria-pressed="true"]{color:var(--accent);background:var(--accent-soft)}
-  .pane-tbtn svg{display:block;width:16px;height:16px;stroke:currentColor;stroke-width:1.5;fill:none;
-                 stroke-linecap:round;stroke-linejoin:round}
   .pane-body{flex:1;overflow:auto;padding:12px;font-family:var(--mono);font-size:var(--fs-12);
              color:var(--text-2);line-height:var(--lh-24)}
   .pane.term .pane-body{background:var(--term-bg)}
@@ -607,14 +598,7 @@
       <div class="split" id="split">
         <article class="pane term">
           <div class="pane-head"><span>终端</span><span class="path">—</span>
-            <span class="right"><span id="term-dims">80×24</span>
-              <!-- 文件面板的收放入口放在终端标题条上：收起来之后文件面板自己没了，
-                   按钮必须留在还看得见的地方，否则只能记快捷键 -->
-              <button class="pane-tbtn" id="files-fold" type="button" aria-pressed="false"
-                      title="折叠文件面板（Ctrl+Alt+F）" aria-label="折叠文件面板">
-                <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M10 3v10"/></svg>
-              </button>
-            </span></div>
+            <span class="right"><span id="term-dims">80×24</span></span></div>
           <div class="term-host" id="term">
             <div class="find" id="find" hidden>
               <input id="find-q" type="text" placeholder="查找终端内容" spellcheck="false"
@@ -897,7 +881,7 @@
         <div class="row"><span class="k"><kbd>F5</kbd></span><span class="d">刷新终端显示与尺寸</span></div>
         <div class="row"><span class="k"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>H</kbd></span><span class="d">切换窗口全屏</span></div>
         <div class="row"><span class="k"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>B</kbd></span><span class="d">收起 / 展开左侧会话栏（也可双击分隔把手）</span></div>
-<div class="row"><span class="k"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>F</kbd></span><span class="d">收起 / 展开右侧文件面板（折叠钮在终端标题条上，收起后点右缘细条也能回来）</span></div>
+        <div class="row"><span class="k"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>F</kbd></span><span class="d">收起 / 展开右侧文件面板（双击右缘把手收起，收起后单击贴边细条还原）</span></div>
         <div class="grp">文件</div>
         <div class="row"><span class="k"><kbd>双击</kbd></span><span class="d">目录进入；文件则直接下载或上传</span></div>
         <div class="row"><span class="k"><kbd>↑</kbd></span><span class="d">回到上级目录</span></div>
