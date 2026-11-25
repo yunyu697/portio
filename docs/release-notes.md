@@ -5,7 +5,7 @@
 
 一页离线使用说明在 [`docs/site/index.html`](site/index.html)，安装包拿到手先看那一页。
 
-**当前状态**：版本在 `v1.1.1-RC3`；Windows x64 安装包、macOS universal dmg、Linux deb / AppImage 均由 CI 出包（预发布）。
+**当前状态**：版本在 `v1.1.1-RC4`；Windows x64 安装包、macOS universal dmg、Linux deb / AppImage 均由 CI 出包（预发布）。
 
 **1.0.10 这一串收的是「核绿的那个手段自己在漏」。** 1.0.9 把「绿是不是真的」一层层核到了底，
 可核它用的那些一次性浏览器配置目录，收尾是一句「删不掉也别吭声」——库文件还占着的就留在临时目录里。

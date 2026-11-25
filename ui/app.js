@@ -3912,23 +3912,33 @@ if (location.hash.startsWith("#find-test")) {
   const seen = {};
   const q = "Portio";
 
-  // 自己重扫一遍 buffer，不借 findScan——自己验自己没有意义
+  // 自己重扫一遍 buffer，不借 findScan——自己验自己没有意义。
+  // 折行口径跟 findScan 对齐：先把 isWrapped 的连续行拼成一条逻辑行再数，
+  // 免得窄终端里一个词被折成两半，逐行扫凭空少算一处。
   function recount(needle) {
     const buf = term?.buffer.active;
     if (!buf) return [];
     const out = [];
     const low = needle.toLowerCase();
-    for (let row = 0; row < buf.length; row += 1) {
-      const line = buf.getLine(row);
-      if (!line) continue;
-      const text = line.translateToString(true);
+    let group = [];
+    const flush = () => {
+      if (!group.length) return;
+      const text = group.map(({ line }) => line.translateToString(true)).join("");
       const hay = text.toLowerCase();
       let at = hay.indexOf(low);
       while (at !== -1) {
-        out.push({ row, col: at });
+        out.push({ row: group[0].row, col: at });
         at = hay.indexOf(low, at + low.length);
       }
+      group = [];
+    };
+    for (let row = 0; row < buf.length; row += 1) {
+      const line = buf.getLine(row);
+      if (!line) { flush(); continue; }
+      if (line.isWrapped && group.length) group.push({ row, line });
+      else { flush(); group = [{ row, line }]; }
     }
+    flush();
     return out;
   }
 
