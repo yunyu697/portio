@@ -173,6 +173,109 @@ function toast(text) {
   toastBox.appendChild(el);
   setTimeout(() => el.remove(), 2600);
 }
+
+// ---------- 更新检查（轻量通道：只提示 + 跳 Release 页，不下载、不原位安装） ----------
+const UPDATE_DISMISS_KEY = "portio.updateDismissed";
+const UPDATE_API = "https://api.github.com/repos/yunyu697/portio";
+
+// 版本号解析：1.1.1-RC2 → { major, minor, patch, rc: 2 }；正式版 rc 为 null。
+function parseVer(v) {
+  const m = String(v ?? "").trim().replace(/^v/i, "")
+    .match(/^(\d+)\.(\d+)\.(\d+)(?:-RC(\d+))?$/i);
+  if (!m) return null;
+  return { major: +m[1], minor: +m[2], patch: +m[3], rc: m[4] ? +m[4] : null };
+}
+
+// 比大小：正式版高于同基数 RC；RC 比编号。a>b 返回 1，相等 0，a<b 返回 -1。
+function cmpVer(a, b) {
+  for (const k of ["major", "minor", "patch"]) {
+    if (a[k] !== b[k]) return a[k] < b[k] ? -1 : 1;
+  }
+  const aStable = a.rc === null;
+  const bStable = b.rc === null;
+  if (aStable !== bStable) return aStable ? 1 : -1;
+  if (a.rc !== null) return a.rc < b.rc ? -1 : a.rc > b.rc ? 1 : 0;
+  return 0;
+}
+
+async function fetchLatestRelease(channel) {
+  const headers = { Accept: "application/vnd.github+json", "User-Agent": "Portio" };
+  if (channel === "stable") {
+    const res = await fetch(`${UPDATE_API}/releases/latest`, { headers });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  }
+  // RC 渠道：列出最近 20 条（含预发布），按版本号取最新；草稿不算。
+  const res = await fetch(`${UPDATE_API}/releases?per_page=20`, { headers });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const body = await res.json();
+  const list = Array.isArray(body) ? body : [];
+  const parsed = [];
+  for (const rel of list) {
+    if (rel.draft) continue;
+    const v = parseVer(rel.tag_name);
+    if (v) parsed.push({ rel, v });
+  }
+  parsed.sort((x, y) => cmpVer(x.v, y.v));
+  return parsed.length ? parsed[parsed.length - 1].rel : null;
+}
+
+let updateRel = null;
+function showUpdateBanner(rel) {
+  updateRel = rel;
+  const banner = document.getElementById("update-banner");
+  const text = document.getElementById("update-text");
+  const v = rel.tag_name || "";
+  text.textContent = rel.prerelease ? `发现新版本 ${v}（预发布）` : `发现新版本 ${v}`;
+  banner.hidden = false;
+}
+function hideUpdateBanner() {
+  document.getElementById("update-banner").hidden = true;
+  updateRel = null;
+}
+
+async function checkUpdate({ manual = false } = {}) {
+  if (!bridge) return; // 浏览器预览没有后端，也不走检查
+  const curText = document.querySelector(".titlebar .brand .ver")?.textContent.trim() || "";
+  const cur = parseVer(curText);
+  if (!cur) return;
+  // 当前是 RC 包就进 RC 渠道（能看到更新的预发布）；正式包只看正式版。
+  const channel = /-RC/i.test(curText) ? "rc" : "stable";
+  let rel = null;
+  try {
+    rel = await fetchLatestRelease(channel);
+  } catch (err) {
+    diagLog("warn", "update", `检查更新失败：${(err && err.message) || err}`);
+    if (manual) toast("检查更新失败：网络不可用");
+    return;
+  }
+  const remote = parseVer(rel.tag_name);
+  if (!remote || cmpVer(remote, cur) <= 0) {
+    if (manual) toast("已是最新版本");
+    return;
+  }
+  // 「稍后」按这个版本记住一次：同一版不再每次启动都弹。
+  if (!manual && localStorage.getItem(UPDATE_DISMISS_KEY) === rel.tag_name) return;
+  showUpdateBanner(rel);
+}
+
+document.getElementById("update-open").addEventListener("click", async () => {
+  if (!updateRel) return;
+  const url = updateRel.html_url
+    || `https://github.com/yunyu697/portio/releases/tag/${updateRel.tag_name}`;
+  await call("open_external", { url }); // 失败原因 call 里已经 toast
+  hideUpdateBanner();
+});
+document.getElementById("update-later").addEventListener("click", () => {
+  if (updateRel) localStorage.setItem(UPDATE_DISMISS_KEY, updateRel.tag_name);
+  hideUpdateBanner();
+});
+document.getElementById("btn-update-check").addEventListener("click", () =>
+  checkUpdate({ manual: true })
+);
+
+// 启动后缓一拍再查：别跟首屏绘制抢资源；离线 / 查不到都静默，不打扰。
+setTimeout(() => checkUpdate(), 1500);
 // 带 #err-demo 时把几条典型报错的翻译结果摊出来，便于截图核对文案
 if (location.hash === "#err-demo") {
   for (const s of [

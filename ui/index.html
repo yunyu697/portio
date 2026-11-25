@@ -535,6 +535,16 @@
              color:var(--text-2);padding:8px 12px;border-radius:var(--r-8);font-size:var(--fs-12);
              box-shadow:var(--shadow-1);animation:in var(--dur) var(--ease)}
   @keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  /* 更新提示条：浮在状态栏上方居中，材质跟提示条同一套；不挤压终端网格 */
+  .upd{position:fixed;left:50%;bottom:calc(var(--statusbar) + 16px);transform:translateX(-50%);
+       z-index:98;display:flex;align-items:center;gap:8px;max-width:calc(100vw - 32px);
+       background:var(--surface-3);border:1px solid var(--line);border-left:2px solid var(--accent);
+       border-radius:var(--r-8);padding:8px 12px;box-shadow:var(--shadow-1)}
+  .upd[hidden]{display:none}
+  .upd-ico{width:16px;height:16px;flex:none;color:var(--accent);stroke:currentColor;fill:none;
+           stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+  .upd-text{font-size:var(--fs-12);color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .upd .btn{min-height:var(--ctl);padding:0 12px;flex:none}
 
   /* ---------- 动效：只做"因果明显"的那几处 ---------- */
   /* 面板伸缩：会话栏收放、传输抽屉高低都靠栅格轨道过渡，不是跳一下 */
@@ -708,6 +718,13 @@
   </footer>
 
   <div class="toast" id="toast"></div>
+
+  <div class="upd" id="update-banner" hidden>
+    <svg class="upd-ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.6 13.4 12.2H2.6L8 2.6Z"/><path d="M8 6.6v2.3M8 10.5v.2"/></svg>
+    <span class="upd-text" id="update-text">发现新版本</span>
+    <button class="btn primary" id="update-open" type="button">前往下载</button>
+    <button class="btn" id="update-later" type="button">稍后</button>
+  </div>
 
   <div class="modal" id="connect-modal">
     <div class="sheet">
@@ -899,6 +916,7 @@
           <div class="acts">
             <button class="btn" id="btn-log-open">打开日志位置</button>
             <button class="btn" id="btn-log-copy">复制诊断信息</button>
+            <button class="btn" id="btn-update-check">检查更新</button>
           </div>
           <p class="hint">崩了、卡住、连不上，都在这里留痕。日志只写本机，不出网；满 1 MB 自动轮转，只留一份旧的。</p>
         </div>

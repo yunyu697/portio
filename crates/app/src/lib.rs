@@ -6,6 +6,7 @@ mod credentials;
 mod diag;
 mod session_store;
 mod sessions;
+mod updater;
 
 /// 把一条错误的整条来源链拼成一行：顶层消息 → 根因。
 ///
@@ -150,7 +151,8 @@ pub fn run() {
             sessions::sftp_mkdir,
             sessions::sftp_remove,
             sessions::sftp_rename,
-            sessions::local_rename
+            sessions::local_rename,
+            updater::open_external
         ])
         .setup(|app| {
             // 崩溃采集先装钩子：后面任何地方 panic（含 setup 自己、tokio 任务）都能落一行日志。
