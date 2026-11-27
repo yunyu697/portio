@@ -848,6 +848,50 @@
       "bytes": 83253752,
       "sha256": "13f52a0778d8225b968670725240746c95c7bf10fec75292e4ed3693078007ec",
       "delivered": "2026-11-27"
+    },
+    {
+      "version": "1.1.1-RC7",
+      "platform": "windows-x64",
+      "source": "ci",
+      "tag": "v1.1.1-RC7",
+      "asset": "Portio_1.1.1-RC7_x64-setup.exe",
+      "file": "../Portio_1.1.1-RC7_x64-setup.exe",
+      "bytes": 3477938,
+      "sha256": "a72492e53066da8e04109f772574a12f9e561b7dd6c1b0f7458ea3f499054510",
+      "delivered": "2026-11-27"
+    },
+    {
+      "version": "1.1.1-RC7",
+      "platform": "macos-universal",
+      "source": "ci",
+      "tag": "v1.1.1-RC7",
+      "asset": "Portio_1.1.1-RC7_universal.dmg",
+      "file": "../Portio_1.1.1-RC7_universal.dmg",
+      "bytes": 9743906,
+      "sha256": "fae1219b6f764a2424655428263110a0e769dfe86b56f75c9e0a6177b4c09180",
+      "delivered": "2026-11-27"
+    },
+    {
+      "version": "1.1.1-RC7",
+      "platform": "linux-deb",
+      "source": "ci",
+      "tag": "v1.1.1-RC7",
+      "asset": "Portio_1.1.1-RC7_amd64.deb",
+      "file": "../Portio_1.1.1-RC7_amd64.deb",
+      "bytes": 5091586,
+      "sha256": "5839a4b9a09eab9aa1a30f462ba5d870d53bb2808bd04d089b4b0544279d08fa",
+      "delivered": "2026-11-27"
+    },
+    {
+      "version": "1.1.1-RC7",
+      "platform": "linux-appimage",
+      "source": "ci",
+      "tag": "v1.1.1-RC7",
+      "asset": "Portio_1.1.1-RC7_amd64.AppImage",
+      "file": "../Portio_1.1.1-RC7_amd64.AppImage",
+      "bytes": 83266040,
+      "sha256": "766cdb36096aa924a8043040d8b12b46354532040e81eef2f6eb94ad0d83dddb",
+      "delivered": "2026-11-27"
     }
   ]
 }

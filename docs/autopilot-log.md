@@ -5308,3 +5308,42 @@ A32 首跑红了一次（fmt 12 处未格式化）已 `cargo fmt` 修掉；A41 �
   Linux `Portio_1.1.1-RC6_amd64.AppImage` 83,253,752 B。
 - 四条 RC6 记录回填 `artifacts.json`（77 条），A48 对表 exit 0。
 - Release：https://github.com/yunyu697/portio/releases/tag/v1.1.1-RC6
+
+## 2026-11-27 · 1.1.1-RC7：文件面板从"摆设"变成能干活的
+
+**用户原话**：「安装了 RC6，连是连上了，但拖文件并没什么用；文件面板基本上就是个摆设，极其难用」。
+
+**查出来的三处根因**
+1. 全 `ui/app.js` **没有任何文件拖放监听**（只有布局把手的 `dragWith`），从资源管理器拖进来的
+   文件被 WebView 吞掉，界面零反应——这是「拖文件没什么用」的直接原因。
+2. `loadRemote()` 里把模式标签写死 `"SFTP"`，SCP 回退的主机上标签说的是假话。
+3. 列表只支持单选、无排序、无点文件开关、无键盘；传输失败只落一条红条，不能重试。
+
+**改了什么**
+- 新增 `crates/app/src/sessions.rs` 的 `files_status`（按 `Files` 枚举回 `sftp`/`scp` + 原因）与
+  `local_stat`（拖进来先判是文件还是目录），并在 `lib.rs` 注册。
+- `ui/app.js` 文件双栏整段重写：窗口级拖放（`onDragDropEvent`，回退 `tauri://drag-*` 事件）、
+  整块虚线覆盖层写着落到哪个路径、目录劝压包、同名先问覆盖；两栏 Ctrl / Shift 多选 +
+  底部动作条批量上传下载；失败行变「失败 · 点这条重试」点了重发；排序（名/大小/时间）、
+  默认藏点文件；键盘 Ctrl+A / Esc / Enter / Delete / F2 / F5。
+- 模式标签不再写死：连上后先 `refreshFilesMode()`，SCP 用警示色并把原因挂在 title 上，
+  每会话首次只弹一句短 toast。
+- 新增 `#files-test` 自检（7 段断言）并纳入 A37，自检从七条变八条。
+
+**真机实测（10.0.0.2，OpenWrt 25.12.6 + dropbear，无 sftp-server，SCP 回退）**
+- 标签显示 `SCP`、home `/root`、列表 9 项；
+- `handleDroppedPaths` 上传 5600 B → 下载回读逐字节一致 → 设备侧 `md5sum` 与本地相同；
+- CDP 截图取证：选中动作条「已选 2 项」、拖放覆盖层「松开即上传到 /root」都在。
+
+**门禁**：49 项 → 48 通过 / 1 失败（A49 自指，回填后复跑退 0）/ 0 未验，299.0s。
+首跑 44/4/1：A4 间距刻度（`0 10px` → `0 12px`）、A30/A41 因失败行文案改成「失败 · 点这条重试」：
+断言放宽成 `startsWith("失败")`，并把「全失败时顺手刷新对面那栏」去掉——刷新本身就是一次后端
+调用，会把真正的错因 toast 顶掉；A47 清掉七份 0 字节空壳产物与邻近指纹后转绿。
+
+**发包结果（2026-11-27）**
+- Release `v1.1.1-RC7`（预发布）：Windows `Portio_1.1.1-RC7_x64-setup.exe` 3,477,938 B
+  （sha256 `a72492e53066…`）；macOS `Portio_1.1.1-RC7_universal.dmg` 9,743,906 B；
+  Linux `Portio_1.1.1-RC7_amd64.deb` 5,091,586 B；`Portio_1.1.1-RC7_amd64.AppImage` 83,266,040 B。
+- 四条 RC7 记录回填 `artifacts.json`（81 条），A48 对表 exit 0；四份资产已落本地目录。
+- Release：https://github.com/yunyu697/portio/releases/tag/v1.1.1-RC7
+- CI：Release run `46035320595` 四 job 全 success。
