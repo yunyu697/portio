@@ -1,12 +1,14 @@
-"""由 `crates/app/icons/icon.png` 生成全尺寸（full-bleed）图标，一次出齐四平台。
+"""由 `crates/app/icons/icon.png` 生成图标，一次出齐四平台。
 
-设计口径（用户定的）：图形直接铺满画布——不留透明边、不留底板、不留圆角描边。
-圆角只在 macOS 由系统 squircle 蒙版负责切；Windows/Linux 就是实心方图。
+设计口径（用户定的）：四平台看起来要一样——图形铺满画布，不留留白、不留底板、不留描边。
+macOS 的圆角由系统 squircle 蒙版切；Windows/Linux 没有这层蒙版，所以圆角必须烘焙进图本身
+（`squircle_mask`），否则同一份母版在 Windows 上就是个直角方块。
 
 为什么要这么改：
 - macOS 26 起，只带 `CFBundleIconFile` 的传统 icns 会被系统当旧式位图，
   自动垫一层浅色 squircle 底板并把图形缩到板面约 68%。四边留透明就会露出那块板。
 - Windows 侧原来的 1024 图带 8% 留白和一圈投影，任务栏/资源管理器看着像"图标背后还有背景"。
+- 只烘满幅不烘圆角，Windows 任务栏就是直角方块，和 macOS 的 squircle 不是一套。
 
 依赖：Pillow、icnsutil（`python -m pip install pillow icnsutil`）。
 
@@ -18,17 +20,22 @@
 from __future__ import annotations
 
 import argparse
+import math
 import pathlib
 import sys
 import tempfile
 
-from PIL import Image
+from PIL import Image, ImageChops, ImageDraw
 from icnsutil import IcnsFile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ICON_DIR = ROOT / "crates" / "app" / "icons"
 MASTER = ICON_DIR / "icon.png"
 CANVAS = 1024
+
+# 连续圆角的超椭圆指数：macOS 的图标母版是"方中带圆"的 squircle，不是圆弧倒角。
+# 5 这个值在 16–1024 各档和系统蒙版基本重合。
+SQUIRCLE_EXP = 5.0
 
 PNG_TARGETS = [
     ("128x128.png", 128),
@@ -82,6 +89,30 @@ def full_bleed(source: pathlib.Path) -> Image.Image:
     return art.convert("RGBA")
 
 
+def squircle_mask(size: int, exponent: float = SQUIRCLE_EXP, sample: int = 4) -> Image.Image:
+    """超椭圆（连续圆角）蒙版。4× 超采样后缩回，边缘才不会生台阶。"""
+    big = size * sample
+    points = []
+    steps = 720
+    for i in range(steps):
+        t = 2.0 * math.pi * i / steps
+        c, s = math.cos(t), math.sin(t)
+        x = math.copysign(abs(c) ** (2.0 / exponent), c)
+        y = math.copysign(abs(s) ** (2.0 / exponent), s)
+        points.append(((x + 1.0) * big / 2.0, (y + 1.0) * big / 2.0))
+    m = Image.new("L", (big, big), 0)
+    ImageDraw.Draw(m).polygon(points, fill=255)
+    return m.resize((size, size), Image.LANCZOS)
+
+
+def squircle(art: Image.Image) -> Image.Image:
+    """把圆角烘进 alpha——Windows / Linux 没有系统蒙版，只能图自己带。"""
+    mask = squircle_mask(art.size[0])
+    out = art.copy()
+    out.putalpha(ImageChops.multiply(art.getchannel("A"), mask))
+    return out
+
+
 def write_pngs(art: Image.Image, out_dir: pathlib.Path) -> None:
     art.save(out_dir / "icon.png")
     for name, size in PNG_TARGETS:
@@ -106,7 +137,7 @@ def main() -> int:
     ap.add_argument("--preview", action="store_true", help="只出预览 PNG，不动仓库")
     args = ap.parse_args()
 
-    art = full_bleed(MASTER)
+    art = squircle(full_bleed(MASTER))
     if args.preview:
         out = pathlib.Path(tempfile.gettempdir()) / "app-icon-preview.png"
         art.save(out)
