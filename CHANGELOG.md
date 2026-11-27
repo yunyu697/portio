@@ -5,6 +5,23 @@
 
 ## [Unreleased]
 
+## [1.1.1-RC5] - 2026-11-27
+
+### Changed
+
+- **应用图标改成图形铺满整张画布，底板、投影、边框线全部去掉。** 之前那版母版四周留了约 8% 的透明边、贴着一圈柔和投影、外圈还是圆角卡片，Windows 不给图标补内边距，桌面和任务栏上看着就像图标背后垫了一块底板；macOS 那边系统还会给只带 icns 的应用自动垫一层浅色圆角板。这一版把图形直接铺到 1024 画布的四边——四边不透明、无投影、无圆角、无描边，顶部那条标题栏带与它下面的分隔线也一并去掉，留下的只有两块面板、`>_` 和右侧三条行。Windows 用 `crates/app/icons/icon.ico`（16/24/32/48/64/128/256 七帧），macOS 用 `crates/app/icons/icon.icns`（八档），Linux 与窗口图标用 `crates/app/icons/32x32.png`、`crates/app/icons/128x128.png`、`crates/app/icons/128x128@2x.png`，四平台同一份母版 `crates/app/icons/icon.png`。
+
+### Added
+
+- **`scripts/app_icon.py`：改一次母版，一次出齐全平台六件图标。** 上一版只有 macOS 的 icns 被单独重排，Windows 的 ico 还是拿带留白的旧母版缩出来的，两平台根本不是同一版。现在这个脚本读 `crates/app/icons/icon.png`（母版若还带不透明留白，先内收裁到主体再拉满），逐行夹取补平四角，然后同版生成 ico、icns 和三档 png；`--preview` 只出预览、不动仓库。
+
+### Known limitations
+
+- 已发布的 v1.1.1-RC4 安装包里仍是旧图标，要看新图标得装这一版。
+- macOS 的包含圆角由系统施加：只带传统 CFBundleIconFile 的应用会被系统按 squircle 蒙版裁一次，这一层去不掉也不该去掉，本次去掉的是外层底板和内嵌边框。
+- 真实 SSH 登录、PTY 交互、resize、tmux / vim 全屏、真 SFTP 上传下载与续传仍缺测试服务器与凭据：SFTP 子系统修复只在协议层单测与对真实服务器的握手上验证过，端到端登录会话未验；若目标服务端本身没装 `sftp-server`，文件面板仍会报错。
+- 更新检查只到「跳转到 Release 页」为止，自动增量下载与原位安装尚未做。
+
 ## [1.1.1-RC4] - 2026-11-25
 
 ### Fixed
