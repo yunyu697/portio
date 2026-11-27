@@ -77,7 +77,9 @@ def full_bleed(source: pathlib.Path) -> Image.Image:
             px[x, y] = px[lx, y]
         for x in range(right + 1, CANVAS):
             px[x, y] = px[rx, y]
-    return art.convert("RGB")
+    # 必须交 RGBA：tauri::generate_context! 认这一种，丢成 RGB 会在编译期直接 panic
+    # （"icon ... 32x32.png is not RGBA"），Windows 本地构建未必暴露，Linux/macOS 必炸。
+    return art.convert("RGBA")
 
 
 def write_pngs(art: Image.Image, out_dir: pathlib.Path) -> None:

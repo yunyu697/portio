@@ -1,14 +1,14 @@
 {
   "note": "这一轮整跑的成绩单。逐项状态 / 耗时 / 理由都在 items 里，summary 是从 items 数出来的；docs/rc-checklist.md 首部那串数字要对得上它（门禁 A49）。",
   "version": "1.1.1-RC5",
-  "when": "2026-11-27T19:11:07+08:00",
+  "when": "2026-11-27T19:31:04+08:00",
   "exit": 1,
   "summary": {
     "total": 49,
     "pass": 47,
     "fail": 1,
     "pending": 1,
-    "seconds": 255.3
+    "seconds": 257.3
   },
   "items": [
     {
@@ -20,7 +20,7 @@
     {
       "code": "A1",
       "status": "PASS",
-      "seconds": 6.8,
+      "seconds": 7.8,
       "detail": "103 passed, 0 failed"
     },
     {
@@ -50,19 +50,19 @@
     {
       "code": "A6",
       "status": "PASS",
-      "seconds": 1.3,
+      "seconds": 1.5,
       "detail": "title = Portio"
     },
     {
       "code": "A7",
       "status": "PASS",
-      "seconds": 1.2,
+      "seconds": 1.3,
       "detail": "title = SELFTEST-OK"
     },
     {
       "code": "A8",
       "status": "PASS",
-      "seconds": 1.1,
+      "seconds": 1.2,
       "detail": "title = CLIP-SELFTEST-OK 10"
     },
     {
@@ -81,30 +81,30 @@
       "code": "A11",
       "status": "PASS",
       "seconds": 0.0,
-      "detail": "Portio_1.1.1-RC5_x64-setup.exe 3407530 字节（3.25 MiB）← E:\\portio-target\\release\\bundle\\nsis"
+      "detail": "Portio_1.1.1-RC5_x64-setup.exe 3406915 字节（3.25 MiB）← E:\\portio-target\\release\\bundle\\nsis"
     },
     {
       "code": "A12",
       "status": "PASS",
-      "seconds": 1.1,
+      "seconds": 1.2,
       "detail": "title = CTX-SELFTEST-OK 9"
     },
     {
       "code": "A13",
       "status": "PASS",
-      "seconds": 2.3,
+      "seconds": 2.2,
       "detail": "1024 OK / 900 OK"
     },
     {
       "code": "A14",
       "status": "PASS",
-      "seconds": 1.1,
+      "seconds": 1.2,
       "detail": "title = THEME-SELFTEST-OK {\"dark\":{\"sun\":0,\"moon\":16,\"contrast\":{\"line/surface\":1.3,\"line/bg\":1.39,\"strong/surface\":1.64,\"text/surface\":14.04,\"text2/surface\":5.94,\"text3/surface\":3.15}},\"light\":{\"sun\":16,\"moon\":0,\"contrast\":{\"line/surface\":1.37,\"line/bg\":1.27,\"strong/surface\":1.69,\"text/surface\":16.04,\"text2/surface\":5.86,\"text3/surface\":3}},\"landmarks\":11,\"worstShift\":0}"
     },
     {
       "code": "A15",
       "status": "PASS",
-      "seconds": 1.2,
+      "seconds": 1.1,
       "detail": "title = FIND-SELFTEST-OK {\"hits\":5,\"label\":\"1/5\",\"sel\":\"Portio\",\"step\":[0,4,0,4,-1],\"nohit\":\"0/0\",\"geom\":{\"w\":263,\"gapRight\":8,\"gapHead\":4},\"long\":{\"wrote\":80,\"flushed\":80,\"hits\":80,\"label\":\"1/80\",\"center\":{\"at\":40,\"row\":413,\"viewportY\":406,\"wantY\":406,\"rows\":14,\"baseY\":791},\"last\":{\"at\":79,\"row\":803,\"viewportY\":791,\"baseY\":791,\"rows\":14},\"after\":80,\"scan\":{\"rows\":805,\"chars\":16607,\"hits\":80}},\"wrap\":{\"cols\":45,\"col\":41,\"span\":11,\"sel\":\"Portio_wrap\",\"hard\":0}}"
     },
     {
@@ -116,7 +116,7 @@
     {
       "code": "A17",
       "status": "PASS",
-      "seconds": 1.1,
+      "seconds": 1.2,
       "detail": "title = FIND-PANE-SELFTEST-OK {\"a\":{\"label\":\"1/3\",\"hits\":3},\"switch\":{\"label\":\"0/0\",\"hits\":0,\"termIsC\":true,\"aSel\":\"\"},\"c\":{\"label\":\"1/2\",\"hits\":2,\"jumps\":0},\"b\":{\"label\":\"1/1\",\"hits\":1}}"
     },
     {
@@ -128,7 +128,7 @@
     {
       "code": "A19",
       "status": "PASS",
-      "seconds": 1.1,
+      "seconds": 1.2,
       "detail": "title = SESSIONS-SELFTEST-OK {\"add\":[\"qa@stage-01:22\",\"dba@db-01.prod:2222\",\"deploy@web-01.prod:22\"],\"groups\":[{\"tag\":\"测试\",\"text\":\"测试1\",\"folded\":false},{\"tag\":\"生产\",\"text\":\"生产2\",\"folded\":false}],\"diskField\":{\"lastUsed\":5,\"lastFallback\":7}}"
     },
     {
@@ -140,19 +140,19 @@
     {
       "code": "A21",
       "status": "PASS",
-      "seconds": 1.1,
+      "seconds": 1.2,
       "detail": "title = ACCENT-SELFTEST-OK {\"on\":[\"rose\"],\"accent\":\"#e07a92\",\"ansiGreen\":\"#2fb39a\"}"
     },
     {
       "code": "A22",
       "status": "PASS",
-      "seconds": 1.1,
+      "seconds": 1.2,
       "detail": "title = TERM-THEME-SELFTEST-OK {\"term\":\"nord\",\"termBg\":\"#2e3440\",\"ansiGreen\":\"#a3be8c\",\"autoBg\":\"#090c10\"}"
     },
     {
       "code": "A23",
       "status": "PASS",
-      "seconds": 1.1,
+      "seconds": 1.2,
       "detail": "title = FONT-SELFTEST-OK {\"autoFont\":\"\\\"JetBrains Mono\\\",\\\"Cascadia Mono\\\",ui-monospace,Consolas,monospace\",\"uiBefore\":13,\"uiAfter\":14,\"fontSize\":9,\"row\":{\"compact\":24,\"standard\":28,\"comfortable\":32}}"
     },
     {
@@ -164,7 +164,7 @@
     {
       "code": "A25",
       "status": "PASS",
-      "seconds": 1.0,
+      "seconds": 1.1,
       "detail": "title = PERM-SELFTEST-OK {\"perm\":{\"pmW\":68,\"nmGain\":72,\"rowH\":28}}"
     },
     {
@@ -182,7 +182,7 @@
     {
       "code": "A28",
       "status": "PASS",
-      "seconds": 0.1,
+      "seconds": 0.2,
       "detail": "OK 说明页 16 项设置 / 40 个档位与代码对上，版本 v1.1.1-RC5"
     },
     {
@@ -206,13 +206,13 @@
     {
       "code": "A32",
       "status": "PASS",
-      "seconds": 6.6,
+      "seconds": 6.7,
       "detail": "fmt 干净、clippy 零警告（与 CI 那关同口径）"
     },
     {
       "code": "A33",
       "status": "PASS",
-      "seconds": 19.1,
+      "seconds": 18.7,
       "detail": "窗口标题 'Portio'，撑过 14s 没退（release 构建）"
     },
     {
@@ -224,43 +224,43 @@
     {
       "code": "A48",
       "status": "SKIP",
-      "seconds": 72.2,
+      "seconds": 72.5,
       "detail": "未验 这一版（1.1.1-RC5）还没有可核的那一份——没有记录，或者记录里那份不在盘上，或者 tag / Release 那一组没得核"
     },
     {
       "code": "A35",
       "status": "PASS",
-      "seconds": 63.8,
+      "seconds": 63.3,
       "detail": "617 条通过（按平台跳 1 条，清单里算未验的那几条）"
     },
     {
       "code": "A36",
       "status": "PASS",
-      "seconds": 5.8,
-      "detail": "界面已加载：标题 'Portio'、版本 1.1.1-RC5、DOM 100018 字节、1 个标签、xterm 1 个（release 构建）"
+      "seconds": 5.9,
+      "detail": "界面已加载：标题 'Portio'、版本 1.1.1-RC5、DOM 80052 字节、1 个标签、xterm 1 个（release 构建）"
     },
     {
       "code": "A37",
       "status": "PASS",
-      "seconds": 8.0,
+      "seconds": 7.8,
       "detail": "7 条在真窗口里跑过（split-test、clip-test、fold-test、ctx-test、find-test、find-pane-test、transfer-test）；跑前存下、跑完写回的偏好一字没动（release 构建）"
     },
     {
       "code": "A38",
       "status": "PASS",
-      "seconds": 6.1,
+      "seconds": 5.9,
       "detail": "9 条在一次性 profile 里跑过（panes-test、layout-test、density-test、accent-test、term-theme-test、boot-test、perm-test、font-test、theme-test）；我自己的偏好库一个字节没动，底色文件写回原样（release 构建）"
     },
     {
       "code": "A39",
       "status": "PASS",
-      "seconds": 5.2,
+      "seconds": 5.3,
       "detail": "2 条在真窗口 + 真后端里跑过（sessions-test、hosts-test）；会话清单确实落了盘（sessions.json 变了），跑完按原字节收回、逐字节核对一致（release 构建）"
     },
     {
       "code": "A40",
       "status": "PASS",
-      "seconds": 4.0,
+      "seconds": 4.8,
       "detail": "2 档在真窗口里跑过（1024x620、900x620）；折叠态终端宽度按档收窄（1024 宽 834px、900 宽 710px），视口是真换过来的；我自己的偏好库一个字节没动，底色文件写回原样（release 构建）"
     },
     {
@@ -272,14 +272,14 @@
     {
       "code": "A42",
       "status": "PASS",
-      "seconds": 1.1,
+      "seconds": 1.2,
       "detail": "title = BROKEN-STORE-SELFTEST-OK {\"broken\":\"会话清单读坏了，原文件已另存为 sessions.json.broken-1763000123456，这次从空清单开始\",\"noSalvage\":\"会话清单读坏了，原文件也没能另存——先别存新会话，去应用数据目录把 sessions.json 拷出来\"}"
     },
     {
       "code": "A43",
       "status": "PASS",
       "seconds": 13.9,
-      "detail": "坏档：真后端另存出 sessions.json.broken-1795777851353，跟种下去那份逐字节一致；原文件一个字没动；提示条原话「会话清单读坏了，原文件已另存为 sessions.json.broken-1795777851353，这次从空清单开始」；同一份坏档再拉一次没再冒新副本（报的还是 sessions.json.broken-1795777851353）；好档对照那趟一个副本都没冒；跑完按跑前状态收回、独立复量一致（release 构建）"
+      "detail": "坏档：真后端另存出 sessions.json.broken-1795779048471，跟种下去那份逐字节一致；原文件一个字没动；提示条原话「会话清单读坏了，原文件已另存为 sessions.json.broken-1795779048471，这次从空清单开始」；同一份坏档再拉一次没再冒新副本（报的还是 sessions.json.broken-1795779048471）；好档对照那趟一个副本都没冒；跑完按跑前状态收回、独立复量一致（release 构建）"
     },
     {
       "code": "A44",
@@ -303,7 +303,7 @@
       "code": "A49",
       "status": "FAIL",
       "seconds": 0.2,
-      "detail": "! 清单首部：清单首部写 47 条通过，成绩单是 46 条 / ! 清单首部：清单首部写 0 条未验，成绩单是 1 条 / ! 清单首部：清单首部写 251.2s，成绩单是 388.6s / ! 清单首部：清单首部说这是 v1.1.1-RC3 的那一跑，成绩单是 1.1.1-RC5 的"
+      "detail": "! 清单首部：清单首部写 47 条通过，成绩单是 46 条 / ! 清单首部：清单首部写 0 条未验，成绩单是 1 条 / ! 清单首部：清单首部写 251.2s，成绩单是 259.5s / ! 清单首部：清单首部说这是 v1.1.1-RC3 的那一跑，成绩单是 1.1.1-RC5 的"
     }
   ]
 }

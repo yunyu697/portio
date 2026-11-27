@@ -13,7 +13,7 @@
 
 ### Added
 
-- **`scripts/app_icon.py`：改一次母版，一次出齐全平台六件图标。** 上一版只有 macOS 的 icns 被单独重排，Windows 的 ico 还是拿带留白的旧母版缩出来的，两平台根本不是同一版。现在这个脚本读 `crates/app/icons/icon.png`（母版若还带不透明留白，先内收裁到主体再拉满），逐行夹取补平四角，然后同版生成 ico、icns 和三档 png；`--preview` 只出预览、不动仓库。
+- **`scripts/app_icon.py`：改一次母版，一次出齐全平台六件图标。** 上一版只有 macOS 的 icns 被单独重排，Windows 的 ico 还是拿带留白的旧母版缩出来的，两平台根本不是同一版。现在这个脚本读 `crates/app/icons/icon.png`（母版若还带不透明留白，先内收裁到主体再拉满），逐行夹取补平四角，然后同版生成 ico、icns 和三档 png；`--preview` 只出预览、不动仓库。**png 一律交 RGBA**：`tauri::generate_context!` 只认这一种，退回 RGB 会在编译期直接 panic（`icon … is not RGBA`），而 Windows 本地构建不查这一项——第一版就是这么绿的本地、红的 CI，Linux 与 macOS 才当场炸出来。
 
 ### Known limitations
 
