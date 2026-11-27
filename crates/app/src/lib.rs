@@ -184,6 +184,8 @@ pub fn run() {
             sessions::ssh_resize,
             sessions::ssh_disconnect,
             sessions::sftp_home,
+            sessions::files_status,
+            sessions::local_stat,
             sessions::sftp_list,
             sessions::local_list,
             sessions::sftp_download,

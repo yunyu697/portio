@@ -1374,6 +1374,7 @@ SELFTESTS = (
     ("ctx-test", "CTX-SELFTEST-OK 9"),
     ("find-test", "FIND-SELFTEST-OK"),
     ("find-pane-test", "FIND-PANE-SELFTEST-OK"),
+    ("files-test", "FILES-SELFTEST-OK"),
     ("transfer-test", "TRANSFER-SELFTEST-OK"),
 )
 SELFTEST_SIG_EXPR = ("JSON.stringify({hash:location.hash,ready:document.readyState,"
@@ -1550,7 +1551,7 @@ def a37_selftests() -> tuple[str, str]:
 
 # ---------- A38：会改设置的那批自检，换一份一次性 profile 去跑 -----------------
 
-# A37 只搬了「不动设置」的七条。剩下那批要改主题 / 界面字号 / 密度 / 强调色 / 终端配色 /
+# A37 只搬了「不动设置」的八条。剩下那批要改主题 / 界面字号 / 密度 / 强调色 / 终端配色 /
 # 启动布局 / 权限列 / 开局格数 / 面板宽度——在真 profile 里跑，改的就是我自己的偏好。
 # 对这批复用「跑完写回去」不可靠：中途崩了、超时被杀、进程还在后台写，就写不回去。
 # 换个办法：只给这个子进程一份**一次性**的 WebView2 profile（进程级环境变量），
@@ -2985,7 +2986,7 @@ def main(argv: list[str]) -> int:
         ("A48", "交出去的那份就是核的那份（docs/artifacts.json 里这一版那几条：记录自洽、盘上那份字节与 sha256 对得上、包体内版本串是这一版、记录里那个 tag 也真指在写着这一版的提交上、Release 上挂着的大小一字不差）", True),
         ("A35", "回归脚本自己那批单测（scripts/test_*.py 全跑，口径跟 CI 的 discover 一致；一条都没跑到也算红）", True),
         ("A36", "窗口起来了，界面也真画出来了（走 WebView2 调试口进真 webview：加载完没、版本串是不是这一版、app.js 跑完没、终端对象在不在、DOM 有没有肉）", True),
-        ("A37", "那几条自检在真窗口里也跑得动（真后端 + 真偏好里跑 split/clip/fold/ctx/find/find-pane/transfer 七条；跑前存下偏好、跑完一字不差写回去）", True),
+        ("A37", "那几条自检在真窗口里也跑得动（真后端 + 真偏好里跑 split/clip/fold/ctx/find/find-pane/files/transfer 八条；跑前存下偏好、跑完一字不差写回去）", True),
         ("A38", "会改设置的那批自检也在真窗口里跑（换一份一次性 profile 跑 panes/layout/density/accent/term-theme/boot/perm/font/theme 九条；跑完核我自己的偏好库一个字节没动、底色文件写回原样）", True),
         ("A39", "会写盘的那两条自检也在真窗口 + 真后端里跑（#sessions-test / #hosts-test；跑前把 theme.txt / sessions.json / known_hosts 按字节存下，跑完收进程再按原字节收回、逐字节核对；还要证明会话清单确实落了盘）", True),
         ("A40", "#narrow-test 在真窗口里按 1024 / 900 两档视口跑（调试口改布局视口，两档得一根长连胜跑完；判据拿界面自报的 innerWidth 对我要求的那档，对不上就是拿宽窗冒充窄窗；一次性 profile 里跑，核我自己的偏好库没被动）", True),
@@ -3159,7 +3160,7 @@ def main(argv: list[str]) -> int:
             # 进真 webview 读 DOM：拉起、等导航、读一句话、收掉
             status, detail = a36_webview()
         elif code == "A37":
-            # 在真窗口里把这七条自检跑一遍，跑完把偏好写回去
+            # 在真窗口里把这八条自检跑一遍，跑完把偏好写回去
             status, detail = a37_selftests()
         elif code == "A38":
             # 会改设置的那批：换一份一次性 profile 跑，跑完核我自己的偏好库没被动

@@ -2628,6 +2628,8 @@ async function connectWith(spec) {
     tab.cell.term.write(`\r\n\x1b[2m—— 已连接 ${user}@${host}:${port} ——\x1b[0m\r\n`);
     tab.cell.term.focus();
     const home = await call("sftp_home", { id });
+    // 先问清这一台走 SFTP 还是 SCP，再列目录：标签写错了，后面每一步都会被误解
+    await refreshFilesMode();
     if (home) loadRemote(home);
   } catch (err) {
     const raw = String(err);
@@ -2869,9 +2871,15 @@ const remoteListEl = document.getElementById("remote-list");
 const localListEl = document.getElementById("local-list");
 const remotePathEl = document.getElementById("remote-path");
 const localPathEl = document.getElementById("local-path");
+const remoteDropEl = document.getElementById("remote-drop");
 let remotePath = null;
 let localPath = null;
 const transferRows = new Map();
+const transferRetry = new Map();
+// 降级说明（这台主机为什么走 SCP）：列目录失败时把它原样贴进块里，
+// 比一句「原因见右下角提示」有用得多。
+let filesNote = "";
+const warnedScp = new Set();
 
 const escapeHtml = (s) =>
   String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -2905,16 +2913,126 @@ function winJoin(dir, name) {
   return dir.endsWith("\\") || dir.endsWith("/") ? dir + name : `${dir}\\${name}`;
 }
 
+// 一条路径只要最后那节名字。Windows 的反斜杠和 POSIX 的斜杠都认，
+// 因为拖进来的路径来自本地文件系统，目标路径要拼在远端。
+function nameOf(path) {
+  const s = String(path ?? "");
+  const cut = Math.max(s.lastIndexOf("/"), s.lastIndexOf("\\"));
+  return cut >= 0 ? s.slice(cut + 1) : s;
+}
+
+// ---------- 列表视图与选中 ----------
+// 排序与「点文件」是每栏共用的视图偏好：74 个文件的 /etc 里，找不着的目录等于没有。
+const VIEW_KEY = "portio.fpView";
+const view = { sort: "name", dots: false }; // dots=false：以点开头的项默认藏起来，跟资源管理器一致
+try {
+  const saved = JSON.parse(localStorage.getItem(VIEW_KEY) || "null");
+  if (saved && ["name", "size", "time"].includes(saved.sort)) view.sort = saved.sort;
+  if (saved && typeof saved.dots === "boolean") view.dots = saved.dots;
+} catch {
+  // 存坏了就按默认来，不影响打开
+}
+function saveView() {
+  try {
+    localStorage.setItem(VIEW_KEY, JSON.stringify(view));
+  } catch {
+    // 存不下就算了，偏好不该挡住正事
+  }
+}
+
+// 目录一律排在文件前面（跟资源管理器、WinSCP 一致）；组内按当前口径排。
+function arrange(items) {
+  const list = items.filter((it) => view.dots || !String(it.name).startsWith("."));
+  const byName = (a, b) => String(a.name).toLowerCase().localeCompare(String(b.name).toLowerCase());
+  const cmp =
+    view.sort === "size"
+      ? (a, b) => b.size - a.size || byName(a, b)
+      : view.sort === "time"
+        ? (a, b) => b.modified - a.modified || byName(a, b)
+        : byName;
+  const dirs = list.filter((it) => it.is_dir).sort(cmp);
+  const files = list.filter((it) => !it.is_dir).sort(cmp);
+  return dirs.concat(files);
+}
+
+// 选中按路径记：重画列表（刷新、改排序、换目录）之后不会莫名全丢。
+const sel = { remote: new Set(), local: new Set() };
+const anchor = { remote: null, local: null };
+// 每栏最近一次从后端拿到的完整条目（含被「点文件」过滤掉的那些），
+// 批量动作要按这里取，不能按屏幕上的行取。
+const viewItems = { remote: [], local: [] };
+
+function selectionBar(side) {
+  return document.getElementById(`${side}-sel`);
+}
+
+function pickedItems(side) {
+  return viewItems[side].filter((it) => sel[side].has(it.path));
+}
+
+function paintSel(el, side) {
+  for (const row of el.querySelectorAll(".fp-row")) {
+    row.classList.toggle("sel", sel[side].has(row.dataset.path));
+  }
+  const bar = selectionBar(side);
+  bar.querySelector(".n b").textContent = String(sel[side].size);
+  bar.hidden = sel[side].size === 0;
+  const picks = pickedItems(side);
+  const files = picks.filter((it) => !it.is_dir);
+  const btn = document.getElementById(side === "remote" ? "remote-download" : "local-upload");
+  const verb = side === "remote" ? "下载到本地" : "上传到远端";
+  btn.disabled = files.length === 0;
+  btn.textContent = files.length ? `${verb} ${files.length} 项` : picks.length ? `${picks.length} 个目录不参与` : verb;
+  btn.title = picks.length > files.length ? "整目录传输还没做：先压成包再传" : "";
+}
+
+function rowClick(ev, it, side, el) {
+  const rows = [...el.querySelectorAll(".fp-row")];
+  const at = rows.findIndex((r) => r.dataset.path === it.path);
+  if (ev.shiftKey && anchor[side]) {
+    const from = rows.findIndex((r) => r.dataset.path === anchor[side]);
+    if (from >= 0) {
+      sel[side].clear();
+      for (let k = Math.min(from, at); k <= Math.max(from, at); k += 1) sel[side].add(rows[k].dataset.path);
+      paintSel(el, side);
+      return;
+    }
+  }
+  if (ev.ctrlKey || ev.metaKey) {
+    if (sel[side].has(it.path)) sel[side].delete(it.path);
+    else sel[side].add(it.path);
+  } else {
+    sel[side].clear();
+    sel[side].add(it.path);
+    anchor[side] = it.path;
+  }
+  paintSel(el, side);
+}
+
+function openEntry(it, side) {
+  if (it.is_dir) {
+    if (side === "remote") loadRemote(it.path);
+    else loadLocal(it.path);
+    return;
+  }
+  if (side === "remote") downloadFile(it);
+  else uploadFile(it);
+}
+
 function renderList(el, items, side) {
+  viewItems[side] = items;
+  const rows = arrange(items);
   el.innerHTML = "";
-    if (!items.length) {
-    el.innerHTML = '<span class="hint">空目录</span>';
+  if (!rows.length) {
+    el.innerHTML = `<span class="hint">${items.length ? "以点开头的项都藏起来了：列表设置里可以显示" : "空目录"}</span>`;
+    paintSel(el, side);
     return;
   }
   const frag = document.createDocumentFragment();
-  for (const it of items) {
+  for (const it of rows) {
     const row = document.createElement("div");
     row.className = `fp-row${it.is_dir ? " dir" : ""}${side === "remote" ? " has-perm" : ""}`;
+    row.dataset.path = it.path;
     row.innerHTML =
       `<span class="ico">${it.is_dir ? ICO_DIR : ""}</span>` +
       `<span class="nm">${escapeHtml(it.name)}</span>` +
@@ -2922,55 +3040,58 @@ function renderList(el, items, side) {
       `<span class="sz">${it.is_dir ? "—" : fmtSize(it.size)}</span>` +
       `<span class="tm">${fmtTime(it.modified)}</span>`;
     row.title = it.path;
-    row.addEventListener("click", () => {
-      el.querySelectorAll(".fp-row.sel").forEach((r) => r.classList.remove("sel"));
-      row.classList.add("sel");
-    });
-    row.addEventListener("dblclick", () => {
-      if (it.is_dir) {
-        if (side === "remote") loadRemote(it.path);
-        else loadLocal(it.path);
-        return;
-      }
-      if (side === "remote") downloadFile(it);
-      else uploadFile(it);
-    });
-    // 文件行右键：远端是"下载 / 新建 / 删除"，本地是"上传 / 复制路径"
-    row.addEventListener("contextmenu", (ev) => {
-      ev.preventDefault();
-      el.querySelectorAll(".fp-row.sel").forEach((r) => r.classList.remove("sel"));
-      row.classList.add("sel");
-      if (side === "remote") {
-        showCtx(ev.clientX, ev.clientY, [
-          {
-            label: "下载到本地",
-            disabled: it.is_dir,
-            hint: it.is_dir ? "目录不进队列" : "",
-            run: () => downloadFile(it),
-          },
-          { label: "进入目录", disabled: !it.is_dir, run: () => loadRemote(it.path) },
-          { sep: true },
-          { label: "重命名", run: () => renameRemote(it) },
-          { label: "新建文件夹", run: () => newRemoteDir() },
-          { label: "删除", danger: true, hint: it.is_dir ? "目录" : "文件", run: () => removeRemote(it) },
-          { sep: true },
-          { label: "复制路径", run: () => copyText(it.path) },
-          { label: "刷新列表", run: () => loadRemote(remotePath) },
-        ]);
-      } else {
-        showCtx(ev.clientX, ev.clientY, [
-          { label: "上传到远端", disabled: it.is_dir, run: () => uploadFile(it) },
-          { label: "进入目录", disabled: !it.is_dir, run: () => loadLocal(it.path) },
-          { sep: true },
-          { label: "重命名", run: () => renameLocal(it) },
-          { label: "复制路径", run: () => copyText(it.path) },
-          { label: "刷新列表", run: () => loadLocal(localPath) },
-        ]);
-      }
-    });
+    row.addEventListener("click", (ev) => rowClick(ev, it, side, el));
+    row.addEventListener("dblclick", () => openEntry(it, side));
+    // 文件行右键：远端是"下载 / 新建 / 删除"，本地是"上传 / 复制路径"。
+    // 右键落在没选中的行上时先把它变成唯一选中，后面的动作才对得上用户点的那一行。
+    row.addEventListener("contextmenu", (ev) => rowMenu(ev, it, side, el));
     frag.appendChild(row);
   }
   el.appendChild(frag);
+  paintSel(el, side);
+}
+
+function rowMenu(ev, it, side, el) {
+  ev.preventDefault();
+  if (!sel[side].has(it.path)) {
+    sel[side].clear();
+    sel[side].add(it.path);
+    anchor[side] = it.path;
+    paintSel(el, side);
+  }
+  const many = sel[side].size > 1;
+  if (side === "remote") {
+    showCtx(ev.clientX, ev.clientY, [
+      {
+        label: many ? `下载选中的 ${sel[side].size} 项` : "下载到本地",
+        disabled: !many && it.is_dir,
+        hint: it.is_dir && !many ? "目录不进队列" : "",
+        run: () => (many ? downloadSelection() : downloadFile(it)),
+      },
+      { label: "进入目录", disabled: !it.is_dir, run: () => loadRemote(it.path) },
+      { sep: true },
+      { label: "重命名", run: () => renameRemote(it) },
+      { label: "新建文件夹", run: () => newRemoteDir() },
+      {
+        label: many ? `删除选中的 ${sel[side].size} 项` : "删除",
+        danger: true,
+        hint: it.is_dir ? "目录" : "文件",
+        run: () => (many ? removeSelection() : removeRemote(it)),
+      },
+      { sep: true },
+      { label: "复制路径", run: () => copyText(it.path) },
+      { label: "刷新列表", run: () => loadRemote(remotePath) },
+    ]);
+  } else {
+    showCtx(ev.clientX, ev.clientY, [
+      { label: many ? `上传选中的 ${sel[side].size} 项` : "上传到远端", disabled: !many && it.is_dir, run: () => (many ? uploadSelection() : uploadFile(it)) },
+      { label: "进入目录", disabled: !it.is_dir, run: () => loadLocal(it.path) },
+      { sep: true },
+      { label: "重命名", run: () => renameLocal(it) },
+      { label: "复制路径", run: () => copyText(it.path) },
+      { label: "刷新列表", run: () => loadLocal(localPath) },
+    ]);
+  }
 }
 
 async function loadRemote(path) {
@@ -2983,13 +3104,15 @@ async function loadRemote(path) {
   const res = await call("sftp_list", { id: sessionId, path });
   if (!res) {
     // 没有后端的预览页里 call() 也是 null——那种情况保持原样，别在物料截图上写「失败」
-    if (hasBackend()) remoteListEl.innerHTML = '<span class="hint">列目录失败，原因见右下角提示。</span>';
+    if (hasBackend()) remoteListEl.innerHTML = `<span class="hint">${escapeHtml(filesNote || "列目录失败，原因见右下角提示。")}</span>`;
     return;
   }
   remotePath = path;
   remotePathEl.value = path;
   document.getElementById("files-path").textContent = path;
-  document.getElementById("files-mode").textContent = "SFTP";
+  document.getElementById("remote-drop-path").textContent = path;
+  sel.remote.clear();
+  anchor.remote = null;
   renderList(remoteListEl, res, "remote");
 }
 
@@ -3003,6 +3126,8 @@ async function loadLocal(path) {
   localPath = dir;
   localPathEl.value = dir;
   localStorage.setItem("portio.localPath", dir);
+  sel.local.clear();
+  anchor.local = null;
   renderList(localListEl, items, "local");
 }
 
@@ -3016,7 +3141,42 @@ function refreshBothDirs() {
   loadLocal(document.getElementById("local-path").value || "");
 }
 
-// 传输行：先占位，进度事件里按 key 找回来更新
+// 文件面板走的是 SFTP 还是 SCP。以前标签写死「SFTP」，明明已经降级到 SCP 了还这么写，
+// 用户以为是另一套传输在跑，出了问题也不知道该看哪条路。
+function applyFilesMode(st) {
+  const chip = document.getElementById("files-mode");
+  if (!st) {
+    chip.textContent = "未连接";
+    chip.title = "";
+    chip.classList.remove("warn");
+    filesNote = "";
+    return;
+  }
+  const scp = st.mode === "scp";
+  chip.textContent = scp ? "SCP" : "SFTP";
+  chip.title = scp ? st.note || "此主机没有 SFTP 子系统，文件面板改用 SCP" : "SFTP 子系统";
+  chip.classList.toggle("warn", scp);
+  filesNote = st.note || "";
+}
+
+async function refreshFilesMode() {
+  if (sessionId === null) {
+    applyFilesMode(null);
+    return null;
+  }
+  const st = await call("files_status", { id: sessionId });
+  applyFilesMode(st);
+  // 降级这件事只说一次：每个会话弹一次，不是每次刷新列表都弹。
+  // 弹的那句要短——完整原因（含怎么装 sftp-server）挂在标签的 title 上，
+  // 全塞进 toast 会铺满两行，把底下的状态条整个盖掉。
+  if (st && st.mode === "scp" && sessionId !== null && !warnedScp.has(sessionId)) {
+    warnedScp.add(sessionId);
+    toast("这台主机没有 SFTP 子系统：文件面板改用 SCP（装 sftp-server 可恢复）");
+  }
+  return st;
+}
+
+// 传输行：先占位，进度事件里按 key 找回来更新；失败的条点一下就能再传一次。
 // 标题条那个计数原来只在 finishTransfer 里改一次，于是传输刚开始跑的时候数字还是旧的
 // （开始三条、结束一条，标题条从 0 跳到 1）。计数只跟着 transferRows 走，改一处就够。
 function syncTransferCount() {
@@ -3024,9 +3184,17 @@ function syncTransferCount() {
   if (num) num.textContent = String(transferRows.size);
 }
 
-function transferRow(name, dir) {
+function transferRow(name, dir, retry) {
   const key = `${dir}:${name}`;
-  if (transferRows.has(key)) return { key, el: transferRows.get(key) };
+  const live = transferRows.get(key);
+  if (live) {
+    if (retry) transferRetry.set(key, retry);
+    delete live.dataset.failed;
+    live.querySelector(".bar i").style.width = "0";
+    live.querySelector(".bar i").style.background = "";
+    live.querySelector(".meta").textContent = "排队";
+    return { key, el: live };
+  }
   const body = document.querySelector(".drawer-body");
   // 空态那句要在第一行出现时就消失。它以前是 `.drawer-body` 里的裸文本，这里却按 `.hint` 找，
   // 于是永远找不到——三条传输都在跑了，抽屉顶部还挂着一句「空」。现在它是个真元素。
@@ -3041,8 +3209,18 @@ function transferRow(name, dir) {
   bar.className = "bar";
   bar.innerHTML = "<i></i>";
   el.appendChild(bar);
+  el.title = "失败的行点一下可以重试";
+  el.addEventListener("click", () => {
+    if (el.dataset.failed !== "1") return;
+    const again = transferRetry.get(key);
+    if (!again) return;
+    delete el.dataset.failed;
+    el.querySelector(".meta").textContent = "重试中…";
+    again();
+  });
   body.appendChild(el);
   transferRows.set(key, el);
+  if (retry) transferRetry.set(key, retry);
   syncTransferCount();
   return { key, el };
 }
@@ -3055,24 +3233,146 @@ function updateTransfer(p) {
   row.querySelector(".meta").textContent = p.total ? `${pct}% · ${fmtSize(p.total)}` : fmtSize(p.done);
 }
 
-async function downloadFile(item) {
-  const target = winJoin(localPath, item.name);
-  transferRow(item.name, "down");
-  // 这两条以前直连 bridge.invoke：一旦抛错（磁盘满、断线、权限不够），行会永远停在「排队」，
-  // 既没人说失败，也不知道要不要重试。走 call() 收尾才落成红条 + 一句人话。
-  const bytes = await call("sftp_download", { id: sessionId, remote: item.path, local: target });
-  if (bytes === null && !hasBackend()) return; // 预览页没有后端：留着排队，不假报失败
-  finishTransfer(item.name, "down", bytes);
-  if (typeof bytes === "number") loadLocal(localPath);
+function finishTransfer(name, dir, bytes) {
+  const row = transferRows.get(`${dir}:${name}`);
+  if (!row) return;
+  const ok = bytes !== null;
+  row.querySelector(".bar i").style.width = ok ? "100%" : "0%";
+  row.querySelector(".bar i").style.background = ok ? "var(--accent)" : "var(--danger)";
+  row.querySelector(".meta").textContent = ok ? `完成 · ${fmtSize(bytes)}` : "失败 · 点这条重试";
+  row.dataset.failed = ok ? "" : "1";
+  syncTransferCount();
+  if (window.__TAURI__?.event) {
+    // 让队列自动浮出来看一眼，用户不用自己去翻抽屉（收起态就恢复到上次的高度，别只露一行）
+    if (document.getElementById("drawer").classList.contains("collapsed")) {
+      applyDrawer(Math.max(drawerLast, 120));
+    }
+  }
 }
 
-async function uploadFile(item) {
-  const target = posixJoin(remotePath, item.name);
-  transferRow(item.name, "up");
-  const bytes = await call("sftp_upload", { id: sessionId, local: item.path, remote: target });
-  if (bytes === null && !hasBackend()) return;
-  finishTransfer(item.name, "up", bytes);
-  if (typeof bytes === "number") loadRemote(remotePath);
+// 一批文件往远端传：逐条排队、逐条更新。同名先问一句，别默默把远端那份盖了。
+async function uploadEntries(entries) {
+  if (sessionId === null) return toast("先连一台主机，才有远端目录可传");
+  const list = entries.filter((e) => e && e.local && e.name);
+  if (!list.length) return;
+  const existing = new Set(viewItems.remote.map((it) => it.name));
+  const clash = list.filter((e) => existing.has(e.name));
+  if (clash.length && !window.confirm(`远端当前目录已有同名 ${clash.length} 项，覆盖？`)) return;
+  let done = 0;
+  for (const e of list) {
+    const target = posixJoin(remotePath, e.name);
+    transferRow(e.name, "up", () => uploadEntries([e]));
+    const bytes = await call("sftp_upload", { id: sessionId, local: e.local, remote: target });
+    if (bytes === null && !hasBackend()) return;
+    finishTransfer(e.name, "up", bytes);
+    if (typeof bytes === "number") done += 1;
+  }
+  if (done) await loadRemote(remotePath);
+  if (done) toast(done > 1 ? `已上传 ${done} 项到 ${remotePath}` : `已上传 ${nameOf(list[0].name)} 到 ${remotePath}`);
+}
+
+// 一批文件往本地拉。本地已有同名就问一句，别把别人的文件冲掉。
+async function downloadEntries(items) {
+  if (sessionId === null) return toast("先连一台主机");
+  const list = items.filter((it) => it && !it.is_dir);
+  if (!list.length) {
+    toast("目录不进传输队列：先打包再下载");
+    return;
+  }
+  const existing = new Set(viewItems.local.map((it) => it.name));
+  const clash = list.filter((it) => existing.has(it.name));
+  if (clash.length && !window.confirm(`本地当前目录已有同名 ${clash.length} 项，覆盖？`)) return;
+  let done = 0;
+  for (const it of list) {
+    const target = winJoin(localPath, it.name);
+    transferRow(it.name, "down", () => downloadEntries([it]));
+    const bytes = await call("sftp_download", { id: sessionId, remote: it.path, local: target });
+    if (bytes === null && !hasBackend()) return;
+    finishTransfer(it.name, "down", bytes);
+    if (typeof bytes === "number") done += 1;
+  }
+  if (done) await loadLocal(localPath);
+  if (done) toast(done > 1 ? `已下载 ${done} 项到 ${localPath}` : `已下载 ${nameOf(list[0].name)} 到 ${localPath}`);
+}
+
+function downloadFile(item) {
+  return downloadEntries([item]);
+}
+
+function uploadFile(item) {
+  return uploadEntries([{ local: item.path, name: item.name }]);
+}
+
+function uploadSelection() {
+  return uploadEntries(pickedItems("local").map((it) => ({ local: it.path, name: it.name })));
+}
+
+function downloadSelection() {
+  return downloadEntries(pickedItems("remote"));
+}
+
+// 从资源管理器拖进来的东西：逐条问后端是文件还是目录，目录先跳过（整目录传输还没做），
+// 是文件就排进上传队列。这条路径以前根本不存在——窗口里没有任何 drop 监听，
+// 拖进来的文件直接落到 WebView 手里，界面什么都不发生。
+async function handleDroppedPaths(paths) {
+  if (!Array.isArray(paths) || !paths.length) return;
+  if (sessionId === null) {
+    toast("先连一台主机，再把文件拖进来");
+    return;
+  }
+  const entries = [];
+  const skipped = [];
+  for (const p of paths) {
+    const st = await call("local_stat", { path: p });
+    if (!st || st.is_dir) {
+      skipped.push(nameOf(p));
+      continue;
+    }
+    entries.push({ local: p, name: nameOf(p) });
+  }
+  if (skipped.length) toast(`跳过 ${skipped.length} 项（目录或读不到）：目录请先压成包再拖`);
+  if (entries.length) await uploadEntries(entries);
+}
+
+function showDrop(on) {
+  remoteDropEl.hidden = !on;
+  if (on) document.getElementById("remote-drop-path").textContent = remotePath || "/";
+}
+
+function bindDrops() {
+  const t = window.__TAURI__;
+  // 优先走 Tauri 自己的拖拽 API：它把四种状态整理成 {type: enter|over|drop|leave, paths}，
+  // 比手拼事件名稳。拿不到（浏览器预览 / 权限没开）再退回按窗口事件名监听。
+  const hook = t?.webview?.getCurrentWebview?.();
+  let bound = false;
+  if (hook && typeof hook.onDragDropEvent === "function") {
+    try {
+      hook.onDragDropEvent((ev) => {
+        const p = ev?.payload ?? {};
+        if (p.type === "enter" || p.type === "over") showDrop(true);
+        else if (p.type === "drop") {
+          showDrop(false);
+          handleDroppedPaths(p.paths ?? []);
+        } else showDrop(false);
+      });
+      bound = true;
+    } catch {
+      bound = false;
+    }
+  }
+  if (!bound && t?.event) {
+    // Tauri 把系统拖拽抬成窗口事件，顺序是 enter → over → drop / leave。
+    // 只认 drop 那一下：enter/over 负责把「松开传到这里」那块提示亮起来。
+    for (const name of ["tauri://drag-enter", "tauri://drag-over"]) t.event.listen(name, () => showDrop(true));
+    t.event.listen("tauri://drag-leave", () => showDrop(false));
+    t.event.listen("tauri://drag-drop", (e) => {
+      showDrop(false);
+      handleDroppedPaths(e.payload?.paths ?? []);
+    });
+  }
+  // 兜底：别让 WebView 把拖进来的文件当成导航目标打开
+  document.addEventListener("dragover", (e) => e.preventDefault());
+  document.addEventListener("drop", (e) => e.preventDefault());
 }
 
 // ---------- 右键菜单里用到的动作 ----------
@@ -3108,6 +3408,23 @@ async function removeRemote(item) {
   }
 }
 
+// 多选时一次删一串：逐条走同一个命令，最后统一刷新一次，别每删一条重画一遍列表。
+async function removeSelection() {
+  if (sessionId === null) return toast("先连一台主机");
+  const picks = pickedItems("remote");
+  if (!picks.length) return;
+  const what = picks.length === 1 ? `${picks[0].is_dir ? "目录" : "文件"} ${picks[0].path}` : `${picks.length} 项`;
+  if (!window.confirm(`删除${what}？此操作不可撤销。`)) return;
+  let all = true;
+  for (const it of picks) {
+    const ok = await call("sftp_remove", { id: sessionId, path: it.path, is_dir: it.is_dir });
+    if (ok === null) all = false;
+  }
+  sel.remote.clear();
+  if (all) toast(picks.length > 1 ? `已删除 ${picks.length} 项` : `已删除 ${nameOf(picks[0].path)}`);
+  await loadRemote(remotePath);
+}
+
 // 重命名只改同一目录内的名字；改名后如果撞名，服务端会直接报错，这里不替它兜底
 async function renameRemote(item) {
   if (sessionId === null) return;
@@ -3134,22 +3451,7 @@ async function renameLocal(item) {
   }
 }
 
-function finishTransfer(name, dir, bytes) {
-  const row = transferRows.get(`${dir}:${name}`);
-  if (!row) return;
-  const ok = bytes !== null;
-  row.querySelector(".bar i").style.width = ok ? "100%" : "0%";
-  row.querySelector(".bar i").style.background = ok ? "var(--accent)" : "var(--danger)";
-  row.querySelector(".meta").textContent = ok ? `完成 · ${fmtSize(bytes)}` : "失败";
-  syncTransferCount();
-  if (window.__TAURI__?.event) {
-    // 让队列自动浮出来看一眼，用户不用自己去翻抽屉（收起态就恢复到上次的高度，别只露一行）
-    if (document.getElementById("drawer").classList.contains("collapsed")) {
-      applyDrawer(Math.max(drawerLast, 120));
-    }
-  }
-}
-
+// ---------- 工具栏 / 键盘 ----------
 document.getElementById("remote-up").addEventListener("click", () => {
   if (remotePath) loadRemote(remotePath.replace(/\/+$/, "").replace(/\/[^/]*$/, "") || "/");
 });
@@ -3167,6 +3469,77 @@ localPathEl.addEventListener("keydown", (e) => {
   if (e.key === "Enter") loadLocal(localPathEl.value.trim());
 });
 document.getElementById("remote-mkdir").addEventListener("click", () => newRemoteDir());
+
+function openViewMenu(ev) {
+  ev.preventDefault();
+  const repaint = () => {
+    renderList(remoteListEl, viewItems.remote, "remote");
+    renderList(localListEl, viewItems.local, "local");
+  };
+  const tick = (k) => (view.sort === k ? " ✓" : "");
+  showCtx(ev.clientX, ev.clientY, [
+    { label: `按名称${tick("name")}`, run: () => { view.sort = "name"; saveView(); repaint(); } },
+    { label: `按大小${tick("size")}`, run: () => { view.sort = "size"; saveView(); repaint(); } },
+    { label: `按修改时间${tick("time")}`, run: () => { view.sort = "time"; saveView(); repaint(); } },
+    { sep: true },
+    {
+      label: view.dots ? "隐藏以 . 开头的项" : "显示以 . 开头的项",
+      run: () => { view.dots = !view.dots; saveView(); repaint(); },
+    },
+  ]);
+}
+document.getElementById("remote-opts").addEventListener("click", openViewMenu);
+document.getElementById("local-opts").addEventListener("click", openViewMenu);
+
+document.getElementById("remote-download").addEventListener("click", () => downloadSelection());
+document.getElementById("local-upload").addEventListener("click", () => uploadSelection());
+document.getElementById("remote-clear").addEventListener("click", () => { sel.remote.clear(); paintSel(remoteListEl, "remote"); });
+document.getElementById("local-clear").addEventListener("click", () => { sel.local.clear(); paintSel(localListEl, "local"); });
+
+// 列表能键盘走通：Ctrl+A 全选、Esc 取消、Enter 进目录或传、Delete 删、F2 改名、F5 刷新。
+function bindListKeys(el, side) {
+  el.addEventListener("keydown", (ev) => {
+    const picks = pickedItems(side);
+    const key = ev.key;
+    if ((ev.ctrlKey || ev.metaKey) && key.toLowerCase() === "a") {
+      ev.preventDefault();
+      sel[side] = new Set([...el.querySelectorAll(".fp-row")].map((r) => r.dataset.path));
+      paintSel(el, side);
+      return;
+    }
+    if (key === "Escape") {
+      if (sel[side].size) {
+        ev.preventDefault();
+        sel[side].clear();
+        paintSel(el, side);
+      }
+      return;
+    }
+    if (key === "Enter") {
+      ev.preventDefault();
+      if (picks.length === 1) openEntry(picks[0], side);
+      return;
+    }
+    if (key === "Delete" && side === "remote" && picks.length) {
+      ev.preventDefault();
+      removeSelection();
+      return;
+    }
+    if (key === "F2" && side === "remote" && picks.length === 1) {
+      ev.preventDefault();
+      renameRemote(picks[0]);
+      return;
+    }
+    if (key === "F5") {
+      ev.preventDefault();
+      if (side === "remote") loadRemote(remotePath);
+      else loadLocal(localPath);
+    }
+  });
+}
+bindListKeys(remoteListEl, "remote");
+bindListKeys(localListEl, "local");
+bindDrops();
 
 if (window.__TAURI__?.event) {
   window.__TAURI__.event.listen("transfer", (e) => updateTransfer(e.payload));
@@ -3194,6 +3567,137 @@ if (
 
 // 本地目录不用等连接，界面一出来就能看
 loadLocal(localStorage.getItem("portio.localPath") || null);
+
+// 带 #files-test 核一遍这一栏真能干活：多选、批量、拖放、模式标签、排序过滤、失败重试。
+// 这几条以前全都没有——拖进来的文件界面一声不响，一次只能传一个，标签写着 SFTP 却在走 SCP。
+if (location.hash === "#files-test") {
+  (async () => {
+    const fails = [];
+    const ok = (cond, msg) => {
+      if (!cond) fails.push(msg);
+    };
+    const seen = {};
+    const calls = [];
+    const prevSid = sessionId;
+    const prevFake = fakeInvoke;
+    const prevView = { sort: view.sort, dots: view.dots };
+    const realConfirm = window.confirm;
+    const remote = [
+      { path: "/upload/a.txt", name: "a.txt", size: 5, modified: 1, perm: "-rw-r--r--", is_dir: false },
+      { path: "/upload/dir", name: "dir", size: 0, modified: 2, perm: "drwxr-xr-x", is_dir: true },
+      { path: "/upload/.dot", name: ".dot", size: 1, modified: 0, perm: "-rw-r--r--", is_dir: false },
+    ];
+    const local = [
+      { path: "C:\\tmp\\b.txt", name: "b.txt", size: 7, modified: 3, perm: "—", is_dir: false },
+      { path: "C:\\tmp\\sub", name: "sub", size: 0, modified: 4, perm: "—", is_dir: true },
+    ];
+    try {
+      fakeInvoke = async (cmd, args) => {
+        if (cmd === "local_stat") {
+          const p = String(args?.path ?? "");
+          return { is_dir: p.endsWith("sub") || p.endsWith("dir"), size: 7 };
+        }
+        if (cmd === "files_status") return { mode: "scp", note: "SFTP 子系统没响应（已改用 SCP 传输）" };
+        if (cmd === "sftp_list") return remote;
+        if (cmd === "local_list") return ["C:\\tmp", local];
+        if (cmd === "sftp_upload" || cmd === "sftp_download") {
+          calls.push({ cmd, args });
+          return 5;
+        }
+        if (cmd === "sftp_remove") {
+          calls.push({ cmd, args });
+          return null;
+        }
+        throw new Error(`未预期的命令 ${cmd}`);
+      };
+      sessionId = 7;
+      remotePath = "/upload";
+
+      // ① 模式标签：后端说 scp 就必须写 SCP，并把降级原因挂在 title 上
+      await refreshFilesMode();
+      const chip = document.getElementById("files-mode");
+      ok(chip.textContent === "SCP", `模式标签应是 SCP：${chip.textContent}`);
+      ok(chip.classList.contains("warn"), "SCP 时标签应带 warn 配色");
+      ok(String(chip.title).includes("SCP"), `标签 title 应带上原因：${chip.title}`);
+
+      // ② 列目录 + 点文件默认藏起来：三条里那条 .dot 不该出现在行里
+      await loadRemote("/upload");
+      ok(remoteListEl.querySelectorAll(".fp-row").length === 2, `应显示 2 行：${remoteListEl.querySelectorAll(".fp-row").length}`);
+      ok(!remoteListEl.innerHTML.includes(".dot"), "以点开头的项默认应藏起来");
+      view.dots = true;
+      view.sort = "size";
+      renderList(remoteListEl, remote, "remote");
+      ok(arrange(remote)[0].name === "dir", "目录应排在文件前面");
+      ok(remoteListEl.querySelectorAll(".fp-row").length === 3, "打开点文件后应显示 3 行");
+      view.dots = false;
+      view.sort = "name";
+      renderList(remoteListEl, remote, "remote");
+
+      // ③ 多选：单击单选、Ctrl 追加、Shift 连选；选中条只在有选中时出现
+      const rowOf = (p) => [...remoteListEl.querySelectorAll(".fp-row")].find((r) => r.dataset.path === p);
+      rowOf("/upload/a.txt").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      ok(sel.remote.size === 1 && sel.remote.has("/upload/a.txt"), `单击应选中 a.txt：${[...sel.remote]}`);
+      ok(!document.getElementById("remote-sel").hidden, "有选中时动作条应露出");
+      rowOf("/upload/dir").dispatchEvent(new MouseEvent("click", { bubbles: true, ctrlKey: true }));
+      ok(sel.remote.size === 2, `Ctrl 点击应追加：${sel.remote.size}`);
+      ok(document.getElementById("remote-sel").querySelector(".n b").textContent === "2", "动作条应写 2 项");
+      // 混着目录时按钮要说清「目录不参与」
+      ok(document.getElementById("remote-download").textContent.includes("1 项"), `按钮应只数文件：${document.getElementById("remote-download").textContent}`);
+
+      // ④ 批量下载：只传文件，目录留在原地
+      calls.length = 0;
+      await downloadSelection();
+      ok(calls.length === 1 && calls[0].cmd === "sftp_download", `应只下发 1 条下载：${calls.map((c) => c.cmd)}`);
+      ok(calls[0]?.args.remote === "/upload/a.txt", `下载路径不对：${calls[0]?.args.remote}`);
+
+      // ⑤ 拖放进来的路径：文件上传、目录跳过，远端路径按当前目录拼
+      calls.length = 0;
+      sel.local.clear();
+      await loadLocal("C:\\tmp");
+      await handleDroppedPaths(["C:\\tmp\\b.txt", "C:\\tmp\\sub"]);
+      const ups = calls.filter((c) => c.cmd === "sftp_upload");
+      ok(ups.length === 1, `拖放应只传 1 个文件：${ups.length}`);
+      ok(ups[0]?.args.remote === "/upload/b.txt", `拖放目标路径不对：${ups[0]?.args.remote}`);
+      ok(ups[0]?.args.local === "C:\\tmp\\b.txt", `拖放本地路径不对：${ups[0]?.args.local}`);
+
+      // ⑥ 失败的行：落红条 + 写重试，点一下会真的再传一次
+      calls.length = 0;
+      transferRow("b.txt", "up", () => uploadEntries([{ local: "C:\\tmp\\b.txt", name: "b.txt" }]));
+      finishTransfer("b.txt", "up", null);
+      const failedRow = transferRows.get("up:b.txt");
+      ok(failedRow?.dataset.failed === "1", "失败的行应打上失败标记");
+      ok(failedRow?.querySelector(".meta").textContent.includes("重试"), `失败文案应提示重试：${failedRow?.querySelector(".meta").textContent}`);
+      failedRow.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 60));
+      ok(calls.some((c) => c.cmd === "sftp_upload"), "点失败行应重跑那次上传");
+
+      // ⑦ 覆盖确认：远端已有同名时先问一句，用户拒绝就一条都不传
+      calls.length = 0;
+      window.confirm = () => false;
+      await uploadEntries([{ local: "C:\\tmp\\a.txt", name: "a.txt" }]);
+      ok(calls.length === 0, "拒绝对话框后不该有上传");
+      window.confirm = () => true;
+      await uploadEntries([{ local: "C:\\tmp\\a.txt", name: "a.txt" }]);
+      ok(calls.length === 1, `同意后应传一条：${calls.length}`);
+
+      seen.mode = chip.textContent;
+      seen.pick = sel.remote.size;
+      seen.ups = ups.length;
+    } catch (err) {
+      fails.push(`核文件面板时抛了异常：${err && err.message ? err.message : err}`);
+    } finally {
+      window.confirm = realConfirm;
+      fakeInvoke = prevFake;
+      sessionId = prevSid;
+      view.sort = prevView.sort;
+      view.dots = prevView.dots;
+      saveView();
+    }
+    document.title = fails.length
+      ? `FILES-SELFTEST-FAIL ${JSON.stringify(fails)} ${JSON.stringify(seen)}`
+      : `FILES-SELFTEST-OK ${JSON.stringify(seen)}`;
+  })();
+}
 
 // 带 #transfer-test 核一遍传输队列：空态那句必须随第一行消失，计数 / 百分比 / 完成 / 排队文案
 // 必须跟着真状态走。这条是给「三条在跑了抽屉顶上还挂着一句『空』」那个 Bug 立的桩。
@@ -3359,7 +3863,7 @@ if (location.hash === "#net-fail-test") {
       const rowD = transferRows.get("down:a.bin");
       failRows.push("down:a.bin");
       ok(!!rowD, "下载失败后应留下这一行");
-      ok(rowD && rowD.querySelector(".meta").textContent === "失败", `下载失败的行应写「失败」：${rowD && rowD.querySelector(".meta").textContent}`);
+      ok(rowD && rowD.querySelector(".meta").textContent.startsWith("失败"), `下载失败的行应写「失败」：${rowD && rowD.querySelector(".meta").textContent}`);
       ok(rowD && rowD.querySelector(".bar i").style.width === "0%", `失败的行进度条应清零：${rowD && rowD.querySelector(".bar i").style.width}`);
       const probe = document.createElement("div");
       probe.style.background = "var(--danger)";
@@ -3376,7 +3880,7 @@ if (location.hash === "#net-fail-test") {
       await uploadFile({ name: "b.bin", path: "C:\\b.bin", is_dir: false });
       const rowU = transferRows.get("up:b.bin");
       failRows.push("up:b.bin");
-      ok(rowU && rowU.querySelector(".meta").textContent === "失败", `上传失败的行应写「失败」：${rowU && rowU.querySelector(".meta").textContent}`);
+      ok(rowU && rowU.querySelector(".meta").textContent.startsWith("失败"), `上传失败的行应写「失败」：${rowU && rowU.querySelector(".meta").textContent}`);
       ok(
         document.querySelector(".drawer .num").textContent === "2",
         `两条失败行也要算进标题条计数：${document.querySelector(".drawer .num").textContent}`

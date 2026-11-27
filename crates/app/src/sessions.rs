@@ -310,6 +310,47 @@ pub async fn sftp_home(reg: State<'_, Registry>, id: u32) -> Result<String, Stri
     }
 }
 
+/// 文件面板当前走哪条协议。界面右上角那个小标签以前写死「SFTP」，
+/// 明明已经退到 SCP 了还这么写，用户会以为传输走的是另一条路。
+#[derive(Serialize)]
+pub struct FilesStatus {
+    mode: String,
+    note: String,
+}
+
+#[tauri::command]
+pub async fn files_status(reg: State<'_, Registry>, id: u32) -> Result<FilesStatus, String> {
+    let handle = files_of(&reg, id)?;
+    let guard = handle.lock().await;
+    Ok(match &*guard {
+        Files::Sftp(_) => FilesStatus {
+            mode: "sftp".into(),
+            note: String::new(),
+        },
+        Files::Scp { note, .. } => FilesStatus {
+            mode: "scp".into(),
+            note: note.clone(),
+        },
+    })
+}
+
+/// 拖进来的一条本地路径是文件还是目录、多大。目录暂不支持整目录传输，
+/// 界面得先问一句再决定传不传，省得每条目录都落成一条失败行。
+#[derive(Serialize)]
+pub struct LocalStat {
+    is_dir: bool,
+    size: u64,
+}
+
+#[tauri::command]
+pub fn local_stat(path: String) -> Result<LocalStat, String> {
+    let meta = std::fs::metadata(&path).map_err(|e| format!("读本地文件失败：{e}"))?;
+    Ok(LocalStat {
+        is_dir: meta.is_dir(),
+        size: if meta.is_dir() { 0 } else { meta.len() },
+    })
+}
+
 #[tauri::command]
 pub async fn sftp_list(
     reg: State<'_, Registry>,
