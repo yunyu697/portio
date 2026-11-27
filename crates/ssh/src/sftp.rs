@@ -5,6 +5,7 @@
 
 use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use russh_sftp::client::error::Error as SftpError;
 use russh_sftp::client::SftpSession;
@@ -12,6 +13,11 @@ use russh_sftp::protocol::OpenFlags;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 use crate::{SshError, SshSession};
+
+/// 没装 sftp-server 时对端不会回版本包，客户端只能干等到超时。
+/// 把这句话留成常量，错误文案才不会在几处实现里各写一版。
+pub const NO_SFTP_SERVER: &str = "服务器没有响应 SFTP 子系统：这台主机多半没装 sftp-server\
+（OpenWrt/dropbear：apk add openssh-sftp-server；Debian/Ubuntu：apt install openssh-sftp-server）。终端连接不受影响。";
 
 /// SFTP 通道的建立入口挂在会话上——同一个 SSH 连接上可以同时跑终端和文件传输。
 impl SshSession {
@@ -27,10 +33,16 @@ impl SshSession {
         channel
             .request_subsystem(true, "sftp")
             .await
-            .map_err(|e| SshError::Protocol(format!("请求 SFTP 子系统失败：{e}")))?;
-        let session = SftpSession::new(channel.into_stream())
-            .await
-            .map_err(|e| SshError::Protocol(format!("打开 SFTP 失败：{e}")))?;
+            .map_err(|e| SshError::Protocol(format!("请求 SFTP 子系统被拒绝：{e}。{NO_SFTP_SERVER}")))?;
+        // 版本协商也设上限：有的实现（dropbear 缺 sftp-server 时）会收下子系统请求却不拉起进程，
+        // 于是 FXP_INIT 发出去没人应答。不设上限就会卡到天荒地老。
+        let session = tokio::time::timeout(
+            Duration::from_secs(8),
+            SftpSession::new(channel.into_stream()),
+        )
+        .await
+        .map_err(|_| SshError::Protocol(NO_SFTP_SERVER.into()))?
+        .map_err(|e| SshError::Protocol(format!("打开 SFTP 失败：{e}")))?;
         Ok(Sftp { inner: session })
     }
 }

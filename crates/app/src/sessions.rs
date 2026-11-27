@@ -21,8 +21,25 @@ use tokio::sync::Mutex as AsyncMutex;
 struct Entry {
     session: Option<SshSession>,
     tx: UnboundedSender<ShellCommand>,
-    /// 同一个连接上的 SFTP 通道，第一次用到文件功能时才建立。
-    sftp: Arc<AsyncMutex<Option<Sftp>>>,
+    /// 同一个连接上的 SFTP 通道。建不起来时把原因留在 `note` 里，
+    /// 别拿它当连接失败的借口——终端能不能用和有没有 sftp-server 是两件事。
+    sftp: Arc<AsyncMutex<SftpSlot>>,
+}
+
+/// SFTP 通道的两种状态：能用，或者不能用但知道为什么。
+struct SftpSlot {
+    sftp: Option<Sftp>,
+    note: Option<String>,
+}
+
+impl SftpSlot {
+    fn get(&self) -> Result<&Sftp, String> {
+        self.sftp.as_ref().ok_or_else(|| {
+            self.note
+                .clone()
+                .unwrap_or_else(|| "文件面板不可用：SFTP 未就绪".to_string())
+        })
+    }
 }
 
 #[derive(Default)]
@@ -154,15 +171,25 @@ pub async fn ssh_connect(
         .await
         .map_err(|e| e.to_string())?;
 
-    // SFTP 在连接时一并建好：后续文件操作就不必再碰 session（它会随终端任务被 move 走）
-    let sftp = session.open_sftp().await.map_err(|e| e.to_string())?;
+    // SFTP 不再是"连上"的前提。OpenWrt 这类精简系统的 dropbear 没有 sftp-server，
+    // 以前这里一失败，整条连接就跟着报错，用户看到的是"SSH 连不上"，其实终端早就通了。
+    let slot = match session.open_sftp().await {
+        Ok(sftp) => SftpSlot {
+            sftp: Some(sftp),
+            note: None,
+        },
+        Err(err) => SftpSlot {
+            sftp: None,
+            note: Some(err.to_string()),
+        },
+    };
 
     reg.entries.lock().map_err(|_| "内部锁出错")?.insert(
         id,
         Entry {
             session: Some(session),
             tx: cmd_tx,
-            sftp: Arc::new(AsyncMutex::new(Some(sftp))),
+            sftp: Arc::new(AsyncMutex::new(slot)),
         },
     );
 
@@ -262,7 +289,7 @@ struct TransferPayload {
     dir: String,
 }
 
-fn sftp_of(reg: &Registry, id: u32) -> Result<Arc<AsyncMutex<Option<Sftp>>>, String> {
+fn sftp_of(reg: &Registry, id: u32) -> Result<Arc<AsyncMutex<SftpSlot>>, String> {
     let map = reg.entries.lock().map_err(|_| "内部锁出错")?;
     let entry = map.get(&id).ok_or("会话不存在")?;
     Ok(entry.sftp.clone())
@@ -273,7 +300,7 @@ fn sftp_of(reg: &Registry, id: u32) -> Result<Arc<AsyncMutex<Option<Sftp>>>, Str
 pub async fn sftp_home(reg: State<'_, Registry>, id: u32) -> Result<String, String> {
     let handle = sftp_of(&reg, id)?;
     let guard = handle.lock().await;
-    let sftp = guard.as_ref().ok_or("SFTP 未就绪")?;
+    let sftp = guard.get()?;
     sftp.home().await.map_err(|e| e.to_string())
 }
 
@@ -285,7 +312,7 @@ pub async fn sftp_list(
 ) -> Result<Vec<FileItem>, String> {
     let handle = sftp_of(&reg, id)?;
     let guard = handle.lock().await;
-    let sftp = guard.as_ref().ok_or("SFTP 未就绪")?;
+    let sftp = guard.get()?;
     let items = sftp.list(&path).await.map_err(|e| e.to_string())?;
     Ok(items.into_iter().map(FileItem::from_remote).collect())
 }
@@ -353,7 +380,7 @@ pub async fn sftp_download(
 ) -> Result<u64, String> {
     let handle = sftp_of(&reg, id)?;
     let guard = handle.lock().await;
-    let sftp = guard.as_ref().ok_or("SFTP 未就绪")?;
+    let sftp = guard.get()?;
     let name = remote.rsplit('/').next().unwrap_or("file").to_string();
 
     let mut last_emit = 0u64;
@@ -387,7 +414,7 @@ pub async fn sftp_upload(
 ) -> Result<u64, String> {
     let handle = sftp_of(&reg, id)?;
     let guard = handle.lock().await;
-    let sftp = guard.as_ref().ok_or("SFTP 未就绪")?;
+    let sftp = guard.get()?;
     let name = local
         .rsplit(['\\', '/'])
         .next()
@@ -419,7 +446,7 @@ pub async fn sftp_upload(
 pub async fn sftp_mkdir(reg: State<'_, Registry>, id: u32, path: String) -> Result<(), String> {
     let handle = sftp_of(&reg, id)?;
     let guard = handle.lock().await;
-    let sftp = guard.as_ref().ok_or("SFTP 未就绪")?;
+    let sftp = guard.get()?;
     sftp.mkdir(&path).await.map_err(|e| e.to_string())
 }
 
@@ -432,7 +459,7 @@ pub async fn sftp_remove(
 ) -> Result<(), String> {
     let handle = sftp_of(&reg, id)?;
     let guard = handle.lock().await;
-    let sftp = guard.as_ref().ok_or("SFTP 未就绪")?;
+    let sftp = guard.get()?;
     sftp.remove(&path, is_dir).await.map_err(|e| e.to_string())
 }
 
@@ -447,7 +474,7 @@ pub async fn sftp_rename(
 ) -> Result<(), String> {
     let handle = sftp_of(&reg, id)?;
     let guard = handle.lock().await;
-    let sftp = guard.as_ref().ok_or("SFTP 未就绪")?;
+    let sftp = guard.get()?;
     sftp.rename(&from, &to).await.map_err(|e| e.to_string())
 }
 
