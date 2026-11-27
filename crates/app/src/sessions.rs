@@ -31,7 +31,10 @@ struct Entry {
 enum Files {
     Sftp(Sftp),
     /// 退到 SCP。`session` 留着是因为 SCP 每移动一个文件都要开一条 exec 通道。
-    Scp { session: Arc<SshSession>, note: String },
+    Scp {
+        session: Arc<SshSession>,
+        note: String,
+    },
 }
 
 impl Files {

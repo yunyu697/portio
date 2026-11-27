@@ -35,9 +35,7 @@ impl SshSession {
         channel
             .exec(true, command.as_bytes().to_vec())
             .await
-            .map_err(|e| {
-                SshError::Protocol(format!("远端拒绝执行命令（{command}）：{e}"))
-            })?;
+            .map_err(|e| SshError::Protocol(format!("远端拒绝执行命令（{command}）：{e}")))?;
 
         let mut out = Vec::new();
         let mut err = Vec::new();
@@ -157,7 +155,7 @@ impl SshSession {
                 }
                 Control::End => break,
                 Control::Time => s.send(b"\x00").await?,
-                Control::Ack => {},
+                Control::Ack => {}
                 Control::Error(msg) => return Err(SshError::Protocol(msg)),
             }
         }
@@ -238,7 +236,8 @@ impl SshSession {
     }
 
     pub async fn scp_mkdir(&self, path: &str) -> Result<(), SshError> {
-        self.run_or_fail(format!("mkdir -p {}", sq(path)), "建目录").await
+        self.run_or_fail(format!("mkdir -p {}", sq(path)), "建目录")
+            .await
     }
 
     pub async fn scp_remove(&self, path: &str, is_dir: bool) -> Result<(), SshError> {
@@ -475,9 +474,7 @@ impl Stream {
                 let line = self.read_line().await?;
                 Ok(Control::Error(line.trim().to_string()))
             }
-            other => Err(SshError::Protocol(format!(
-                "SCP 协议出现意外字节 {other}"
-            ))),
+            other => Err(SshError::Protocol(format!("SCP 协议出现意外字节 {other}"))),
         }
     }
 
@@ -498,11 +495,7 @@ impl Stream {
     }
 
     /// 把剩余数据写进文件，最多 `max` 字节。
-    async fn take_bytes(
-        &mut self,
-        file: &mut tokio::fs::File,
-        max: u64,
-    ) -> Result<u64, SshError> {
+    async fn take_bytes(&mut self, file: &mut tokio::fs::File, max: u64) -> Result<u64, SshError> {
         while self.buf.is_empty() {
             if self.closed {
                 return Ok(0);
@@ -553,7 +546,8 @@ mod tests {
 
     #[test]
     fn symlink_name_loses_the_target() {
-        let line = "lrwxrwxrwx    1 root     root            18 Oct 17 21:45 scp -> /usr/sbin/dropbear";
+        let line =
+            "lrwxrwxrwx    1 root     root            18 Oct 17 21:45 scp -> /usr/sbin/dropbear";
         let e = parse_ls_line(line, "/usr/bin", 1_700_000_000).expect("应能解析");
         assert_eq!(e.name, "scp");
         assert!(!e.is_dir);

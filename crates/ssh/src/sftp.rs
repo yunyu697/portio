@@ -30,10 +30,9 @@ impl SshSession {
         // RFC 4254：必须先在会话通道上请求 sftp 子系统，服务端才会拉起 sftp-server。
         // 漏掉这一步直接发 FXP_INIT，对端不会回版本包，只会干等到请求超时，
         // 前端再把那条 Timeout 误判成"网络不可达"。
-        channel
-            .request_subsystem(true, "sftp")
-            .await
-            .map_err(|e| SshError::Protocol(format!("请求 SFTP 子系统被拒绝：{e}。{NO_SFTP_SERVER}")))?;
+        channel.request_subsystem(true, "sftp").await.map_err(|e| {
+            SshError::Protocol(format!("请求 SFTP 子系统被拒绝：{e}。{NO_SFTP_SERVER}"))
+        })?;
         // 版本协商也设上限：有的实现（dropbear 缺 sftp-server 时）会收下子系统请求却不拉起进程，
         // 于是 FXP_INIT 发出去没人应答。不设上限就会卡到天荒地老。
         let session = tokio::time::timeout(

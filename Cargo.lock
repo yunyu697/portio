@@ -3321,7 +3321,7 @@ dependencies = [
 
 [[package]]
 name = "portio-app"
-version = "1.1.1-RC5"
+version = "1.1.1-RC6"
 dependencies = [
  "portio-core",
  "portio-ssh",
@@ -3330,11 +3330,12 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tokio",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
 name = "portio-core"
-version = "1.1.1-RC5"
+version = "1.1.1-RC6"
 dependencies = [
  "ring",
  "serde",
@@ -3344,7 +3345,7 @@ dependencies = [
 
 [[package]]
 name = "portio-ssh"
-version = "1.1.1-RC5"
+version = "1.1.1-RC6"
 dependencies = [
  "portio-core",
  "russh",

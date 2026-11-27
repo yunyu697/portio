@@ -101,12 +101,52 @@ fn window_state(window: Window) -> Result<String, String> {
     Ok(st.to_string())
 }
 
+/// 自动化跑门禁时设这个环境变量：窗口照常显示，但不许把用户的前台顶掉。
+const QUIET_ENV: &str = "PORTIO_AUTOMATION";
+
+/// 显示窗口但不激活。
+///
+/// 一轮门禁要拉八九次 exe，每次都把用户正在用的窗口顶下去——哪怕设了虚拟桌面也一样，
+/// 新窗口总会出现在当前桌面上并拿焦点。前端调 `window_ready` 的那一刻改成：
+/// 先给窗口挂 `WS_EX_NOACTIVATE`，再用 `SW_SHOWNOACTIVATE` 显示、压到 Z 序最底，
+/// 全程 `SWP_NOACTIVATE`。窗口可见、WebView2 照常跑，前台仍在用户那边。
+#[cfg(windows)]
+fn show_quiet(window: &Window) -> Result<(), String> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE, HWND_BOTTOM,
+        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SW_SHOWNOACTIVATE, WS_EX_NOACTIVATE,
+    };
+
+    let hwnd = window.hwnd().map_err(map_err)?.0;
+    unsafe {
+        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) | WS_EX_NOACTIVATE as isize;
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex);
+        ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        SetWindowPos(
+            hwnd,
+            HWND_BOTTOM,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
+        );
+    }
+    Ok(())
+}
+
 /// 前端画完第一帧后调一次，把窗口显示出来。
 ///
 /// 窗口在配置里是 `visible: false`：先藏着建，等 webview 真正画出界面再 show。
 /// 这样启动时不会先闪一块空白的窗口底色（深色底 + 用户其实是浅色主题时尤其明显）。
 #[tauri::command]
 fn window_ready(window: Window) -> Result<(), String> {
+    if std::env::var_os(QUIET_ENV).is_some() {
+        #[cfg(windows)]
+        return show_quiet(&window);
+        #[cfg(not(windows))]
+        return window.show().map_err(map_err);
+    }
     window.show().map_err(map_err)?;
     window.set_focus().map_err(map_err)?;
     Ok(())

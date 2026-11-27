@@ -778,6 +778,18 @@ def a32_lints() -> tuple[str, str]:
 LAUNCH_WAIT = 10.0   # 等窗口出现最多多少秒（debug 版首帧通常 2–4s）
 LAUNCH_HOLD = 4.0    # 窗口出来之后再盯多久，看首帧之后会不会当场崩
 
+# 一轮门禁要拉八九次 exe。设了虚拟桌面也没用：新窗口照样落在当前桌面上、顺手把前台拿走。
+# 所以拉起时给 app 盖这个环境变量，让它在 `window_ready` 那一步走「显示但不激活」
+# （WS_EX_NOACTIVATE + SW_SHOWNOACTIVATE），前台一直留在用户自己那个窗口上。
+QUIET_ENV = "PORTIO_AUTOMATION"
+
+
+def quiet_env(base: dict | None = None) -> dict:
+    """给子进程一份带自动化标记的环境变量（不改机器上的任何设置）。"""
+    env = dict(os.environ if base is None else base)
+    env[QUIET_ENV] = "1"
+    return env
+
 
 def top_windows(pid: int) -> list[str]:
     """某个进程名下带标题的顶层窗口（Windows 专用，走 user32）。
@@ -932,7 +944,7 @@ def probe_launch(exe: Path, wait_window: float = LAUNCH_WAIT, hold: float = LAUN
     """把 exe 真拉起来、等窗口、再盯一会儿、然后收干净。"""
     reap_own_processes(kill=kill, enum=enum)
     started = time.time()
-    proc = popen([str(exe)], cwd=str(exe.parent),
+    proc = popen([str(exe)], cwd=str(exe.parent), env=quiet_env(),
                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     titles: list[str] = []
     try:
@@ -1278,7 +1290,7 @@ def probe_webview(exe: Path, version: str, wait: float = WEBVIEW_WAIT, port: int
     note = ""
     if leftover:
         note = f"；拉起前还有 {len(leftover)} 个自家进程没退净（{leftover[:3]}），已先收掉"
-    env = dict(os.environ)
+    env = quiet_env()
     # 只给这一个子进程开调试口（进程级环境变量，不改机器上的任何设置）
     env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = f"--remote-debugging-port={port}"
     started = time.time()
@@ -1468,7 +1480,7 @@ def probe_selftests(exe: Path, version: str, wait: float = WEBVIEW_WAIT, port: i
     note = ""
     if leftover:
         note = f"；拉起前还有 {len(leftover)} 个自家进程没退净（{leftover[:3]}），已先收掉"
-    env = dict(os.environ)
+    env = quiet_env()
     # 同 A36：调试口只给这一个子进程开，机器上的设置一个字不动
     env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = f"--remote-debugging-port={port}"
     started = time.time()
@@ -1674,7 +1686,7 @@ def probe_fresh_selftests(exe: Path, version: str, wait: float = FRESH_PROFILE_W
     theme = app_data_file("theme.txt")
     db_before = profile_stamp(db)
     theme_before = theme.read_bytes() if theme and theme.exists() else None
-    env = dict(os.environ)
+    env = quiet_env()
     # 两个都只给这一个子进程：调试口与一次性偏好目录，机器上的设置一个字不动
     env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = f"--remote-debugging-port={port}"
     env["WEBVIEW2_USER_DATA_FOLDER"] = str(prof)
@@ -1873,7 +1885,7 @@ def probe_app_selftests(exe: Path, version: str, wait: float = FRESH_PROFILE_WAI
     port = port or free_port()
     prof = make_profile("portio-appdata-", mkdtemp=mkdtemp)
     before = collect()
-    env = dict(os.environ)
+    env = quiet_env()
     # 调试口与一次性 profile 只给这一个子进程；后端目录换不了（见段首），靠存/收兜
     env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = f"--remote-debugging-port={port}"
     env["WEBVIEW2_USER_DATA_FOLDER"] = str(prof)
@@ -2131,7 +2143,7 @@ def probe_narrow(exe: Path, version: str, wait: float = FRESH_PROFILE_WAIT,
     theme = app_data_file("theme.txt")
     db_before = profile_stamp(db)
     theme_before = theme.read_bytes() if theme and theme.exists() else None
-    env = dict(os.environ)
+    env = quiet_env()
     # 同一份隔离：调试口与一次性偏好目录只给这一个子进程
     env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = f"--remote-debugging-port={port}"
     env["WEBVIEW2_USER_DATA_FOLDER"] = str(prof)
@@ -2308,7 +2320,7 @@ def probe_quiet_selftests(exe: Path, version: str, wait: float = FRESH_PROFILE_W
     port = port or free_port()
     before = collect()
     theme_before = (before.get("theme.txt") or {}).get("bytes")
-    env = dict(os.environ)
+    env = quiet_env()
     # 只给调试口；**故意不给** WEBVIEW2_USER_DATA_FOLDER——这一轮要的就是我的真偏好
     env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = f"--remote-debugging-port={port}"
     started = time.time()
@@ -2554,7 +2566,7 @@ def probe_broken_store(exe: Path, version: str, wait: float = WEBVIEW_WAIT,
         # ---- 第一趟：种一截坏清单，看真后端会不会先另存再重开 ----------
         plant_broken_store(root)
         probe_port = port or free_port()
-        env = dict(os.environ)
+        env = quiet_env()
         # 这一项要的就是我的真偏好与真后端：**故意不给**一次性 profile
         env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = f"--remote-debugging-port={probe_port}"
         proc = popen([str(exe)], cwd=str(exe.parent), env=env,
