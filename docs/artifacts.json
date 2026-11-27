@@ -760,6 +760,50 @@
       "sha256": "ff080346af946eb0eecee71afcdb2a33634c14f2e7e8512d9b0fff9366b89ae3",
       "delivered": "2026-11-21",
       "build": "CI（本机页面文件不够，release 的 build script 崩在 os error 1455；这份是 gh release download 原样下来的）"
+    },
+    {
+      "version": "1.1.1-RC5",
+      "platform": "windows-x64",
+      "source": "ci",
+      "tag": "v1.1.1-RC5",
+      "asset": "Portio_1.1.1-RC5_x64-setup.exe",
+      "file": "../Portio_1.1.1-RC5_x64-setup.exe",
+      "bytes": 3403072,
+      "sha256": "6b99f05d442bec647825ac8c21f57ec54721ff662bc8665953ab3f510908ce7e",
+      "delivered": "2026-11-27"
+    },
+    {
+      "version": "1.1.1-RC5",
+      "platform": "macos-universal",
+      "source": "ci",
+      "tag": "v1.1.1-RC5",
+      "asset": "Portio_1.1.1-RC5_universal.dmg",
+      "file": "../Portio_1.1.1-RC5_universal.dmg",
+      "bytes": 9450005,
+      "sha256": "70370efc145cfb1619f506e037fd47bc044ee1d80951545b77f2a08b46546e9b",
+      "delivered": "2026-11-27"
+    },
+    {
+      "version": "1.1.1-RC5",
+      "platform": "linux-deb",
+      "source": "ci",
+      "tag": "v1.1.1-RC5",
+      "asset": "Portio_1.1.1-RC5_amd64.deb",
+      "file": "../Portio_1.1.1-RC5_amd64.deb",
+      "bytes": 4989102,
+      "sha256": "c55c75750cf285dc81384562cfca959b4b45ca15ad8f29c316a4004b2d6b6ede",
+      "delivered": "2026-11-27"
+    },
+    {
+      "version": "1.1.1-RC5",
+      "platform": "linux-appimage",
+      "source": "ci",
+      "tag": "v1.1.1-RC5",
+      "asset": "Portio_1.1.1-RC5_amd64.AppImage",
+      "file": "../Portio_1.1.1-RC5_amd64.AppImage",
+      "bytes": 83175928,
+      "sha256": "e613948cea6f52dc695a6c06b4aa8b6f6388bc524147cd5fbc9ab1ad1cd1c95b",
+      "delivered": "2026-11-27"
     }
   ]
 }
