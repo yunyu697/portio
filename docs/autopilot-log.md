@@ -5279,3 +5279,32 @@ A36 读到空版本串时，失败结论也只说"span.ver 空着"，分不清�
   对上 GitHub digest，exe 包体 FileVersion / ProductVersion 均为 `1.1.1-RC2`；Release
   大小对上 61 条记录、61 个 tag 都真指在写着对应版本的提交上。
   Release：https://github.com/yunyu697/portio/releases/tag/v1.1.1-RC2
+
+## 1.1.1-RC6（2026-11-27）
+
+**这一轮修的是「WinSCP 能连、Portio 连不上」。** 用户给了一台真机（OpenWrt 25.12.6 + dropbear，
+`10.0.0.2`），实测 SSH 建连 / 主机密钥 / 口令登录 / PTY / resize 全通，但 SFTP 子系统请求
+无响应——这台机器上没有 `sftp-server`，Portio 原来只做 SFTP，于是文件面板连目录都列不出来。
+
+- `c2ed76d`：SFTP 建不起来不再连坐整条连接（以前它一失败终端都见不到），原因里带修法。
+- `7a08e9e`：协议层新加 `crates/ssh/src/scp.rs`——`ls -la` 解析列目录、`scp -t/-f` 收传文件、
+  `mkdir -p` / `rm` / `mv` 做目录操作、路径单引号转义；`SshSession::disconnect` 改 `&self`，
+  app 层把 SFTP 槽升级成 `Files::{Sftp, Scp}`，七个 `sftp_*` 命令契约不变。
+- 真机复验（探针 `real_probe --scp` 全绿）：home `/root`、`/etc` 74 项、`/usr` 6 项、
+  上传 200000 B、下载回读逐字节一致、建目录 / 改名 / 删除全部成功。
+- `d8be98e`：图标把 macOS 那圈圆角烘进母版（超椭圆指数 5、4× 超采样），Windows/Linux 不再方角。
+- `29728cc`：自动化拉起的窗口显示但不激活（`PORTIO_AUTOMATION` → `WS_EX_NOACTIVATE` +
+  `SW_SHOWNOACTIVATE`），一轮门禁拉八九次 exe 不再抢用户前台；实测带标记连拉两次
+  `GetForegroundWindow` 的 pid 一次没变。
+
+**门禁**：整跑 49 项 → 48 通过 / 1 失败（A49 自指，回填后复跑退 0）/ 0 未验，309.6s。
+A32 首跑红了一次（fmt 12 处未格式化）已 `cargo fmt` 修掉；A41 首跑红了一次是并跑时底色
+状态串线，单跑复现通过。
+
+**发包结果（2026-11-27）**
+- Release `v1.1.1-RC6`（预发布）：Windows `Portio_1.1.1-RC6_x64-setup.exe` 3,465,601 B；
+  macOS `Portio_1.1.1-RC6_universal.dmg` 9,720,029 B；
+  Linux `Portio_1.1.1-RC6_amd64.deb` 5,073,354 B；
+  Linux `Portio_1.1.1-RC6_amd64.AppImage` 83,253,752 B。
+- 四条 RC6 记录回填 `artifacts.json`（77 条），A48 对表 exit 0。
+- Release：https://github.com/yunyu697/portio/releases/tag/v1.1.1-RC6

@@ -804,6 +804,50 @@
       "bytes": 83175928,
       "sha256": "e613948cea6f52dc695a6c06b4aa8b6f6388bc524147cd5fbc9ab1ad1cd1c95b",
       "delivered": "2026-11-27"
+    },
+    {
+      "version": "1.1.1-RC6",
+      "platform": "windows-x64",
+      "source": "ci",
+      "tag": "v1.1.1-RC6",
+      "asset": "Portio_1.1.1-RC6_x64-setup.exe",
+      "file": "../Portio_1.1.1-RC6_x64-setup.exe",
+      "bytes": 3465601,
+      "sha256": "d9ded88448d9714441212085c2349d0967ee70f7647a5bc499baf3376a3e11a7",
+      "delivered": "2026-11-27"
+    },
+    {
+      "version": "1.1.1-RC6",
+      "platform": "macos-universal",
+      "source": "ci",
+      "tag": "v1.1.1-RC6",
+      "asset": "Portio_1.1.1-RC6_universal.dmg",
+      "file": "../Portio_1.1.1-RC6_universal.dmg",
+      "bytes": 9720029,
+      "sha256": "57ba7aaa1c67dcc8d00de60b74220a0e155db0a03c52a4a0661210913b639983",
+      "delivered": "2026-11-27"
+    },
+    {
+      "version": "1.1.1-RC6",
+      "platform": "linux-deb",
+      "source": "ci",
+      "tag": "v1.1.1-RC6",
+      "asset": "Portio_1.1.1-RC6_amd64.deb",
+      "file": "../Portio_1.1.1-RC6_amd64.deb",
+      "bytes": 5073354,
+      "sha256": "dcbceed86db5492290349adef88121266734c3c4aa627b3cc2c0b5befc7740ab",
+      "delivered": "2026-11-27"
+    },
+    {
+      "version": "1.1.1-RC6",
+      "platform": "linux-appimage",
+      "source": "ci",
+      "tag": "v1.1.1-RC6",
+      "asset": "Portio_1.1.1-RC6_amd64.AppImage",
+      "file": "../Portio_1.1.1-RC6_amd64.AppImage",
+      "bytes": 83253752,
+      "sha256": "13f52a0778d8225b968670725240746c95c7bf10fec75292e4ed3693078007ec",
+      "delivered": "2026-11-27"
     }
   ]
 }
