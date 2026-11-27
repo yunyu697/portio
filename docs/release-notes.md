@@ -5,7 +5,24 @@
 
 一页离线使用说明在 [`docs/site/index.html`](site/index.html)，安装包拿到手先看那一页。
 
-**当前状态**：版本在 `v1.1.1-RC5`；Windows x64 安装包、macOS universal dmg、Linux deb / AppImage 均由 CI 出包（预发布）。
+**当前状态**：版本在 `v1.1.1-RC6`；Windows x64 安装包、macOS universal dmg、Linux deb / AppImage 均由 CI 出包（预发布）。
+
+**1.1.1-RC6 收的是「WinSCP 能连、Portio 连不上」这件事。** 我拿自己的 OpenWrt 机器（25.12.6 + dropbear）实测：
+SSH 建连、主机密钥、口令登录、PTY、resize 全通，但 SFTP 子系统请求丢过去对方一声不响——这台机器没装
+`sftp-server`，于是文件面板连目录都列不出来。同一台机器上 WinSCP 传文件毫无问题，因为它连不上 SFTP 就退到 SCP。
+Portio 原来只做 SFTP，落差就在这儿。
+
+- **1.1.1-RC6**：协议层补了 SCP 通道——列目录走 `ls -la` 解析（权限位、大小、月份/日/时刻或年份、
+  名字带空格、软链去掉 `->` 尾巴都处理），上传走 `scp -t`、下载走 `scp -f`，一条 ACK 一条地走完整套握手，
+  落盘先写 `.part` 再改名；建目录 / 删除 / 改名走 `mkdir -p` / `rm -f|-rf` / `mv`，路径一律单引号转义。
+  app 层把「SFTP 槽位」升级成 `Sftp | Scp` 两种后端，SFTP 建不起来就换 SCP，七个 `sftp_*` 命令的名字和载荷一个没动。
+  真机实测：`/root` 8 项、`/etc` 74 项、`/usr` 6 项、上传 200000 B、下载回来逐字节一致、建目录 / 改名 / 删除全部成功。
+  同一版还修掉了「SFTP 建不起来就把整条连接判死」——以前它一失败终端都见不到，现在只记原因、终端照用，
+  原因里带上该怎么修（`apk add openssh-sftp-server` / `apt install openssh-sftp-server`）。
+- **1.1.1-RC6 另一处**：图标把 macOS 那圈圆角烘进了母版。上一版只做到满幅无底板，圆角靠 macOS 自己的
+  squircle 蒙版切，Windows 和 Linux 没有这层蒙版，同一份母版到任务栏就是个四角直角的大方块。
+  这一版在 `scripts/app_icon.py` 里加了一道超椭圆蒙版（指数 5、4× 超采样、四角透明带抗锯齿），
+  圆角直接写进 alpha，四平台现在形状一致。
 
 **1.1.1-RC5 只动了一件事：图标。** 以前那个图标四周留白、贴着一圈投影、外圈还是圆角卡片，
 Windows 不给图标补内边距，桌面和任务栏上看着就像图标背后垫了块底板；macOS 更明显，

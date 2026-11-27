@@ -5,6 +5,25 @@
 
 ## [Unreleased]
 
+## [1.1.1-RC6] - 2026-11-27
+
+### Fixed
+
+- **没有 `sftp-server` 的主机上，文件面板不再是一片空白——它退到 SCP。** 我拿真实设备验了一遍：OpenWrt 25.12.6 + dropbear 的机器，SSH 建连、主机密钥、口令登录、PTY、resize 全部正常，可 SFTP 子系统请求丢过去对方一声不响，于是文件面板连目录都列不出来；同一台机器上 WinSCP 却能传文件，因为它连不上 SFTP 就退到 SCP。Portio 原来只做 SFTP，于是「WinSCP 能连、Portio 连不上」——这正是当初要把 Xshell 与 WinSCP 合成一个应用要消掉的那段落差。这一版在协议层补了 SCP 通道：列目录走 `ls -la` 解析（权限位、大小、月份/日/时刻或年份、名字里带空格、软链去掉 `->` 尾巴都处理了，时刻按 ls 的老规矩判今年还是去年），上传走 `scp -t`、下载走 `scp -f`，一条 ACK 一条地走完整套握手，落盘先写 `.part` 再改名；新建目录、删除、改名走 `mkdir -p` / `rm -f|-rf` / `mv`，路径一律单引号转义。app 层把原来的「SFTP 槽位」升级成 `Sftp | Scp` 两种后端，SFTP 建不起来就换 SCP，七个 `sftp_*` 命令的名字和载荷一个没动。真机实测：home `/root`、`/root` 8 项、`/etc` 74 项、`/usr` 6 项、上传 200000 B、下载回来逐字节一致、建目录 / 改名 / 删除全部成功。
+- **SFTP 建不起来不再连坐整条连接。** 以前 connect 里 SFTP 一失败就把整条会话判死，用户看到的是「SSH 连不上」，其实终端早就通了。现在 SFTP 失败只记下原因、继续开终端，原因里带上该怎么修（OpenWrt：`apk add openssh-sftp-server`；Debian/Ubuntu：`apt install openssh-sftp-server`），并明说终端不受影响。
+
+### Changed
+
+- **图标把 macOS 那圈圆角烘进了母版，Windows 和 Linux 不再是方角。** 上一版只做到「满幅、无底板、无投影、无边框」，圆角是 macOS 自己用系统 squircle 蒙版切的；Windows 和 Linux 没有这层蒙版，同一份母版到了任务栏就是一个四角直角的大方块，四平台看起来根本不是一套。这一版在 `scripts/app_icon.py` 里加了一道 `squircle_mask()`：超椭圆（指数 5）、4× 超采样后缩回、四角透明带抗锯齿，圆角直接写进 alpha 通道。macOS 的系统蒙版只是在外面再裁一刀，形状与 Windows / Linux 看到的完全一致。六件图标（`icon.png`、`32x32.png`、`128x128.png`、`128x128@2x.png`、`icon.ico` 16–256 七帧、`icon.icns` ic07–ic14 八档）一次重出，png 仍是 RGBA。
+
+### Known limitations
+
+- SCP 回退只做单文件：整目录递归传输、断点续传仍只在 SFTP 那条路上有，SCP 分支是「传一个文件、报一次进度」。
+- 服务器有 `sftp-server` 时仍然优先走 SFTP（行为与上一版一致），SCP 只是兜底。
+- macOS 的系统圆角蒙版去不掉也不该去掉，本次去的是「各平台形状不一致」这件事本身。
+- 已发布的 v1.1.1-RC5 安装包里仍是方角图标、且文件面板在 OpenWrt 这类主机上不可用，要看这一版的两处修复得装 RC6。
+- 更新检查只到「跳转到 Release 页」为止，自动增量下载与原位安装尚未做。
+
 ## [1.1.1-RC5] - 2026-11-27
 
 ### Changed
