@@ -227,7 +227,9 @@ impl SshSession {
         Ok(())
     }
 
-    pub async fn disconnect(self) -> Result<(), SshError> {
+    /// 断开这条连接。只借不吞：SCP 回退要把同一个会话共享给文件面板
+    ///（`Arc<SshSession>`），消费语义在这里就没人用得上了。
+    pub async fn disconnect(&self) -> Result<(), SshError> {
         self.handle
             .disconnect(Disconnect::ByApplication, "", "")
             .await

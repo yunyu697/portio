@@ -6,6 +6,7 @@
 pub mod client;
 pub mod known_hosts;
 pub mod resume;
+pub mod scp;
 pub mod sftp;
 
 use portio_core::HostId;

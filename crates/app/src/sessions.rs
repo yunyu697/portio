@@ -19,26 +19,28 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::sync::Mutex as AsyncMutex;
 
 struct Entry {
-    session: Option<SshSession>,
+    session: Option<Arc<SshSession>>,
     tx: UnboundedSender<ShellCommand>,
-    /// 同一个连接上的 SFTP 通道。建不起来时把原因留在 `note` 里，
-    /// 别拿它当连接失败的借口——终端能不能用和有没有 sftp-server 是两件事。
-    sftp: Arc<AsyncMutex<SftpSlot>>,
+    /// 文件面板后端。能用 SFTP 就走 SFTP；没有 sftp-server 的主机退到 SCP
+    /// （dropbear / OpenWrt 就是这种：SFTP 子系统不响应，scp 却一直在）。
+    /// 文件面板走哪条路，和"终端能不能用"是两件事，别再拿它当连接失败的借口。
+    files: Arc<AsyncMutex<Files>>,
 }
 
-/// SFTP 通道的两种状态：能用，或者不能用但知道为什么。
-struct SftpSlot {
-    sftp: Option<Sftp>,
-    note: Option<String>,
+/// 文件面板的两种后端。
+enum Files {
+    Sftp(Sftp),
+    /// 退到 SCP。`session` 留着是因为 SCP 每移动一个文件都要开一条 exec 通道。
+    Scp { session: Arc<SshSession>, note: String },
 }
 
-impl SftpSlot {
-    fn get(&self) -> Result<&Sftp, String> {
-        self.sftp.as_ref().ok_or_else(|| {
-            self.note
-                .clone()
-                .unwrap_or_else(|| "文件面板不可用：SFTP 未就绪".to_string())
-        })
+impl Files {
+    /// 没法列目录时给出的解释：带上"为什么降级 / 该怎么修"。
+    fn unavailable(&self) -> String {
+        match self {
+            Files::Sftp(_) => "文件面板不可用：SFTP 未就绪".to_string(),
+            Files::Scp { note, .. } => note.clone(),
+        }
     }
 }
 
@@ -171,16 +173,15 @@ pub async fn ssh_connect(
         .await
         .map_err(|e| e.to_string())?;
 
-    // SFTP 不再是"连上"的前提。OpenWrt 这类精简系统的 dropbear 没有 sftp-server，
-    // 以前这里一失败，整条连接就跟着报错，用户看到的是"SSH 连不上"，其实终端早就通了。
-    let slot = match session.open_sftp().await {
-        Ok(sftp) => SftpSlot {
-            sftp: Some(sftp),
-            note: None,
-        },
-        Err(err) => SftpSlot {
-            sftp: None,
-            note: Some(err.to_string()),
+    // SFTP 不再是"连上"的前提，也不再是文件面板的唯一出路。
+    // OpenWrt 这类精简系统的 dropbear 没有 sftp-server，以前这里一失败，整条连接就跟着报错，
+    // 用户看到的是"SSH 连不上"，其实终端早就通了、WinSCP 也是靠 SCP 传的文件。
+    let session = Arc::new(session);
+    let files = match session.open_sftp().await {
+        Ok(sftp) => Files::Sftp(sftp),
+        Err(err) => Files::Scp {
+            session: session.clone(),
+            note: format!("{}（已改用 SCP 传输）", err),
         },
     };
 
@@ -189,7 +190,7 @@ pub async fn ssh_connect(
         Entry {
             session: Some(session),
             tx: cmd_tx,
-            sftp: Arc::new(AsyncMutex::new(slot)),
+            files: Arc::new(AsyncMutex::new(files)),
         },
     );
 
@@ -289,19 +290,21 @@ struct TransferPayload {
     dir: String,
 }
 
-fn sftp_of(reg: &Registry, id: u32) -> Result<Arc<AsyncMutex<SftpSlot>>, String> {
+fn files_of(reg: &Registry, id: u32) -> Result<Arc<AsyncMutex<Files>>, String> {
     let map = reg.entries.lock().map_err(|_| "内部锁出错")?;
     let entry = map.get(&id).ok_or("会话不存在")?;
-    Ok(entry.sftp.clone())
+    Ok(entry.files.clone())
 }
 
 /// 远端落地目录：登录后的 home，界面用它做初始路径。
 #[tauri::command]
 pub async fn sftp_home(reg: State<'_, Registry>, id: u32) -> Result<String, String> {
-    let handle = sftp_of(&reg, id)?;
+    let handle = files_of(&reg, id)?;
     let guard = handle.lock().await;
-    let sftp = guard.get()?;
-    sftp.home().await.map_err(|e| e.to_string())
+    match &*guard {
+        Files::Sftp(sftp) => sftp.home().await.map_err(|e| e.to_string()),
+        Files::Scp { session, .. } => session.scp_home().await.map_err(|e| e.to_string()),
+    }
 }
 
 #[tauri::command]
@@ -310,10 +313,15 @@ pub async fn sftp_list(
     id: u32,
     path: String,
 ) -> Result<Vec<FileItem>, String> {
-    let handle = sftp_of(&reg, id)?;
+    let handle = files_of(&reg, id)?;
     let guard = handle.lock().await;
-    let sftp = guard.get()?;
-    let items = sftp.list(&path).await.map_err(|e| e.to_string())?;
+    let items = match &*guard {
+        Files::Sftp(sftp) => sftp.list(&path).await.map_err(|e| e.to_string())?,
+        Files::Scp { session, .. } => session
+            .scp_list(&path)
+            .await
+            .map_err(|e| format!("{}（{}）", e, guard.unavailable()))?,
+    };
     Ok(items.into_iter().map(FileItem::from_remote).collect())
 }
 
@@ -378,9 +386,8 @@ pub async fn sftp_download(
     remote: String,
     local: String,
 ) -> Result<u64, String> {
-    let handle = sftp_of(&reg, id)?;
+    let handle = files_of(&reg, id)?;
     let guard = handle.lock().await;
-    let sftp = guard.get()?;
     let name = remote.rsplit('/').next().unwrap_or("file").to_string();
 
     let mut last_emit = 0u64;
@@ -399,9 +406,12 @@ pub async fn sftp_download(
             );
         }
     };
-    sftp.download(&remote, &PathBuf::from(&local), &mut cb)
-        .await
-        .map_err(|e| e.to_string())
+    let local_path = PathBuf::from(&local);
+    match &*guard {
+        Files::Sftp(sftp) => sftp.download(&remote, &local_path, &mut cb).await,
+        Files::Scp { session, .. } => session.scp_download(&remote, &local_path, &mut cb).await,
+    }
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -412,9 +422,8 @@ pub async fn sftp_upload(
     local: String,
     remote: String,
 ) -> Result<u64, String> {
-    let handle = sftp_of(&reg, id)?;
+    let handle = files_of(&reg, id)?;
     let guard = handle.lock().await;
-    let sftp = guard.get()?;
     let name = local
         .rsplit(['\\', '/'])
         .next()
@@ -437,17 +446,22 @@ pub async fn sftp_upload(
             );
         }
     };
-    sftp.upload(&PathBuf::from(&local), &remote, &mut cb)
-        .await
-        .map_err(|e| e.to_string())
+    let local_path = PathBuf::from(&local);
+    match &*guard {
+        Files::Sftp(sftp) => sftp.upload(&local_path, &remote, &mut cb).await,
+        Files::Scp { session, .. } => session.scp_upload(&local_path, &remote, &mut cb).await,
+    }
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn sftp_mkdir(reg: State<'_, Registry>, id: u32, path: String) -> Result<(), String> {
-    let handle = sftp_of(&reg, id)?;
+    let handle = files_of(&reg, id)?;
     let guard = handle.lock().await;
-    let sftp = guard.get()?;
-    sftp.mkdir(&path).await.map_err(|e| e.to_string())
+    match &*guard {
+        Files::Sftp(sftp) => sftp.mkdir(&path).await.map_err(|e| e.to_string()),
+        Files::Scp { session, .. } => session.scp_mkdir(&path).await.map_err(|e| e.to_string()),
+    }
 }
 
 #[tauri::command]
@@ -457,10 +471,15 @@ pub async fn sftp_remove(
     path: String,
     is_dir: bool,
 ) -> Result<(), String> {
-    let handle = sftp_of(&reg, id)?;
+    let handle = files_of(&reg, id)?;
     let guard = handle.lock().await;
-    let sftp = guard.get()?;
-    sftp.remove(&path, is_dir).await.map_err(|e| e.to_string())
+    match &*guard {
+        Files::Sftp(sftp) => sftp.remove(&path, is_dir).await.map_err(|e| e.to_string()),
+        Files::Scp { session, .. } => session
+            .scp_remove(&path, is_dir)
+            .await
+            .map_err(|e| e.to_string()),
+    }
 }
 
 /// SFTP 的 rename 是"移动 + 改名"合一，所以只给同一目录内的改名调用；
@@ -472,10 +491,15 @@ pub async fn sftp_rename(
     from: String,
     to: String,
 ) -> Result<(), String> {
-    let handle = sftp_of(&reg, id)?;
+    let handle = files_of(&reg, id)?;
     let guard = handle.lock().await;
-    let sftp = guard.get()?;
-    sftp.rename(&from, &to).await.map_err(|e| e.to_string())
+    match &*guard {
+        Files::Sftp(sftp) => sftp.rename(&from, &to).await.map_err(|e| e.to_string()),
+        Files::Scp { session, .. } => session
+            .scp_rename(&from, &to)
+            .await
+            .map_err(|e| e.to_string()),
+    }
 }
 
 #[tauri::command]
